@@ -94,3 +94,9 @@ slower than a C++ engine like Stockfish. Kestrel makes up for some of that
 with aggressive pruning, and reaches 8 to 12 moves deep within a few seconds
 in most positions. That is enough to be tactically sharp and to beat
 most casual and club players.
+
+**Kestrel vs Claude:** Claude played White against Kestrel at 3 seconds per
+move ([`games/claude_vs_kestrel.pgn`](games/claude_vs_kestrel.pgn)).
+Claude won a pawn out of the opening and was two pawns up in a rook
+endgame, then played 33. Rd2??, leaving the rook undefended. Kestrel took
+it immediately, stopped the passed pawns and won. Kestrel wins, 0-1.
