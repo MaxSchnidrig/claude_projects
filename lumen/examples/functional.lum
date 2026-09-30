@@ -1,0 +1,64 @@
+# Functions are values: they can be passed around, returned and stored.
+
+fn map(items, f) {
+    let result = [];
+    for item in items { push(result, f(item)); }
+    return result;
+}
+
+fn filter(items, keep) {
+    let result = [];
+    for item in items {
+        if keep(item) { push(result, item); }
+    }
+    return result;
+}
+
+fn reduce(items, combine, start) {
+    let total = start;
+    for item in items { total = combine(total, item); }
+    return total;
+}
+
+fn compose(f, g) {
+    return fn(x) { return f(g(x)); };
+}
+
+let numbers = range(1, 11);
+let squares = map(numbers, fn(n) { return n * n; });
+print("squares:     ", squares);
+let even_squares = filter(squares, fn(n) { return n % 2 == 0; });
+print("even squares:", even_squares);
+print("their sum:   ", reduce(even_squares, fn(a, b) { return a + b; }, 0));
+
+let add_one_then_double = compose(fn(x) { return x * 2; }, fn(x) { return x + 1; });
+print("compose: (5 + 1) * 2 =", add_one_then_double(5));
+
+# Closures: each counter remembers its own `count`
+fn make_counter() {
+    let count = 0;
+    return fn() {
+        count += 1;
+        return count;
+    };
+}
+let a = make_counter();
+let b = make_counter();
+a();
+a();
+print("counter a is at", a(), "but counter b is at", b());
+
+# Memoization: remember answers so slow recursion becomes fast
+fn memoize(f) {
+    let cache = {};
+    return fn(n) {
+        if not has(cache, n) { cache[n] = f(n); }
+        return cache[n];
+    };
+}
+
+let fib = memoize(fn(n) {
+    if n < 2 { return n; }
+    return fib(n - 1) + fib(n - 2);
+});
+print("fib(90) =", fib(90));

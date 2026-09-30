@@ -1,0 +1,42 @@
+# A quick tour of Lumen
+
+let name = "Lumen";
+print("Hello from " + name + "!");
+
+# Maths follows normal precedence rules
+print("1 + 2 * 3 =", 1 + 2 * 3);
+print("(1 + 2) * 3 =", (1 + 2) * 3);
+print("2 ** 10 =", 2 ** 10);
+print("-3 ** 2 =", -3 ** 2);
+print("7 / 2 =", 7 / 2, "and 7 % 2 =", 7 % 2);
+
+# Lists
+let fruits = ["apple", "banana", "cherry"];
+push(fruits, "date");
+print("fruits:", fruits, "- the last one is", fruits[-1]);
+for fruit in fruits {
+    print("  I like " + fruit);
+}
+
+# Maps
+let ages = {"ada": 36, "alan": 41};
+ages["grace"] = 85;
+for person in keys(ages) {
+    print(" ", person, "is", ages[person]);
+}
+
+# Loops with break and continue
+let i = 0;
+while true {
+    i += 1;
+    if i % 2 == 0 { continue; }
+    if i > 9 { break; }
+    print("odd number:", i);
+}
+
+# Errors can be caught
+try {
+    print(10 / 0);
+} catch error {
+    print("caught an error:", error);
+}

@@ -1,0 +1,134 @@
+# The week 2 calculator, rebuilt in Lumen.
+#
+# The original worked left to right, so 1 + 2 * 3 gave 9. This version uses a
+# recursive descent parser (the same technique Lumen itself is built with), so
+# it handles BEDMAS, exponents with ^, brackets and negative numbers.
+#
+#   expression = term (("+" | "-") term)*
+#   term       = unary (("*" | "/") unary)*
+#   unary      = "-" unary | power
+#   power      = primary ("^" unary)?
+#   primary    = number | "(" expression ")"
+
+fn is_digit(char) {
+    return char >= "0" and char <= "9";
+}
+
+fn tokenize(text) {
+    let tokens = [];
+    let i = 0;
+    while i < len(text) {
+        let char = text[i];
+        if char == " " {
+            i += 1;
+        } else if is_digit(char) or char == "." {
+            let number = "";
+            while i < len(text) and (is_digit(text[i]) or text[i] == ".") {
+                number += text[i];
+                i += 1;
+            }
+            push(tokens, num(number));
+        } else if has("+-*/^()", char) {
+            push(tokens, char);
+            i += 1;
+        } else {
+            throw "unknown character '" + char + "'";
+        }
+    }
+    return tokens;
+}
+
+# The parser's state is a map, so every function can move through the tokens
+fn peek(state) {
+    if state["pos"] < len(state["tokens"]) {
+        return state["tokens"][state["pos"]];
+    }
+    return nil;
+}
+
+fn advance(state) {
+    let token = peek(state);
+    state["pos"] += 1;
+    return token;
+}
+
+fn parse_expression(state) {
+    let value = parse_term(state);
+    while peek(state) == "+" or peek(state) == "-" {
+        if advance(state) == "+" {
+            value += parse_term(state);
+        } else {
+            value -= parse_term(state);
+        }
+    }
+    return value;
+}
+
+fn parse_term(state) {
+    let value = parse_unary(state);
+    while peek(state) == "*" or peek(state) == "/" {
+        if advance(state) == "*" {
+            value *= parse_unary(state);
+        } else {
+            value /= parse_unary(state);
+        }
+    }
+    return value;
+}
+
+fn parse_unary(state) {
+    if peek(state) == "-" {
+        advance(state);
+        return -parse_unary(state);
+    }
+    return parse_power(state);
+}
+
+fn parse_power(state) {
+    let base = parse_primary(state);
+    if peek(state) == "^" {
+        advance(state);
+        return base ** parse_unary(state);
+    }
+    return base;
+}
+
+fn parse_primary(state) {
+    let token = advance(state);
+    if type(token) == "number" { return token; }
+    if token == "(" {
+        let value = parse_expression(state);
+        if advance(state) != ")" { throw "missing a closing bracket"; }
+        return value;
+    }
+    if token == nil { throw "the expression ended too early"; }
+    throw "didn't expect '" + token + "'";
+}
+
+fn calculate(text) {
+    let state = {"tokens": tokenize(text), "pos": 0};
+    let value = parse_expression(state);
+    if peek(state) != nil { throw "didn't expect '" + str(peek(state)) + "'"; }
+    return value;
+}
+
+let examples = [
+    "1 + 2 * 3",
+    "(1 + 2) * 3",
+    "2 ^ 3 ^ 2",
+    "-4 + 10 / 4",
+    "3 * -(2 + 1)",
+    "2 * (3 + 4) ^ 2 - 1",
+    "0.5 * 8",
+    "1 / 0",
+    "(1 + 2",
+    "4 + * 5",
+];
+
+for text in examples {
+    try {
+        print(text, "=", calculate(text));
+    } catch error {
+        print(text, "-> error:", error);
+    }
+}
