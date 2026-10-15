@@ -2,7 +2,7 @@
 --[[
 	EggService
 	==========
-	Everything about eggs before they reach the hatch pad:
+	Everything about eggs before they reach a pad on the plot:
 	  - Spawning eggs in the danger zones (rarer eggs in deeper zones, using
 	    each zone's EggWeights in Config.Zones), with a cap per zone and in total.
 	  - Picking up an egg with a ProximityPrompt. The server checks
@@ -12,7 +12,8 @@
 	    them down (Config.Eggs.ByRarity[...].CarrySpeedMultiplier).
 	  - Losing it: being caught by a shark follows Config.Eggs.OnCaught, dying
 	    any other way follows Config.Eggs.OnDeath ("Drop" or "Lose").
-	  - Delivering: standing on your own hatch pad hands the egg to PetService.
+	  - Delivering: stepping onto your own plot hands the egg to PetService,
+	    which puts it on the nearest free pad.
 
 	Public interface:
 		EggService.IsCarrying(player) -> boolean
@@ -267,7 +268,7 @@ tryPickUp = function(player: Player, egg: GroundEgg)
 	local rarity = egg.Rarity
 	removeGroundEgg(egg)
 	attachCarriedEgg(player, rarity, root)
-	notify(player, `You stole a {rarity} Egg! Run back to your Hatch Pad!`)
+	notify(player, `You stole a {rarity} Egg! Run back to your plot!`)
 	EggService.EggPickedUp:Fire(player, rarity)
 end
 
@@ -322,22 +323,17 @@ local function checkDeliveries()
 	for player, carry in carrying do
 		local plot = PlotService.GetPlot(player)
 		local root = getRoot(player)
-		if plot and root then
-			local pad = plot.HatchPad
-			local offset = root.Position - pad.Position
-			local flatDistance = Vector3.new(offset.X, 0, offset.Z).Magnitude
-			local padRadius = pad.Size.Y / 2 -- an upright cylinder's diameter is its Y size
-			if flatDistance <= padRadius + 1 and math.abs(offset.Y) < 8 then
-				if PetService.AcceptEgg(player, carry.Rarity) then
-					takeCarry(player)
-					notify(player, `{carry.Rarity} Egg delivered to your Hatch Pad!`)
-					EggService.EggDelivered:Fire(player, carry.Rarity)
-				else
-					local now = os.clock()
-					if now - (lastPadFullNotice[player] or 0) > PAD_FULL_NOTICE_COOLDOWN then
-						lastPadFullNotice[player] = now
-						notify(player, "Your Hatch Pad is full! Wait for an egg to hatch.")
-					end
+		-- Anywhere on your own plot counts: the egg goes to the nearest free pad.
+		if plot and root and PlotService.GetPlotAt(root.Position) == plot then
+			if PetService.AcceptEgg(player, carry.Rarity, root.Position) then
+				takeCarry(player)
+				notify(player, `{carry.Rarity} Egg placed on a pad!`)
+				EggService.EggDelivered:Fire(player, carry.Rarity)
+			else
+				local now = os.clock()
+				if now - (lastPadFullNotice[player] or 0) > PAD_FULL_NOTICE_COOLDOWN then
+					lastPadFullNotice[player] = now
+					notify(player, "All your pads are full!")
 				end
 			end
 		end

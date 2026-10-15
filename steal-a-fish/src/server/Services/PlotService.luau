@@ -10,10 +10,10 @@
 	  - Floor (colored; faded while nobody owns it)
 	  - Sign gate at the front with the owner's name
 	  - SpawnLocation: the owner spawns here
-	  - HatchPad: deliver eggs here (Milestone 2)
 	  - Treadmill at the front: train Speed here (Milestone 5)
-	  - PetSlots: pedestals for pets (Milestone 4). All Config.Plots.MaxPetSlots
-	    pedestals are built, but only the unlocked ones are shown.
+	  - Pads along the left and right side (Config.Plots.PadsPerSide each).
+	    Each pad holds ONE egg or ONE pet (PetService decides what's on it).
+	    All pads are built, but only the unlocked ones are shown.
 
 	Plots are SAFE ZONES: bots stay in the danger zone (see WorldService), and
 	other services can ask PlotService.IsInsideAnyPlot(position).
@@ -23,7 +23,7 @@
 		PlotService.GetPlots() -> { PlotInfo }             -- all plots
 		PlotService.GetPlotAt(position) -> PlotInfo?       -- plot containing a point
 		PlotService.IsInsideAnyPlot(position) -> boolean
-		PlotService.SetUnlockedSlots(plot, count)          -- show/hide pedestals
+		PlotService.SetUnlockedPads(plot, count)           -- show/hide pads
 		PlotService.SetTreadmillTier(plot, tier)           -- rebuild the treadmill as another tier
 		PlotService.TreadmillChanged:Connect(function(plot) end)
 		PlotService.PlotAssigned:Connect(function(player, plot) end)
@@ -61,20 +61,25 @@ local plotByPlayer: { [Player]: PlotInfo } = {}
 -- Building
 ---------------------------------------------------------------------------
 
--- Where pet pedestal number `slotIndex` goes, relative to the plot center.
--- Pedestals fill the back half of the plot in rows of 4.
-local SLOT_COLUMNS = 4
-local function slotOffset(slotIndex: number): Vector3
-	local size = Config.Plots.Size
-	local rows = math.ceil(Config.Plots.MaxPetSlots / SLOT_COLUMNS)
-	local column = (slotIndex - 1) % SLOT_COLUMNS
-	local row = math.floor((slotIndex - 1) / SLOT_COLUMNS)
-	local spacingX = (size.X - 10) / SLOT_COLUMNS
-	local backHalfDepth = size.Z / 2 - 6
-	local spacingZ = backHalfDepth / rows
-	local x = -size.X / 2 + 5 + spacingX * (column + 0.5)
-	local z = 4 + spacingZ * (row + 0.5)
-	return Vector3.new(x, 0, z)
+-- Where pad number `padIndex` goes, relative to the plot center, and which
+-- way it faces (toward the middle of the plot). Pads alternate left/right
+-- and fill from the front (near the danger zone) to the back.
+local function padCFrame(padIndex: number): CFrame
+	local plots = Config.Plots
+	local size = plots.Size
+	local padSize = plots.PadSize
+	local perSide = math.max(plots.PadsPerSide, 1)
+	local side = if padIndex % 2 == 1 then -1 else 1 -- odd = left, even = right
+	local row = math.ceil(padIndex / 2) - 1 -- 0 = front row
+
+	-- Rows run from just behind the treadmill to the back rail.
+	local firstZ = -size.Z / 2 + 26 + padSize.Z / 2
+	local lastZ = size.Z / 2 - 1.5 - padSize.Z / 2
+	local spacing = if perSide > 1 then (lastZ - firstZ) / (perSide - 1) else 0
+	local x = side * (size.X / 2 - 1.5 - padSize.X / 2)
+	local position = Vector3.new(x, padSize.Y / 2, firstZ + row * spacing)
+	-- LookVector points toward the middle of the plot.
+	return CFrame.lookAt(position, position + Vector3.new(-side, 0, 0))
 end
 
 -- Build a treadmill of the given tier (with its floating name label) and
@@ -165,41 +170,29 @@ local function buildPlot(index: number, parent: Instance): PlotInfo
 	spawn.Enabled = true
 	spawn.Parent = model
 
-	-- Hatch pad in the middle front.
-	local hatchPad = Build.cylinder({
-		Name = "HatchPad",
-		Size = Vector3.new(10, 0.6, 10),
-		CFrame = cf * CFrame.new(0, 0.3, -14),
-		Color = Color3.fromRGB(255, 230, 90),
-		Material = Enum.Material.Neon,
-		Parent = model,
-	})
-	Assets.decorate(hatchPad, "HatchPad")
-	-- High enough to clear the eggs sitting on the pad.
-	Build.billboard(hatchPad, "🥚 Hatch Pad", 9, 60)
-
 	-- Treadmill at the front right corner, so it's easy to reach from the
 	-- open area. You step on from the front and run toward the console.
 	local treadmillOrigin = cf * CFrame.new(size.X / 2 - 9, 0, -size.Z / 2 + 11)
 	local treadmill = buildTreadmill(treadmillOrigin, model, 1)
 
-	-- Pet pedestals in the back half.
-	local slotsFolder = Instance.new("Folder")
-	slotsFolder.Name = "PetSlots"
-	slotsFolder.Parent = model
-	local slots: { BasePart } = {}
-	for slotIndex = 1, Config.Plots.MaxPetSlots do
-		local slot = Build.cylinder({
-			Name = `Slot{slotIndex}`,
-			Size = Vector3.new(6, 2, 6),
-			CFrame = cf * CFrame.new(slotOffset(slotIndex)) * CFrame.new(0, 1, 0),
-			Color = Color3.fromRGB(230, 230, 240),
-			Material = Enum.Material.Marble,
-			Parent = slotsFolder,
+	-- Pads along both sides. Each one holds one egg or one pet.
+	local padsFolder = Instance.new("Folder")
+	padsFolder.Name = "Pads"
+	padsFolder.Parent = model
+	local pads: { BasePart } = {}
+	-- Rotated so the pad's "depth" (PadSize.X) points toward the middle.
+	local padSize = Config.Plots.PadSize
+	for padIndex = 1, Config.Plots.PadsPerSide * 2 do
+		local pad = Build.part({
+			Name = `Pad{padIndex}`,
+			Size = Vector3.new(padSize.Z, padSize.Y, padSize.X),
+			CFrame = cf * padCFrame(padIndex),
+			Color = Config.Plots.PadColor,
+			Parent = padsFolder,
 		})
-		slot:SetAttribute("SlotIndex", slotIndex)
-		Assets.decorate(slot, "PetSlot")
-		table.insert(slots, slot)
+		pad:SetAttribute("PadIndex", padIndex)
+		Assets.decorate(pad, "Pad")
+		table.insert(pads, pad)
 	end
 
 	model.Parent = parent
@@ -210,12 +203,11 @@ local function buildPlot(index: number, parent: Instance): PlotInfo
 		Owner = nil,
 		CFrame = cf,
 		Spawn = spawn,
-		HatchPad = hatchPad,
 		Treadmill = treadmill,
 		TreadmillOrigin = treadmillOrigin,
 		TreadmillTier = 1,
-		Slots = slots,
-		UnlockedSlots = #slots,
+		Pads = pads,
+		UnlockedPads = #pads,
 		SignLabels = signLabels,
 	}
 end
@@ -256,14 +248,14 @@ function PlotService.SetTreadmillTier(plot: PlotInfo, tier: number)
 	PlotService.TreadmillChanged:Fire(plot)
 end
 
--- Show the first `count` pedestals and hide the rest.
-function PlotService.SetUnlockedSlots(plot: PlotInfo, count: number)
-	count = math.clamp(count, 0, #plot.Slots)
-	plot.UnlockedSlots = count
-	local folder = plot.Model:FindFirstChild("PetSlots")
-	for slotIndex, slot in plot.Slots do
-		-- Hidden pedestals are simply taken out of the world (parent = nil).
-		slot.Parent = if slotIndex <= count then folder else nil
+-- Show the first `count` pads and hide the rest.
+function PlotService.SetUnlockedPads(plot: PlotInfo, count: number)
+	count = math.clamp(count, 0, #plot.Pads)
+	plot.UnlockedPads = count
+	local folder = plot.Model:FindFirstChild("Pads")
+	for padIndex, pad in plot.Pads do
+		-- Hidden pads are simply taken out of the world (parent = nil).
+		pad.Parent = if padIndex <= count then folder else nil
 	end
 end
 
@@ -311,7 +303,7 @@ local function assignPlot(player: Player)
 	plot.Owner = player
 	plotByPlayer[player] = plot
 	plot.Model:SetAttribute("OwnerUserId", player.UserId)
-	PlotService.SetUnlockedSlots(plot, Config.Plots.StartingPetSlots)
+	PlotService.SetUnlockedPads(plot, Config.Plots.StartingPads)
 	refreshLooks(plot)
 
 	-- Spawn the player on this plot from now on.
@@ -338,7 +330,7 @@ local function releasePlot(player: Player)
 	plotByPlayer[player] = nil
 	plot.Owner = nil
 	plot.Model:SetAttribute("OwnerUserId", 0)
-	PlotService.SetUnlockedSlots(plot, Config.Plots.StartingPetSlots)
+	PlotService.SetUnlockedPads(plot, Config.Plots.StartingPads)
 	PlotService.SetTreadmillTier(plot, 1)
 	refreshLooks(plot)
 
@@ -388,7 +380,7 @@ function PlotService.Start()
 	for index = 1, Config.Plots.Count do
 		local plot = buildPlot(index, folder)
 		table.insert(plots, plot)
-		PlotService.SetUnlockedSlots(plot, Config.Plots.StartingPetSlots)
+		PlotService.SetUnlockedPads(plot, Config.Plots.StartingPads)
 		refreshLooks(plot)
 	end
 

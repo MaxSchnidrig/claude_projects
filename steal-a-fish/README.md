@@ -36,9 +36,8 @@ hides the block. If a name is missing, you just see the placeholder.
 | Asset name | Where it's used |
 |---|---|
 | `PlotSign` | the board above each plot's entrance |
-| `HatchPad` | the pad you deliver eggs to |
 | `Treadmill` | the treadmill on each plot |
-| `PetSlot` | each pet pedestal |
+| `Pad` | each egg/pet pad along the sides of a plot |
 | `Egg<Rarity>` (e.g. `EggLegendary`) or `Egg` | eggs (rarity-specific name is tried first) |
 | `Shark` (`Config.Bots.ModelName`) | the chaser bots (Milestone 3) |
 

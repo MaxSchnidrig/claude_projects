@@ -251,8 +251,14 @@ Config.Plots = {
 	Count = 8, -- maximum players per server should be <= this
 	Size = Vector3.new(60, 1, 80), -- width (X), thickness (Y), depth (Z) of one plot
 	Gap = 8, -- empty space between two plots
-	StartingPetSlots = 4, -- pedestals unlocked on a brand new plot
-	MaxPetSlots = 12, -- most pedestals a plot can ever have
+	-- PADS: rectangular pads along the left and right side of the plot. Each
+	-- pad holds ONE thing: an egg (until it hatches) or the pet that hatched
+	-- from it (until it's sold). Pads are unlocked front to back, left/right
+	-- alternating; the plot space upgrade unlocks more.
+	PadsPerSide = 5, -- so 10 pads in total
+	StartingPads = 6, -- unlocked on a brand new plot
+	PadSize = Vector3.new(6, 0.6, 7), -- depth toward the middle (X), height, length along the side (Z)
+	PadColor = Color3.fromRGB(150, 150, 160),
 	SafeMargin = 3, -- the safe area reaches this many studs past the plot's edges
 	-- One floor color per plot (Plot 1 gets the first color, and so on).
 	Colors = {
@@ -314,9 +320,8 @@ Config.Eggs = {
 	Size = Vector3.new(2.4, 3, 2.4), -- placeholder egg size (width, height, depth)
 	CarryHeight = 5, -- how far above the character's middle the carried egg floats
 	-- How much of an egg sticks out of the ground (0.5 = top half, like it's
-	-- stuck in the sand). Also used for eggs on the hatch pad.
+	-- stuck in the sand). Also used for eggs on the plot pads.
 	VisibleFraction = 0.5,
-	MaxEggsOnPad = 3, -- how many eggs can sit on your hatch pad at once
 	-- How glowing eggs look: light range and brightness grow with Rarities[...].Glow.
 	GlowRangePerLevel = 4,
 	GlowBrightnessPerLevel = 0.6,
@@ -538,7 +543,7 @@ Config.Economy = {
 -- See Config.UpgradePrice below.
 ---------------------------------------------------------------------------
 Config.Upgrades = {
-	PetSlots = { Base = 150, Growth = 1.9 }, -- +1 pet slot per level (up to Plots.MaxPetSlots)
+	Pads = { Base = 150, Growth = 1.9 }, -- plot space: +1 pad per level (up to PadsPerSide * 2)
 	-- Treadmill upgrades are the tiers in Config.Treadmill.Tiers (each has its own Price).
 	PetLevel = {
 		MaxLevel = 10,

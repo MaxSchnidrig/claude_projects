@@ -16,7 +16,7 @@
 		Build.cylinder({ ... })               -- upright cylinder; CFrame = center
 		Build.addStuds(part)                  -- add studs to any part yourself
 		Build.surfaceText(part, Enum.NormalId.Front, "Hello")
-		Build.billboard(part, "Hatch Pad", 4)
+		Build.billboard(part, "Treadmill", 4)
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")

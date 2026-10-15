@@ -2,18 +2,23 @@
 --[[
 	PetService
 	==========
-	Owns everything that happens on a plot after an egg is delivered: eggs
-	sitting on the hatch pad, hatching them into pets (Milestone 4), placing
-	pets on pedestals, and selling pets.
+	Owns what sits on a plot's PADS. Each pad holds exactly ONE item:
+	  - an "Egg" (delivered by the player, waiting to hatch), or
+	  - a "Pet" (what hatched from that egg; it stays on the same pad and
+	    earns money until it is sold).
+	So pads are egg slots and pet slots at the same time.
 
-	Milestone 2 part: the hatch pad holds up to Config.Eggs.MaxEggsOnPad
-	delivered eggs. They just sit there until hatching arrives in Milestone 4.
+	Right now (before the hatching milestone) eggs just sit on their pads.
+	The hatching milestone will turn an Egg item into a Pet item on the SAME
+	pad, the money milestone pays out per pet, and selling a pet frees its pad.
 
 	Public interface:
-		PetService.AcceptEgg(player, rarity) -> boolean
-			Puts a delivered egg on the player's hatch pad. Returns false if
-			the pad is full (the player keeps carrying the egg).
-		PetService.GetPadEggCount(player) -> number
+		PetService.AcceptEgg(player, rarity, nearPosition) -> boolean
+			Puts a delivered egg on the FREE unlocked pad closest to
+			nearPosition. Returns false if every pad is taken (the player keeps
+			carrying the egg).
+		PetService.GetFreePadCount(player) -> number
+		PetService.GetPadItem(plot, padIndex) -> PadItem?
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -24,83 +29,98 @@ local Build = require(script.Parent.Parent.Util.Build)
 local EggVisual = require(script.Parent.Parent.Util.EggVisual)
 local PlotService = require(script.Parent.PlotService)
 
-type PadEgg = {
+-- What sits on one pad.
+export type PadItem = {
+	Kind: "Egg" | "Pet",
 	Rarity: string,
-	Part: BasePart,
+	PetName: string?, -- only for pets (hatching milestone)
+	Part: BasePart, -- the 3D egg or pet
 }
 
 local PetService = {}
 PetService.Name = "PetService"
 
--- Eggs on each plot's hatch pad, by plot index.
-local padEggs: { [number]: { PadEgg } } = {}
+-- padItems[plotIndex][padIndex] = what's on that pad (nil = free).
+local padItems: { [number]: { [number]: PadItem } } = {}
 
--- Where egg number `spot` sits on the pad (eggs stand side by side).
-local function padSpotCFrame(plot: Types.PlotInfo, spot: number): CFrame
-	local pad = plot.HatchPad
-	local padTop = pad.Position.Y + pad.Size.X / 2 -- an upright cylinder's height is its X size
-	local count = Config.Eggs.MaxEggsOnPad
-	local spacing = math.min(3.2, (pad.Size.Y - 2) / math.max(count, 1))
-	local x = (spot - (count + 1) / 2) * spacing
-	-- Eggs sit partly sunk into the pad, like the ones in the sand.
-	local centerY = padTop + Config.Eggs.Size.Y * (Config.Eggs.VisibleFraction - 0.5)
-	local base = CFrame.new(pad.Position.X, centerY, pad.Position.Z) * plot.CFrame.Rotation
-	return base * CFrame.new(x, 0, 0)
+local function getItems(plot: Types.PlotInfo): { [number]: PadItem }
+	local items = padItems[plot.Index]
+	if not items then
+		items = {}
+		padItems[plot.Index] = items
+	end
+	return items
 end
 
-function PetService.GetPadEggCount(player: Player): number
+-- Where an egg sits on a pad: centered, half sunk into it.
+local function eggCFrameOnPad(pad: BasePart): CFrame
+	local padTop = pad.Position.Y + pad.Size.Y / 2
+	local centerY = padTop + Config.Eggs.Size.Y * (Config.Eggs.VisibleFraction - 0.5)
+	return CFrame.new(pad.Position.X, centerY, pad.Position.Z) * pad.CFrame.Rotation
+end
+
+function PetService.GetPadItem(plot: Types.PlotInfo, padIndex: number): PadItem?
+	return getItems(plot)[padIndex]
+end
+
+function PetService.GetFreePadCount(player: Player): number
 	local plot = PlotService.GetPlot(player)
 	if not plot then
 		return 0
 	end
-	local list = padEggs[plot.Index]
-	return if list then #list else 0
+	local items = getItems(plot)
+	local free = 0
+	for padIndex = 1, plot.UnlockedPads do
+		if not items[padIndex] then
+			free += 1
+		end
+	end
+	return free
 end
 
-function PetService.AcceptEgg(player: Player, rarity: string): boolean
+function PetService.AcceptEgg(player: Player, rarity: string, nearPosition: Vector3): boolean
 	local plot = PlotService.GetPlot(player)
 	if not plot then
 		return false
 	end
-	local list = padEggs[plot.Index]
-	if not list then
-		list = {}
-		padEggs[plot.Index] = list
+	local items = getItems(plot)
+
+	-- The closest free unlocked pad.
+	local bestIndex: number? = nil
+	local bestDistance = math.huge
+	for padIndex = 1, plot.UnlockedPads do
+		if not items[padIndex] then
+			local distance = (plot.Pads[padIndex].Position - nearPosition).Magnitude
+			if distance < bestDistance then
+				bestIndex = padIndex
+				bestDistance = distance
+			end
+		end
 	end
-	if #list >= Config.Eggs.MaxEggsOnPad then
+	if not bestIndex then
 		return false
 	end
 
-	-- Find the first empty spot on the pad.
-	local used: { [number]: boolean } = {}
-	for _, egg in list do
-		used[egg.Part:GetAttribute("PadSpot") :: number] = true
-	end
-	local spot = 1
-	while used[spot] do
-		spot += 1
-	end
-
+	local pad = plot.Pads[bestIndex]
 	local part = EggVisual.create(rarity, true)
-	part.CFrame = padSpotCFrame(plot, spot)
-	part:SetAttribute("PadSpot", spot)
+	part.CFrame = eggCFrameOnPad(pad)
+	part:SetAttribute("PadIndex", bestIndex)
 	Build.billboard(part, `{rarity} Egg`, 2.5, 40)
 	part.Parent = plot.Model
 
-	local padEgg: PadEgg = { Rarity = rarity, Part = part }
-	table.insert(list, padEgg)
+	items[bestIndex] = { Kind = "Egg", Rarity = rarity, PetName = nil, Part = part }
 	return true
 end
 
--- Remove every egg from a plot's pad (when its owner leaves).
-local function clearPad(plotIndex: number)
-	local list = padEggs[plotIndex]
-	if list then
-		for _, egg in list do
-			egg.Part:Destroy()
+-- Remove everything from a plot's pads (when its owner leaves).
+local function clearPads(plotIndex: number)
+	local items = padItems[plotIndex]
+	if items then
+		for _, item in items do
+			item.Part:Destroy()
 		end
 	end
-	padEggs[plotIndex] = nil
+	padItems[plotIndex] = nil
 end
 
 function PetService.Init()
@@ -108,7 +128,7 @@ end
 
 function PetService.Start()
 	PlotService.PlotReleased:Connect(function(_player: Player, plot: Types.PlotInfo)
-		clearPad(plot.Index)
+		clearPads(plot.Index)
 	end)
 end
 

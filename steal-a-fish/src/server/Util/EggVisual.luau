@@ -3,7 +3,7 @@
 	EggVisual
 	=========
 	Creates the 3D egg you see on the ground, above a player's head, and on
-	the hatch pad.
+	a plot pad.
 
 	Placeholder: an egg-shaped part (a stretched sphere) in the rarity's color.
 	Rarer eggs glow more (Config.Rarities[...].Glow).

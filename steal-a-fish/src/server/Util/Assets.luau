@@ -13,7 +13,7 @@
 	stays visible.
 
 	To use your own model: in Studio, put a Model (or Part) named, for example,
-	"HatchPad" into ReplicatedStorage > Assets. Its pivot is placed at the
+	"Pad" into ReplicatedStorage > Assets. Its pivot is placed at the
 	center of the placeholder.
 ]]
 
