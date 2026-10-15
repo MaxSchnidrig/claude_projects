@@ -27,6 +27,7 @@ local SERVICES: { Types.Service } = {
 	require(Services.DataService),
 	require(Services.EconomyService),
 	require(Services.PlotService),
+	require(Services.SpeedService),
 	require(Services.UpgradeService),
 	require(Services.PetService),
 	require(Services.EggService),

@@ -68,7 +68,8 @@ local function onRenderStep()
 	UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
 	local humanoid, root = getHumanoidAndRoot()
 	local camera = Workspace.CurrentCamera
-	if not (humanoid and root and camera) or humanoid.Sit then
+	if not (humanoid and root and camera) or humanoid.Sit or root.Anchored then
+		-- (Anchored = training on the treadmill: don't turn the character.)
 		return
 	end
 	local look = camera.CFrame.LookVector

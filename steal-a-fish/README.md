@@ -147,3 +147,36 @@ explaining what it does. Save the file, and Rojo syncs it right away.
 Store** → **Images**, search for `studs`, right-click one you like → **Copy Asset ID**, and
 paste it into that setting as `"rbxassetid://<the number>"`. Adjust
 `Config.Visuals.StudsPerTile` if the studs look too big or too small.
+
+---
+
+## Roadmap
+
+| # | Milestone | Status |
+|---|---|---|
+| 0 | Project setup | ✅ |
+| 1 | Plots | ✅ |
+| 2 | Eggs and the danger zone | ✅ |
+| 3 | Chaser bots (sharks) | ✅ |
+| 4 | **Speed & treadmill** (Speed stat, training, treadmill tiers 1–10 defined) | 🔨 testing |
+| 5 | Hatching and pets | |
+| 6 | Upgrades and economy, including **buying treadmill tiers** with money (`SpeedService.SetTreadmillTier`) | |
+| 7 | Saving (money, Speed stat, owned treadmill tier, upgrades, pets) | |
+| 8 | UI and polish | |
+| 9 | Monetization (Robux); Speed boosts plug into `SpeedService.SetGainMultiplier` | |
+
+## Studio test commands
+
+Only work while play-testing in Studio. Type them in the chat:
+
+| Command | What it does |
+|---|---|
+| `!speed 5000` | set your Speed stat to 5000 |
+| `!speed zone 4` | set your Speed stat to just enough to outrun zone 4's shark |
+| `!tier 7` | rebuild your treadmill as tier 7 (Neon) |
+
+If chat commands don't do anything, open **View → Command Bar**, set its dropdown to
+**Server**, and run, for example:
+```lua
+game.Players:GetPlayers()[1]:SetAttribute("DebugCommand", "!speed zone 4")
+```

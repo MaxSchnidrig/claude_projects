@@ -45,7 +45,9 @@ export type PlotInfo = {
 	CFrame: CFrame, -- center of the floor's top surface; LookVector = front
 	Spawn: SpawnLocation, -- where the owner spawns
 	HatchPad: BasePart, -- deliver eggs here
-	Treadmill: BasePart, -- run on it to train Speed
+	Treadmill: BasePart, -- the treadmill BELT; stand on it to train Speed
+	TreadmillOrigin: CFrame, -- where the treadmill is built (for swapping tiers)
+	TreadmillTier: number, -- index into Config.Treadmill.Tiers
 	Slots: { BasePart }, -- ALL pet pedestals (locked ones are hidden)
 	UnlockedSlots: number, -- how many of Slots are usable
 	SignLabels: { TextLabel }, -- owner name text (front and back of the sign)

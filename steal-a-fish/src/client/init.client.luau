@@ -24,6 +24,7 @@ local CONTROLLERS: { Types.Controller } = {
 	require(Controllers.UIController),
 	require(Controllers.EggController),
 	require(Controllers.TreadmillController),
+	require(Controllers.TrainingController),
 	require(Controllers.ShiftLockController),
 	require(Controllers.EffectsController),
 }

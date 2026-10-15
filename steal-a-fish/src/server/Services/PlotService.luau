@@ -24,6 +24,8 @@
 		PlotService.GetPlotAt(position) -> PlotInfo?       -- plot containing a point
 		PlotService.IsInsideAnyPlot(position) -> boolean
 		PlotService.SetUnlockedSlots(plot, count)          -- show/hide pedestals
+		PlotService.SetTreadmillTier(plot, tier)           -- rebuild the treadmill as another tier
+		PlotService.TreadmillChanged:Connect(function(plot) end)
 		PlotService.PlotAssigned:Connect(function(player, plot) end)
 		PlotService.PlotReleased:Connect(function(player, plot) end)
 ]]
@@ -49,6 +51,8 @@ PlotService.Name = "PlotService"
 -- Fired with (player, plot) when a player gets a plot / gives it up.
 PlotService.PlotAssigned = Signal.new()
 PlotService.PlotReleased = Signal.new()
+-- Fired with (plot) after a plot's treadmill was rebuilt as another tier.
+PlotService.TreadmillChanged = Signal.new()
 
 local plots: { PlotInfo } = {}
 local plotByPlayer: { [Player]: PlotInfo } = {}
@@ -71,6 +75,15 @@ local function slotOffset(slotIndex: number): Vector3
 	local x = -size.X / 2 + 5 + spacingX * (column + 0.5)
 	local z = 4 + spacingZ * (row + 0.5)
 	return Vector3.new(x, 0, z)
+end
+
+-- Build a treadmill of the given tier (with its floating name label) and
+-- return its belt.
+local function buildTreadmill(origin: CFrame, parent: Instance, tier: number): BasePart
+	local _, belt = TreadmillBuilder.build(origin, parent, tier)
+	local tierName = Config.Treadmill.Tiers[math.clamp(tier, 1, #Config.Treadmill.Tiers)].Name
+	Build.billboard(belt, `🏃 {tierName} Treadmill`, 8, 60)
+	return belt
 end
 
 local function buildPlot(index: number, parent: Instance): PlotInfo
@@ -167,8 +180,8 @@ local function buildPlot(index: number, parent: Instance): PlotInfo
 
 	-- Treadmill at the front right corner, so it's easy to reach from the
 	-- open area. You step on from the front and run toward the console.
-	local treadmill = TreadmillBuilder.build(cf * CFrame.new(size.X / 2 - 9, 0, -size.Z / 2 + 11), model)
-	Build.billboard(treadmill, "🏃 Treadmill", 8, 60)
+	local treadmillOrigin = cf * CFrame.new(size.X / 2 - 9, 0, -size.Z / 2 + 11)
+	local treadmill = buildTreadmill(treadmillOrigin, model, 1)
 
 	-- Pet pedestals in the back half.
 	local slotsFolder = Instance.new("Folder")
@@ -199,6 +212,8 @@ local function buildPlot(index: number, parent: Instance): PlotInfo
 		Spawn = spawn,
 		HatchPad = hatchPad,
 		Treadmill = treadmill,
+		TreadmillOrigin = treadmillOrigin,
+		TreadmillTier = 1,
 		Slots = slots,
 		UnlockedSlots = #slots,
 		SignLabels = signLabels,
@@ -223,6 +238,22 @@ local function refreshLooks(plot: PlotInfo)
 		-- Free plots look faded and grey.
 		floor.Color = if plot.Owner then baseColor else baseColor:Lerp(Color3.fromRGB(120, 120, 120), 0.6)
 	end
+end
+
+-- Replace the plot's treadmill with another tier from Config.Treadmill.Tiers.
+-- (SpeedService stops anyone training on it first.)
+function PlotService.SetTreadmillTier(plot: PlotInfo, tier: number)
+	tier = math.clamp(math.floor(tier), 1, #Config.Treadmill.Tiers)
+	if tier == plot.TreadmillTier then
+		return
+	end
+	local oldModel = plot.Treadmill.Parent
+	if oldModel then
+		oldModel:Destroy()
+	end
+	plot.Treadmill = buildTreadmill(plot.TreadmillOrigin, plot.Model, tier)
+	plot.TreadmillTier = tier
+	PlotService.TreadmillChanged:Fire(plot)
 end
 
 -- Show the first `count` pedestals and hide the rest.
@@ -308,6 +339,7 @@ local function releasePlot(player: Player)
 	plot.Owner = nil
 	plot.Model:SetAttribute("OwnerUserId", 0)
 	PlotService.SetUnlockedSlots(plot, Config.Plots.StartingPetSlots)
+	PlotService.SetTreadmillTier(plot, 1)
 	refreshLooks(plot)
 
 	if Config.Debug then

@@ -2,11 +2,13 @@
 --[[
 	TreadmillController
 	===================
-	Makes every treadmill belt look like it's moving, by sliding the chevron
-	(arrow) markings along the belt over and over. This only happens on your
-	own screen; the server doesn't move anything.
+	Treadmill visuals on your own screen (the server doesn't move anything):
+	  - While someone trains on a treadmill (its belt has the BeltActive
+	    attribute), the chevron markings slide along the belt over and over,
+	    so it looks like it's running.
+	  - Parts tagged "RainbowPart" (the Rainbow tier) cycle through colors.
 
-	To save work, belts far away from the camera are not animated.
+	To save work, treadmills far from the camera are not animated.
 ]]
 
 local CollectionService = game:GetService("CollectionService")
@@ -20,8 +22,9 @@ local Constants = require(ReplicatedStorage.Shared.Constants)
 local TreadmillController = {}
 TreadmillController.Name = "TreadmillController"
 
-local ANIMATE_DISTANCE = 150 -- only animate belts closer than this to the camera
+local ANIMATE_DISTANCE = 150 -- only animate treadmills closer than this to the camera
 local END_MARGIN = 1.2 -- hide chevrons this close to the belt ends
+local RAINBOW_CYCLE_SECONDS = 4 -- time for one full trip around the rainbow
 
 local function animateBelt(belt: BasePart, time: number)
 	local count = belt:GetAttribute("ChevronCount")
@@ -50,6 +53,10 @@ local function animateBelt(belt: BasePart, time: number)
 	end
 end
 
+local function isNear(part: BasePart, cameraPosition: Vector3): boolean
+	return (part.Position - cameraPosition).Magnitude < ANIMATE_DISTANCE
+end
+
 function TreadmillController.Init()
 end
 
@@ -59,10 +66,25 @@ function TreadmillController.Start()
 		if not camera then
 			return
 		end
+		local cameraPosition = camera.CFrame.Position
 		local time = os.clock()
+
 		for _, belt in CollectionService:GetTagged(Constants.Tags.TreadmillBelt) do
-			if belt:IsA("BasePart") and (belt.Position - camera.CFrame.Position).Magnitude < ANIMATE_DISTANCE then
+			if
+				belt:IsA("BasePart")
+				and belt:GetAttribute(Constants.Attributes.BeltActive) == true
+				and isNear(belt, cameraPosition)
+			then
 				animateBelt(belt, time)
+			end
+		end
+
+		local hue = (time / RAINBOW_CYCLE_SECONDS) % 1
+		for _, part in CollectionService:GetTagged(Constants.Tags.RainbowPart) do
+			if part:IsA("BasePart") and isNear(part, cameraPosition) then
+				-- Spread the colors along the treadmill so it shimmers.
+				local offset = (part.Position.Z * 0.05) % 1
+				part.Color = Color3.fromHSV((hue + offset) % 1, 0.75, 1)
 			end
 		end
 	end)

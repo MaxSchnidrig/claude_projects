@@ -40,6 +40,25 @@ export type RarityConfig = {
 export type SharkConfig = {
 	Speed: number, -- chase speed in studs per second
 	Count: number, -- how many sharks patrol this zone
+	-- Filled in automatically at the bottom of this file (don't type these):
+	SpeedStatNeeded: number?, -- Speed stat at which you walk faster than this shark
+	MinutesAtTier1: number?, -- treadmill minutes on the Basic treadmill to get there
+}
+
+export type TreadmillTier = {
+	Name: string,
+	Price: number, -- money to buy it (bought in the Upgrades milestone)
+	Gain: number, -- Speed stat gained per second while training
+	FrameColor: Color3,
+	FrameMaterial: Enum.Material,
+	BeltColor: Color3,
+	ChevronColor: Color3, -- the arrow markings on the belt
+	ChevronNeon: boolean, -- true = glowing arrows
+	AccentColor: Color3?, -- glowing stripes along the sides (nil = none)
+	ScreenColor: Color3,
+	Light: number, -- light brightness around the treadmill (0 = none)
+	Effect: string, -- "None", "Sparkles", "Fire" or "Stars"
+	Rainbow: boolean, -- frame colors cycle through the rainbow
 }
 
 export type EggRarityConfig = {
@@ -83,16 +102,120 @@ local rarities: { RarityConfig } = {
 Config.Rarities = rarities
 
 ---------------------------------------------------------------------------
--- PLAYER
+-- SPEED (the main progression)
+-- Players have a Speed STAT that grows on the treadmill and can get huge
+-- ("12.5K"). Their actual WalkSpeed grows much more slowly from it:
+--
+--   WalkSpeed = min(BaseWalkSpeed + Factor * SpeedStat ^ Exponent, MaxWalkSpeed)
+--
+-- With Factor 0.08 and Exponent 0.5:   Speed stat 0 -> 16,   2.5K -> 20,
+--   40K -> 32,   250K -> 56,   400K -> 66.6,   1M -> 80 (the cap).
+-- Egg carry slow-downs (Eggs.ByRarity) are multiplied on top.
 ---------------------------------------------------------------------------
-Config.Player = {
-	-- Starting walk speed for everyone (Roblox's default is 16).
-	BaseWalkSpeed = 24,
-	-- The Speed stat (treadmill, Milestone 5) ADDS to the base:
-	--   WalkSpeed = min(BaseWalkSpeed + SpeedStat * WalkSpeedPerSpeedPoint, MaxWalkSpeed)
-	-- Egg carry slow-downs are then multiplied on top of that.
-	WalkSpeedPerSpeedPoint = 0.05,
-	MaxWalkSpeed = 60, -- hard cap, no matter how high the Speed stat gets
+Config.Speed = {
+	StartingStat = 0,
+	BaseWalkSpeed = 16, -- a brand-new player (Roblox's default)
+	Factor = 0.08,
+	Exponent = 0.5,
+	MaxWalkSpeed = 80, -- hard cap, so the game stays controllable
+	-- "Outrunning" a shark means walking at least this much faster than it.
+	OutrunMargin = 0.5,
+}
+
+-- WalkSpeed for a given Speed stat (before carry slow-downs).
+function Config.WalkSpeedFromStat(stat: number): number
+	local speed = Config.Speed.BaseWalkSpeed + Config.Speed.Factor * math.max(stat, 0) ^ Config.Speed.Exponent
+	return math.min(speed, Config.Speed.MaxWalkSpeed)
+end
+
+-- The reverse: the Speed stat needed to reach a WalkSpeed. math.huge if the
+-- cap makes it impossible.
+function Config.StatNeededForWalkSpeed(walkSpeed: number): number
+	local extra = walkSpeed - Config.Speed.BaseWalkSpeed
+	if extra <= 0 then
+		return 0
+	end
+	if walkSpeed > Config.Speed.MaxWalkSpeed then
+		return math.huge
+	end
+	return math.ceil((extra / Config.Speed.Factor) ^ (1 / Config.Speed.Exponent))
+end
+
+---------------------------------------------------------------------------
+-- TREADMILL (Speed milestone)
+-- Stand on your own treadmill to train. Every GainInterval seconds you get
+-- the tier's Gain, multiplied by any boosts (Robux passes, later).
+-- Tier 1 is free and everyone starts with it. Better tiers are bought with
+-- money in the Upgrades milestone. Each tier looks cooler than the last, so
+-- everyone can see who has the best treadmill.
+---------------------------------------------------------------------------
+local treadmillTiers: { TreadmillTier } = {
+	{
+		Name = "Basic", Price = 0, Gain = 10,
+		FrameColor = Color3.fromRGB(205, 205, 212), FrameMaterial = Enum.Material.SmoothPlastic,
+		BeltColor = Color3.fromRGB(45, 45, 52), ChevronColor = Color3.fromRGB(235, 235, 240), ChevronNeon = false,
+		AccentColor = nil, ScreenColor = Color3.fromRGB(80, 220, 255), Light = 0, Effect = "None", Rainbow = false,
+	},
+	{
+		Name = "Bronze", Price = 2_500, Gain = 25,
+		FrameColor = Color3.fromRGB(205, 127, 50), FrameMaterial = Enum.Material.Metal,
+		BeltColor = Color3.fromRGB(50, 35, 25), ChevronColor = Color3.fromRGB(255, 170, 90), ChevronNeon = false,
+		AccentColor = nil, ScreenColor = Color3.fromRGB(255, 170, 90), Light = 0, Effect = "None", Rainbow = false,
+	},
+	{
+		Name = "Silver", Price = 15_000, Gain = 60,
+		FrameColor = Color3.fromRGB(200, 205, 215), FrameMaterial = Enum.Material.DiamondPlate,
+		BeltColor = Color3.fromRGB(40, 45, 55), ChevronColor = Color3.fromRGB(230, 240, 255), ChevronNeon = true,
+		AccentColor = nil, ScreenColor = Color3.fromRGB(200, 230, 255), Light = 0, Effect = "None", Rainbow = false,
+	},
+	{
+		Name = "Gold", Price = 80_000, Gain = 150,
+		FrameColor = Color3.fromRGB(255, 200, 60), FrameMaterial = Enum.Material.Foil,
+		BeltColor = Color3.fromRGB(60, 45, 20), ChevronColor = Color3.fromRGB(255, 230, 120), ChevronNeon = true,
+		AccentColor = Color3.fromRGB(255, 215, 80), ScreenColor = Color3.fromRGB(255, 230, 120), Light = 1, Effect = "None", Rainbow = false,
+	},
+	{
+		Name = "Emerald", Price = 400_000, Gain = 350,
+		FrameColor = Color3.fromRGB(40, 190, 110), FrameMaterial = Enum.Material.Glass,
+		BeltColor = Color3.fromRGB(15, 50, 35), ChevronColor = Color3.fromRGB(120, 255, 170), ChevronNeon = true,
+		AccentColor = Color3.fromRGB(80, 255, 150), ScreenColor = Color3.fromRGB(120, 255, 170), Light = 1.5, Effect = "Sparkles", Rainbow = false,
+	},
+	{
+		Name = "Diamond", Price = 2_000_000, Gain = 800,
+		FrameColor = Color3.fromRGB(170, 235, 255), FrameMaterial = Enum.Material.Glass,
+		BeltColor = Color3.fromRGB(20, 40, 60), ChevronColor = Color3.fromRGB(150, 240, 255), ChevronNeon = true,
+		AccentColor = Color3.fromRGB(120, 230, 255), ScreenColor = Color3.fromRGB(180, 245, 255), Light = 2, Effect = "Sparkles", Rainbow = false,
+	},
+	{
+		Name = "Neon", Price = 10_000_000, Gain = 2_000,
+		FrameColor = Color3.fromRGB(25, 25, 35), FrameMaterial = Enum.Material.SmoothPlastic,
+		BeltColor = Color3.fromRGB(10, 10, 15), ChevronColor = Color3.fromRGB(255, 60, 220), ChevronNeon = true,
+		AccentColor = Color3.fromRGB(0, 255, 255), ScreenColor = Color3.fromRGB(255, 60, 220), Light = 2.5, Effect = "Stars", Rainbow = false,
+	},
+	{
+		Name = "Magma", Price = 50_000_000, Gain = 5_000,
+		FrameColor = Color3.fromRGB(60, 30, 25), FrameMaterial = Enum.Material.Basalt,
+		BeltColor = Color3.fromRGB(30, 10, 5), ChevronColor = Color3.fromRGB(255, 120, 20), ChevronNeon = true,
+		AccentColor = Color3.fromRGB(255, 90, 0), ScreenColor = Color3.fromRGB(255, 140, 40), Light = 3, Effect = "Fire", Rainbow = false,
+	},
+	{
+		Name = "Rainbow", Price = 250_000_000, Gain = 12_000,
+		FrameColor = Color3.fromRGB(255, 255, 255), FrameMaterial = Enum.Material.SmoothPlastic,
+		BeltColor = Color3.fromRGB(25, 25, 30), ChevronColor = Color3.fromRGB(255, 255, 255), ChevronNeon = true,
+		AccentColor = Color3.fromRGB(255, 255, 255), ScreenColor = Color3.fromRGB(255, 255, 255), Light = 3, Effect = "Sparkles", Rainbow = true,
+	},
+	{
+		Name = "Cosmic", Price = 1_500_000_000, Gain = 30_000,
+		FrameColor = Color3.fromRGB(40, 20, 80), FrameMaterial = Enum.Material.Glass,
+		BeltColor = Color3.fromRGB(5, 0, 20), ChevronColor = Color3.fromRGB(190, 120, 255), ChevronNeon = true,
+		AccentColor = Color3.fromRGB(150, 80, 255), ScreenColor = Color3.fromRGB(220, 180, 255), Light = 4, Effect = "Stars", Rainbow = false,
+	},
+}
+
+Config.Treadmill = {
+	GainInterval = 1, -- seconds between Speed gains while training
+	Tiers = treadmillTiers,
+	ReEnterCooldown = 1, -- seconds after stepping off before the belt grabs you again
 }
 
 ---------------------------------------------------------------------------
@@ -416,13 +539,7 @@ Config.Economy = {
 ---------------------------------------------------------------------------
 Config.Upgrades = {
 	PetSlots = { Base = 150, Growth = 1.9 }, -- +1 pet slot per level (up to Plots.MaxPetSlots)
-	Treadmill = {
-		Base = 60,
-		Growth = 1.6,
-		MaxLevel = 20,
-		BaseSpeedGain = 1, -- Speed points per second while running on it at level 0
-		GainPerLevel = 0.5, -- each level adds this much to the gain rate
-	},
+	-- Treadmill upgrades are the tiers in Config.Treadmill.Tiers (each has its own Price).
 	PetLevel = {
 		MaxLevel = 10,
 		PriceIncomeSeconds = 30, -- level 1->2 costs 30 seconds of the pet's income
@@ -434,6 +551,19 @@ Config.Upgrades = {
 -- The price formula used by every upgrade. Kept here so it's easy to tweak.
 function Config.UpgradePrice(base: number, growth: number, currentLevel: number): number
 	return math.floor(base * growth ^ currentLevel + 0.5)
+end
+
+---------------------------------------------------------------------------
+-- BALANCE TABLE (calculated, not typed by hand)
+-- For every zone: the Speed stat you need to outrun its shark, and how many
+-- minutes on the Basic treadmill that takes. Printed to Output when the
+-- server starts. Change Config.Sharks speeds or Config.Speed to rebalance.
+---------------------------------------------------------------------------
+for _, shark in Config.Sharks do
+	local needed = Config.StatNeededForWalkSpeed(shark.Speed + Config.Speed.OutrunMargin)
+	shark.SpeedStatNeeded = needed
+	local gainPerMinute = treadmillTiers[1].Gain / Config.Treadmill.GainInterval * 60
+	shark.MinutesAtTier1 = needed / gainPerMinute
 end
 
 return Config

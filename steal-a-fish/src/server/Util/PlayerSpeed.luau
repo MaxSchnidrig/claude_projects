@@ -5,16 +5,17 @@
 	The ONE place that sets a player's WalkSpeed, so different systems don't
 	fight over it.
 
-	WalkSpeed = min(Config.Player.BaseWalkSpeed + bonus, Config.Player.MaxWalkSpeed)
-	            * (all multipliers multiplied together)
+	WalkSpeed = Config.WalkSpeedFromStat(Speed stat) * (all multipliers multiplied together)
 
-	  - The bonus comes from the Speed stat (UpgradeService, Milestone 5). It
-	    ADDS to the base speed and never replaces it.
+	  - The Speed stat comes from SpeedService (the treadmill).
 	  - Multipliers are named, so each system controls its own:
-	      "Carry" = slow-down from holding a heavy egg (EggService)
+	      "Carry" = slow-down from holding an egg (EggService; 1 = none)
+
+	The final WalkSpeed is also copied to the player attribute "WalkSpeed",
+	so the HUD can show it.
 
 	Usage:
-		PlayerSpeed.SetBonus(player, 6)                  -- +6 WalkSpeed from the Speed stat
+		PlayerSpeed.SetSpeedStat(player, 12500)
 		PlayerSpeed.SetMultiplier(player, "Carry", 0.9)
 		PlayerSpeed.SetMultiplier(player, "Carry", nil)  -- remove it
 
@@ -28,9 +29,10 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Constants = require(ReplicatedStorage.Shared.Constants)
 
 type State = {
-	Bonus: number,
+	Stat: number,
 	Multipliers: { [string]: number },
 }
 
@@ -41,7 +43,7 @@ local states: { [Player]: State } = {}
 local function getState(player: Player): State
 	local state = states[player]
 	if not state then
-		state = { Bonus = 0, Multipliers = {} }
+		state = { Stat = Config.Speed.StartingStat, Multipliers = {} }
 		states[player] = state
 	end
 	return state
@@ -50,7 +52,7 @@ end
 -- The WalkSpeed this player should have right now.
 function PlayerSpeed.Get(player: Player): number
 	local state = getState(player)
-	local speed = math.min(Config.Player.BaseWalkSpeed + state.Bonus, Config.Player.MaxWalkSpeed)
+	local speed = Config.WalkSpeedFromStat(state.Stat)
 	for _, multiplier in state.Multipliers do
 		speed *= multiplier
 	end
@@ -59,15 +61,17 @@ end
 
 -- Push the current value onto the character's Humanoid.
 function PlayerSpeed.Apply(player: Player)
+	local speed = PlayerSpeed.Get(player)
+	player:SetAttribute(Constants.Attributes.WalkSpeed, speed)
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if humanoid then
-		humanoid.WalkSpeed = PlayerSpeed.Get(player)
+		humanoid.WalkSpeed = speed
 	end
 end
 
-function PlayerSpeed.SetBonus(player: Player, bonus: number)
-	getState(player).Bonus = math.max(bonus, 0)
+function PlayerSpeed.SetSpeedStat(player: Player, stat: number)
+	getState(player).Stat = math.max(stat, 0)
 	PlayerSpeed.Apply(player)
 end
 
@@ -86,9 +90,7 @@ local function watchPlayer(player: Player)
 		character:WaitForChild("Humanoid", 10)
 		PlayerSpeed.Apply(player)
 	end)
-	if player.Character then
-		PlayerSpeed.Apply(player)
-	end
+	PlayerSpeed.Apply(player)
 end
 
 Players.PlayerAdded:Connect(watchPlayer)

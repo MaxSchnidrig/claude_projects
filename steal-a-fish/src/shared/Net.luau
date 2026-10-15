@@ -32,6 +32,8 @@ local Net = {}
 Net.Names = {
 	Notify = "Notify", -- server -> client: show a notification message
 	Knockback = "Knockback", -- server -> client: push your own character (Vector3 velocity)
+	SpeedGained = "SpeedGained", -- server -> client: show a "+X Speed" popup (number)
+	StopTraining = "StopTraining", -- client -> server: "I pressed jump, let me off the treadmill"
 }
 
 local function getFolder(): Folder

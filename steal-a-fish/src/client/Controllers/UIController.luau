@@ -2,9 +2,11 @@
 --[[
 	UIController
 	============
-	Builds and updates the on-screen UI. The full HUD and windows come in
-	Milestone 7. For now it shows notifications from the server as small
-	messages near the top of the screen ("You stole a Rare Egg!").
+	Builds and updates the on-screen UI. The full HUD and windows come in the
+	UI & polish milestone. For now:
+	  - notifications from the server near the top of the screen
+	    ("You stole a Rare Egg!")
+	  - a small HUD in the top-left corner with your Speed stat and WalkSpeed
 
 	Public interface (other client code can call it):
 		UIController.Notify(text)
@@ -15,6 +17,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Constants = require(ReplicatedStorage.Shared.Constants)
+local Format = require(ReplicatedStorage.Shared.Format)
 local Net = require(ReplicatedStorage.Shared.Net)
 
 local UIController = {}
@@ -24,6 +28,63 @@ local MAX_VISIBLE = 4 -- older messages are removed when there are more
 local SHOW_TIME = 3 -- seconds before a message fades out
 
 local container: Frame
+local speedLabel: TextLabel
+local walkSpeedLabel: TextLabel
+
+-- HUD panel in the top-left (below Roblox's own buttons).
+local function buildHud()
+	local player = Players.LocalPlayer
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "Hud"
+	gui.ResetOnSpawn = false
+	gui.Parent = player:WaitForChild("PlayerGui")
+
+	local panel = Instance.new("Frame")
+	panel.Name = "SpeedPanel"
+	panel.Position = UDim2.fromOffset(16, 64)
+	panel.Size = UDim2.fromOffset(210, 68)
+	panel.BackgroundColor3 = Color3.fromRGB(20, 30, 50)
+	panel.BackgroundTransparency = 0.2
+	panel.Parent = gui
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 12)
+	corner.Parent = panel
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(90, 200, 255)
+	stroke.Thickness = 2
+	stroke.Parent = panel
+
+	speedLabel = Instance.new("TextLabel")
+	speedLabel.Name = "SpeedStat"
+	speedLabel.Position = UDim2.fromOffset(10, 4)
+	speedLabel.Size = UDim2.new(1, -20, 0, 36)
+	speedLabel.BackgroundTransparency = 1
+	speedLabel.Font = Enum.Font.FredokaOne
+	speedLabel.TextScaled = true
+	speedLabel.TextXAlignment = Enum.TextXAlignment.Left
+	speedLabel.TextColor3 = Color3.fromRGB(255, 230, 60)
+	speedLabel.Parent = panel
+
+	walkSpeedLabel = Instance.new("TextLabel")
+	walkSpeedLabel.Name = "WalkSpeed"
+	walkSpeedLabel.Position = UDim2.fromOffset(10, 40)
+	walkSpeedLabel.Size = UDim2.new(1, -20, 0, 22)
+	walkSpeedLabel.BackgroundTransparency = 1
+	walkSpeedLabel.Font = Enum.Font.FredokaOne
+	walkSpeedLabel.TextScaled = true
+	walkSpeedLabel.TextXAlignment = Enum.TextXAlignment.Left
+	walkSpeedLabel.TextColor3 = Color3.fromRGB(200, 220, 255)
+	walkSpeedLabel.Parent = panel
+end
+
+local function refreshHud()
+	local player = Players.LocalPlayer
+	local stat = player:GetAttribute(Constants.Attributes.SpeedStat)
+	local walkSpeed = player:GetAttribute(Constants.Attributes.WalkSpeed)
+	speedLabel.Text = `⚡ {Format.short(if typeof(stat) == "number" then stat else 0)} Speed`
+	walkSpeedLabel.Text =
+		`🏃 Walk speed {Format.decimal(if typeof(walkSpeed) == "number" then walkSpeed else Config.Speed.BaseWalkSpeed, 1)}`
+end
 
 local function buildGui()
 	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
@@ -105,9 +166,15 @@ end
 
 function UIController.Init()
 	buildGui()
+	buildHud()
 end
 
 function UIController.Start()
+	local player = Players.LocalPlayer
+	player:GetAttributeChangedSignal(Constants.Attributes.SpeedStat):Connect(refreshHud)
+	player:GetAttributeChangedSignal(Constants.Attributes.WalkSpeed):Connect(refreshHud)
+	refreshHud()
+
 	Net.event(Net.Names.Notify).OnClientEvent:Connect(function(message: unknown)
 		-- Even messages from the server get a type check before we use them.
 		if typeof(message) == "string" then
