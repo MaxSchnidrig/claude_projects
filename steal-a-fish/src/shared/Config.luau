@@ -33,6 +33,11 @@ export type ZoneConfig = {
 	BotSpeed: number,
 }
 
+export type EggRarityConfig = {
+	HatchTime: number,
+	CarrySpeedMultiplier: number,
+}
+
 export type PetConfig = {
 	Name: string,
 	Rarity: string,
@@ -121,6 +126,13 @@ Config.Eggs = {
 	PickupHoldDuration = 0.4, -- seconds to hold the ProximityPrompt key
 	PickupMaxDistance = 10, -- studs; the server re-checks this
 	RespawnInterval = 4, -- seconds between egg spawn attempts in each zone
+	MaxEggsTotal = 30, -- hard cap on eggs lying in the whole danger zone
+	SpawnMargin = 10, -- eggs never spawn closer than this to the zone's walls/edges
+	MinSpacing = 8, -- eggs try not to spawn closer than this to each other
+	Size = Vector3.new(2.4, 3, 2.4), -- placeholder egg size (width, height, depth)
+	CarryHeight = 5, -- how far above the character's middle the carried egg floats
+	GlowFrom = "Rare", -- eggs of this rarity and rarer give off light
+	MaxEggsOnPad = 3, -- how many eggs can sit on your hatch pad at once
 
 	-- What happens to a carried egg when the carrier is caught or dies:
 	--   "Drop" = the egg falls on the ground where they were and can be picked up again
@@ -128,14 +140,14 @@ Config.Eggs = {
 	OnCaught = "Drop",
 	DroppedEggLifetime = 20, -- seconds a dropped egg stays before vanishing
 
-	ByRarity = {
+	ByRarity = ({
 		Common = { HatchTime = 10, CarrySpeedMultiplier = 1.0 },
 		Uncommon = { HatchTime = 20, CarrySpeedMultiplier = 0.95 },
 		Rare = { HatchTime = 40, CarrySpeedMultiplier = 0.9 },
 		Epic = { HatchTime = 75, CarrySpeedMultiplier = 0.85 },
 		Legendary = { HatchTime = 120, CarrySpeedMultiplier = 0.8 },
 		Mythic = { HatchTime = 180, CarrySpeedMultiplier = 0.75 },
-	},
+	} :: { [string]: EggRarityConfig }),
 }
 
 ---------------------------------------------------------------------------

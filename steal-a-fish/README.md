@@ -39,6 +39,7 @@ hides the block. If a name is missing, you just see the placeholder.
 | `HatchPad` | the pad you deliver eggs to |
 | `Treadmill` | the treadmill on each plot |
 | `PetSlot` | each pet pedestal |
+| `Egg<Rarity>` (e.g. `EggLegendary`) or `Egg` | eggs (rarity-specific name is tried first) |
 | `Shark` (`Config.Bots.ModelName`) | the chaser bots (Milestone 3) |
 
 The model's **pivot** goes to the center of the placeholder, so center your model on its pivot.

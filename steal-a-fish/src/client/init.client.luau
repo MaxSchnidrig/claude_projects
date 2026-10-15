@@ -22,6 +22,7 @@ local Controllers = script.Controllers
 
 local CONTROLLERS: { Types.Controller } = {
 	require(Controllers.UIController),
+	require(Controllers.EggController),
 }
 
 local failures = 0

@@ -36,26 +36,41 @@ end
 
 -- If an asset named `assetName` exists, put a copy of it on `placeholder` and
 -- hide the placeholder. Returns the copy, or nil if no asset was found.
-function Assets.decorate(placeholder: BasePart, assetName: string): PVInstance?
+--
+-- movable = false (default): the placeholder never moves, so the copy is
+--   anchored in place.
+-- movable = true: the placeholder moves (for example, an egg carried by a
+--   player), so the copy is welded to it instead of anchored.
+function Assets.decorate(placeholder: BasePart, assetName: string, movable: boolean?): PVInstance?
 	local template = Assets.find(assetName)
 	if not template then
 		return nil
 	end
 
 	local copy = template:Clone() :: PVInstance
-	-- Decorations are only for looks: anchor them and make sure they never
-	-- block players or trigger touch events.
+	copy:PivotTo(placeholder.CFrame)
+
+	-- Decorations are only for looks: make sure they never block players or
+	-- trigger touch events.
 	local parts: { Instance } = copy:GetDescendants()
 	table.insert(parts, copy)
 	for _, item in parts do
 		if item:IsA("BasePart") then
-			item.Anchored = true
 			item.CanCollide = false
 			item.CanTouch = false
 			item.CanQuery = false
+			if movable then
+				item.Anchored = false
+				item.Massless = true
+				local weld = Instance.new("WeldConstraint")
+				weld.Part0 = placeholder
+				weld.Part1 = item
+				weld.Parent = item
+			else
+				item.Anchored = true
+			end
 		end
 	end
-	copy:PivotTo(placeholder.CFrame)
 	copy.Parent = placeholder
 	placeholder.Transparency = 1
 	return copy

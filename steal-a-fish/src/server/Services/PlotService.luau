@@ -159,7 +159,8 @@ local function buildPlot(index: number, parent: Instance): PlotInfo
 		Parent = model,
 	})
 	Assets.decorate(hatchPad, "HatchPad")
-	Build.billboard(hatchPad, "🥚 Hatch Pad", 4, 60)
+	-- High enough to clear the eggs sitting on the pad.
+	Build.billboard(hatchPad, "🥚 Hatch Pad", 9, 60)
 
 	-- Treadmill on the right side.
 	local treadmill = Build.part({
@@ -184,7 +185,7 @@ local function buildPlot(index: number, parent: Instance): PlotInfo
 			Parent = treadmill,
 		})
 	end
-	Build.billboard(treadmill, "🏃 Treadmill", 4, 60)
+	Build.billboard(treadmill, "🏃 Treadmill", 6, 60)
 
 	-- Pet pedestals in the back half.
 	local slotsFolder = Instance.new("Folder")
