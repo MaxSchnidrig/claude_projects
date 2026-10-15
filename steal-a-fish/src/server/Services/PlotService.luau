@@ -10,7 +10,8 @@
 	  - Floor (colored; faded while nobody owns it)
 	  - Sign gate at the front with the owner's name
 	  - SpawnLocation: the owner spawns here
-	  - Treadmill at the front: train Speed here (Milestone 5)
+	  - Treadmill at the front: train Speed here
+	  - CollectPad (green, middle): step on it to collect your pets' money
 	  - Pads along the left and right side (Config.Plots.PadsPerSide each).
 	    Each pad holds ONE egg or ONE pet (PetService decides what's on it).
 	    All pads are built, but only the unlocked ones are shown.
@@ -175,6 +176,20 @@ local function buildPlot(index: number, parent: Instance): PlotInfo
 	local treadmillOrigin = cf * CFrame.new(size.X / 2 - 9, 0, -size.Z / 2 + 11)
 	local treadmill = buildTreadmill(treadmillOrigin, model, 1)
 
+	-- Collect pad in the middle, behind the spawn: step on it to take the
+	-- money your pets made (Config.Economy.CollectMode = "Pad").
+	local collectPad = Build.part({
+		Name = "CollectPad",
+		Size = Config.Economy.CollectPadSize,
+		CFrame = cf * CFrame.new(0, Config.Economy.CollectPadSize.Y / 2, -size.Z / 2 + 20),
+		Color = Color3.fromRGB(90, 220, 110),
+		StudFaces = { Enum.NormalId.Top },
+		Parent = model,
+	})
+	Assets.decorate(collectPad, "CollectPad")
+	local collectLabel = Build.billboard(collectPad, "💰 $0", 4, 60)
+	collectLabel.TextColor3 = Color3.fromRGB(120, 255, 140)
+
 	-- Pads along both sides. Each one holds one egg or one pet.
 	local padsFolder = Instance.new("Folder")
 	padsFolder.Name = "Pads"
@@ -209,6 +224,8 @@ local function buildPlot(index: number, parent: Instance): PlotInfo
 		Pads = pads,
 		UnlockedPads = #pads,
 		SignLabels = signLabels,
+		CollectPad = collectPad,
+		CollectLabel = collectLabel,
 	}
 end
 

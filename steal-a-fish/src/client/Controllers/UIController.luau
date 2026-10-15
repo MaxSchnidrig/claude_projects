@@ -6,7 +6,8 @@
 	UI & polish milestone. For now:
 	  - notifications from the server near the top of the screen
 	    ("You stole a Rare Egg!")
-	  - a small HUD in the top-left corner with your Speed stat and WalkSpeed
+	  - a small HUD in the top-left corner with your Speed stat, money and income
+	  - a "+$X" popup when you collect money
 
 	Public interface (other client code can call it):
 		UIController.Notify(text)
@@ -29,7 +30,9 @@ local SHOW_TIME = 3 -- seconds before a message fades out
 
 local container: Frame
 local speedLabel: TextLabel
-local walkSpeedLabel: TextLabel
+local moneyLabel: TextLabel
+local incomeLabel: TextLabel
+local popupLayer: Frame
 
 -- HUD panel in the top-left (below Roblox's own buttons).
 local function buildHud()
@@ -40,9 +43,9 @@ local function buildHud()
 	gui.Parent = player:WaitForChild("PlayerGui")
 
 	local panel = Instance.new("Frame")
-	panel.Name = "SpeedPanel"
+	panel.Name = "StatsPanel"
 	panel.Position = UDim2.fromOffset(16, 64)
-	panel.Size = UDim2.fromOffset(210, 68)
+	panel.Size = UDim2.fromOffset(210, 112)
 	panel.BackgroundColor3 = Color3.fromRGB(20, 30, 50)
 	panel.BackgroundTransparency = 0.2
 	panel.Parent = gui
@@ -54,36 +57,74 @@ local function buildHud()
 	stroke.Thickness = 2
 	stroke.Parent = panel
 
-	speedLabel = Instance.new("TextLabel")
-	speedLabel.Name = "SpeedStat"
-	speedLabel.Position = UDim2.fromOffset(10, 4)
-	speedLabel.Size = UDim2.new(1, -20, 0, 36)
-	speedLabel.BackgroundTransparency = 1
-	speedLabel.Font = Enum.Font.FredokaOne
-	speedLabel.TextScaled = true
-	speedLabel.TextXAlignment = Enum.TextXAlignment.Left
-	speedLabel.TextColor3 = Color3.fromRGB(255, 230, 60)
-	speedLabel.Parent = panel
+	local function row(name: string, y: number, height: number, color: Color3): TextLabel
+		local label = Instance.new("TextLabel")
+		label.Name = name
+		label.Position = UDim2.fromOffset(10, y)
+		label.Size = UDim2.new(1, -20, 0, height)
+		label.BackgroundTransparency = 1
+		label.Font = Enum.Font.FredokaOne
+		label.TextScaled = true
+		label.TextXAlignment = Enum.TextXAlignment.Left
+		label.TextColor3 = color
+		label.Parent = panel
+		return label
+	end
+	speedLabel = row("SpeedStat", 4, 34, Color3.fromRGB(255, 230, 60))
+	moneyLabel = row("Money", 40, 34, Color3.fromRGB(120, 255, 140))
+	incomeLabel = row("Income", 76, 26, Color3.fromRGB(200, 240, 210))
 
-	walkSpeedLabel = Instance.new("TextLabel")
-	walkSpeedLabel.Name = "WalkSpeed"
-	walkSpeedLabel.Position = UDim2.fromOffset(10, 40)
-	walkSpeedLabel.Size = UDim2.new(1, -20, 0, 22)
-	walkSpeedLabel.BackgroundTransparency = 1
-	walkSpeedLabel.Font = Enum.Font.FredokaOne
-	walkSpeedLabel.TextScaled = true
-	walkSpeedLabel.TextXAlignment = Enum.TextXAlignment.Left
-	walkSpeedLabel.TextColor3 = Color3.fromRGB(200, 220, 255)
-	walkSpeedLabel.Parent = panel
+	popupLayer = Instance.new("Frame")
+	popupLayer.Name = "MoneyPopups"
+	popupLayer.Size = UDim2.fromScale(1, 1)
+	popupLayer.BackgroundTransparency = 1
+	popupLayer.Parent = gui
+end
+
+local function number(value: unknown): number
+	return if typeof(value) == "number" then value else 0
 end
 
 local function refreshHud()
 	local player = Players.LocalPlayer
-	local stat = player:GetAttribute(Constants.Attributes.SpeedStat)
-	local walkSpeed = player:GetAttribute(Constants.Attributes.WalkSpeed)
-	speedLabel.Text = `⚡ {Format.short(if typeof(stat) == "number" then stat else 0)} Speed`
-	walkSpeedLabel.Text =
-		`🏃 Walk speed {Format.decimal(if typeof(walkSpeed) == "number" then walkSpeed else Config.Speed.BaseWalkSpeed, 1)}`
+	speedLabel.Text = `⚡ {Format.short(number(player:GetAttribute(Constants.Attributes.SpeedStat)))} Speed`
+	moneyLabel.Text = `💰 ${Format.short(number(player:GetAttribute(Constants.Attributes.Money)))}`
+	incomeLabel.Text = `+${Format.short(number(player:GetAttribute(Constants.Attributes.Income)))}/s`
+end
+
+-- A green "+$X" that pops up near the HUD and floats away.
+local function moneyPopup(amount: number)
+	local label = Instance.new("TextLabel")
+	label.AnchorPoint = Vector2.new(0, 0.5)
+	label.Position = UDim2.fromOffset(236, 120)
+	label.Size = UDim2.fromOffset(180, 44)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.FredokaOne
+	label.TextScaled = true
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextColor3 = Color3.fromRGB(120, 255, 140)
+	label.Text = `+${Format.short(amount)}`
+	label.Parent = popupLayer
+	local stroke = Instance.new("UIStroke")
+	stroke.Thickness = 3
+	stroke.Color = Color3.fromRGB(20, 50, 30)
+	stroke.Parent = label
+	local scale = Instance.new("UIScale")
+	scale.Scale = 0.3
+	scale.Parent = label
+
+	TweenService:Create(scale, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+	task.delay(0.4, function()
+		local info = TweenInfo.new(0.8)
+		TweenService:Create(label, info, {
+			Position = label.Position - UDim2.fromOffset(0, 50),
+			TextTransparency = 1,
+		}):Play()
+		local fade = TweenService:Create(stroke, info, { Transparency = 1 })
+		fade:Play()
+		fade.Completed:Wait()
+		label:Destroy()
+	end)
 end
 
 local function buildGui()
@@ -172,8 +213,15 @@ end
 function UIController.Start()
 	local player = Players.LocalPlayer
 	player:GetAttributeChangedSignal(Constants.Attributes.SpeedStat):Connect(refreshHud)
-	player:GetAttributeChangedSignal(Constants.Attributes.WalkSpeed):Connect(refreshHud)
+	player:GetAttributeChangedSignal(Constants.Attributes.Money):Connect(refreshHud)
+	player:GetAttributeChangedSignal(Constants.Attributes.Income):Connect(refreshHud)
 	refreshHud()
+
+	Net.event(Net.Names.MoneyCollected).OnClientEvent:Connect(function(amount: unknown)
+		if typeof(amount) == "number" then
+			moneyPopup(amount)
+		end
+	end)
 
 	Net.event(Net.Names.Notify).OnClientEvent:Connect(function(message: unknown)
 		-- Even messages from the server get a type check before we use them.

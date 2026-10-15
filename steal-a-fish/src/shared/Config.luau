@@ -69,7 +69,8 @@ export type EggRarityConfig = {
 export type PetConfig = {
 	Name: string,
 	Rarity: string,
-	Income: number,
+	Income: number, -- money per second
+	Color: Color3, -- body color of the placeholder fish
 }
 
 local Config = {}
@@ -322,6 +323,9 @@ Config.Eggs = {
 	-- How much of an egg sticks out of the ground (0.5 = top half, like it's
 	-- stuck in the sand). Also used for eggs on the plot pads.
 	VisibleFraction = 0.5,
+	-- Every hatch time is multiplied by this (e.g. 0.5 = twice as fast).
+	-- A "Faster Hatching" pass can lower it per player later.
+	HatchTimeMultiplier = 1,
 	-- How glowing eggs look: light range and brightness grow with Rarities[...].Glow.
 	GlowRangePerLevel = 4,
 	GlowBrightnessPerLevel = 0.6,
@@ -481,30 +485,32 @@ Config.Bots = {
 }
 
 ---------------------------------------------------------------------------
--- PETS (Milestone 4)
--- Income is money per second at pet level 1.
+-- PETS (hatching milestone)
+-- Income is money per second at pet level 1. Pets sit on the pad their egg
+-- hatched on. Color is used by the placeholder fish; a model in
+-- ReplicatedStorage.Assets with the pet's exact Name replaces it.
 ---------------------------------------------------------------------------
 local pets: { PetConfig } = {
-	{ Name = "Clownfish", Rarity = "Common", Income = 1 },
-	{ Name = "Sardine", Rarity = "Common", Income = 1.5 },
-	{ Name = "Pufferfish", Rarity = "Uncommon", Income = 4 },
-	{ Name = "Seahorse", Rarity = "Uncommon", Income = 5 },
-	{ Name = "Octopus", Rarity = "Rare", Income = 12 },
-	{ Name = "Sea Turtle", Rarity = "Rare", Income = 15 },
-	{ Name = "Manta Ray", Rarity = "Epic", Income = 40 },
-	{ Name = "Swordfish", Rarity = "Epic", Income = 50 },
-	{ Name = "Hammerhead", Rarity = "Legendary", Income = 140 },
-	{ Name = "Giant Squid", Rarity = "Legendary", Income = 175 },
-	{ Name = "Kraken", Rarity = "Mythic", Income = 500 },
-	{ Name = "Golden Megalodon", Rarity = "Mythic", Income = 650 },
-	{ Name = "Angel Jellyfish", Rarity = "Divine", Income = 2000 },
-	{ Name = "Pearl Narwhal", Rarity = "Divine", Income = 2600 },
-	{ Name = "Starfish Sovereign", Rarity = "Celestial", Income = 7000 },
-	{ Name = "Comet Orca", Rarity = "Celestial", Income = 9000 },
-	{ Name = "Nebula Ray", Rarity = "Cosmic", Income = 25000 },
-	{ Name = "Galaxy Whale", Rarity = "Cosmic", Income = 32000 },
-	{ Name = "Abyssal Leviathan", Rarity = "Secret", Income = 100000 },
-	{ Name = "The Deep One", Rarity = "Secret", Income = 150000 },
+	{ Name = "Clownfish", Rarity = "Common", Income = 1, Color = Color3.fromRGB(255, 140, 40) },
+	{ Name = "Sardine", Rarity = "Common", Income = 1.5, Color = Color3.fromRGB(170, 190, 210) },
+	{ Name = "Pufferfish", Rarity = "Uncommon", Income = 4, Color = Color3.fromRGB(250, 220, 90) },
+	{ Name = "Seahorse", Rarity = "Uncommon", Income = 5, Color = Color3.fromRGB(255, 160, 120) },
+	{ Name = "Octopus", Rarity = "Rare", Income = 12, Color = Color3.fromRGB(200, 80, 120) },
+	{ Name = "Sea Turtle", Rarity = "Rare", Income = 15, Color = Color3.fromRGB(90, 170, 90) },
+	{ Name = "Manta Ray", Rarity = "Epic", Income = 40, Color = Color3.fromRGB(50, 70, 120) },
+	{ Name = "Swordfish", Rarity = "Epic", Income = 50, Color = Color3.fromRGB(100, 140, 190) },
+	{ Name = "Hammerhead", Rarity = "Legendary", Income = 140, Color = Color3.fromRGB(130, 140, 150) },
+	{ Name = "Giant Squid", Rarity = "Legendary", Income = 175, Color = Color3.fromRGB(220, 70, 60) },
+	{ Name = "Kraken", Rarity = "Mythic", Income = 500, Color = Color3.fromRGB(110, 40, 140) },
+	{ Name = "Golden Megalodon", Rarity = "Mythic", Income = 650, Color = Color3.fromRGB(255, 200, 50) },
+	{ Name = "Angel Jellyfish", Rarity = "Divine", Income = 2000, Color = Color3.fromRGB(255, 210, 240) },
+	{ Name = "Pearl Narwhal", Rarity = "Divine", Income = 2600, Color = Color3.fromRGB(240, 240, 250) },
+	{ Name = "Starfish Sovereign", Rarity = "Celestial", Income = 7000, Color = Color3.fromRGB(255, 170, 60) },
+	{ Name = "Comet Orca", Rarity = "Celestial", Income = 9000, Color = Color3.fromRGB(40, 40, 60) },
+	{ Name = "Nebula Ray", Rarity = "Cosmic", Income = 25000, Color = Color3.fromRGB(150, 70, 230) },
+	{ Name = "Galaxy Whale", Rarity = "Cosmic", Income = 32000, Color = Color3.fromRGB(40, 60, 170) },
+	{ Name = "Abyssal Leviathan", Rarity = "Secret", Income = 100000, Color = Color3.fromRGB(20, 90, 90) },
+	{ Name = "The Deep One", Rarity = "Secret", Income = 150000, Color = Color3.fromRGB(15, 15, 20) },
 }
 Config.Pets = pets
 
@@ -525,15 +531,24 @@ local hatchOdds: { [string]: Weights } = {
 }
 Config.HatchOdds = hatchOdds
 
+Config.PetDisplay = {
+	HoverHeight = 2.6, -- how high pets float above their pad (studs)
+	SizePerRarity = 0.12, -- each rarity tier makes the placeholder fish 12% bigger
+	-- Hatching a pet of this rarity or better is announced to the whole server.
+	AnnounceFrom = "Legendary",
+	RevealSeconds = 3, -- how long the "You hatched ...!" card stays on screen
+}
+
 ---------------------------------------------------------------------------
--- ECONOMY (Milestones 4 + 5)
+-- ECONOMY
 ---------------------------------------------------------------------------
 Config.Economy = {
 	StartingMoney = 0,
 	IncomeTickInterval = 1, -- pets pay out every this many seconds
-	-- "Pad"  = money piles up on the plot; step on the collect pad to take it
+	-- "Pad"  = money piles up on the plot; step on the green collect pad to take it
 	-- "Auto" = money goes straight to the player
 	CollectMode = "Pad",
+	CollectPadSize = Vector3.new(8, 0.4, 8),
 	SellValueSeconds = 60, -- selling a pet gives this many seconds of its income
 }
 

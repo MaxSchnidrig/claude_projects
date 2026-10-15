@@ -34,6 +34,9 @@ Net.Names = {
 	Knockback = "Knockback", -- server -> client: push your own character (Vector3 velocity)
 	SpeedGained = "SpeedGained", -- server -> client: show a "+X Speed" popup (number)
 	StopTraining = "StopTraining", -- client -> server: "I pressed jump, let me off the treadmill"
+	PetHatched = "PetHatched", -- server -> ALL clients: (position, rarity) for the hatch burst effect
+	HatchReveal = "HatchReveal", -- server -> owner: (petName, rarity, income) for the "You hatched!" card
+	MoneyCollected = "MoneyCollected", -- server -> owner: (amount) for a "+$X" popup
 }
 
 local function getFolder(): Folder

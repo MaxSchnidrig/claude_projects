@@ -50,6 +50,8 @@ export type PlotInfo = {
 	Pads: { BasePart }, -- ALL pads (locked ones are hidden); each holds one egg or pet
 	UnlockedPads: number, -- how many of Pads are usable (the first N)
 	SignLabels: { TextLabel }, -- owner name text (front and back of the sign)
+	CollectPad: BasePart, -- step on it to collect the money your pets made
+	CollectLabel: TextLabel, -- shows how much money is waiting on the collect pad
 }
 
 return {}

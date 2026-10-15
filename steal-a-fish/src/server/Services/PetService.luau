@@ -3,45 +3,83 @@
 	PetService
 	==========
 	Owns what sits on a plot's PADS. Each pad holds exactly ONE item:
-	  - an "Egg" (delivered by the player, waiting to hatch), or
-	  - a "Pet" (what hatched from that egg; it stays on the same pad and
-	    earns money until it is sold).
+	  - an "Egg": delivered by the player, counting down to hatch, or
+	  - a "Pet": what hatched from that egg. It appears on the SAME pad, stays
+	    there and earns money (EconomyService pays it out) until it is sold.
 	So pads are egg slots and pet slots at the same time.
 
-	Right now (before the hatching milestone) eggs just sit on their pads.
-	The hatching milestone will turn an Egg item into a Pet item on the SAME
-	pad, the money milestone pays out per pet, and selling a pet frees its pad.
+	Hatching:
+	  - Hatch time = Config.Eggs.ByRarity[rarity].HatchTime
+	                 * Config.Eggs.HatchTimeMultiplier * the player's own
+	                 hatch multiplier (for a "Faster Hatching" pass later).
+	  - The countdown is shown above the egg (the client draws it from the
+	    egg's HatchEndsAt attribute).
+	  - The pet's rarity is rolled with Config.HatchOdds[eggRarity]; then one
+	    pet of that rarity is picked at random (all equally likely).
+	  - Everyone sees a burst effect; the owner gets a "You hatched ...!" card;
+	    rare hatches are announced to the whole server.
+
+	Pets are NOT saved yet (that's the Saving milestone).
+
+	Studio-only test commands:
+		!hatch          hatch all your eggs right now
+		!egg mythic     put a Mythic egg on your nearest free pad
 
 	Public interface:
 		PetService.AcceptEgg(player, rarity, nearPosition) -> boolean
-			Puts a delivered egg on the FREE unlocked pad closest to
-			nearPosition. Returns false if every pad is taken (the player keeps
-			carrying the egg).
 		PetService.GetFreePadCount(player) -> number
 		PetService.GetPadItem(plot, padIndex) -> PadItem?
+		PetService.GetIncomePerSecond(player) -> number   -- all pets, before boosts
+		PetService.FinishHatching(player)                 -- hatch every egg now (Instant Hatch product later)
+		PetService.SetHatchTimeMultiplier(player, value)  -- e.g. 0.5 for a Faster Hatching pass
+		PetService.PetHatched:Connect(function(player, petName, rarity) end)
 ]]
 
+local Players = game:GetService("Players")
+local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Constants = require(ReplicatedStorage.Shared.Constants)
+local Format = require(ReplicatedStorage.Shared.Format)
+local Net = require(ReplicatedStorage.Shared.Net)
+local Rarity = require(ReplicatedStorage.Shared.Rarity)
+local Signal = require(ReplicatedStorage.Shared.Signal)
 local Types = require(ReplicatedStorage.Shared.Types)
-local Build = require(script.Parent.Parent.Util.Build)
+local DebugCommands = require(script.Parent.Parent.Util.DebugCommands)
 local EggVisual = require(script.Parent.Parent.Util.EggVisual)
+local PetVisual = require(script.Parent.Parent.Util.PetVisual)
 local PlotService = require(script.Parent.PlotService)
 
 -- What sits on one pad.
 export type PadItem = {
 	Kind: "Egg" | "Pet",
 	Rarity: string,
-	PetName: string?, -- only for pets (hatching milestone)
-	Part: BasePart, -- the 3D egg or pet
+	PetName: string?, -- pets only
+	Income: number, -- pets only: money per second at level 1 (0 for eggs)
+	Level: number, -- pets only (pet upgrades come later)
+	Instance: Instance, -- the egg Part or the pet Model
+	HatchEndsAt: number?, -- eggs only: server time it hatches at
 }
 
 local PetService = {}
 PetService.Name = "PetService"
 
+-- Fired with (player, petName, rarity) after an egg hatches.
+PetService.PetHatched = Signal.new()
+
+local HATCH_CHECK_INTERVAL = 0.2
+
+local rng = Random.new()
 -- padItems[plotIndex][padIndex] = what's on that pad (nil = free).
 local padItems: { [number]: { [number]: PadItem } } = {}
+local hatchTimeMultipliers: { [Player]: number } = {}
+
+local function serverNow(): number
+	return Workspace:GetServerTimeNow()
+end
 
 local function getItems(plot: Types.PlotInfo): { [number]: PadItem }
 	local items = padItems[plot.Index]
@@ -52,30 +90,90 @@ local function getItems(plot: Types.PlotInfo): { [number]: PadItem }
 	return items
 end
 
--- Where an egg sits on a pad: centered, half sunk into it.
+local function notifyAll(message: string)
+	Net.event(Net.Names.Notify):FireAllClients(message)
+end
+
+-- A floating label with a title line and a smaller second line.
+local function makeLabel(parent: BasePart, title: string, titleColor: Color3, subtitle: string, height: number): BillboardGui
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "Label"
+	gui.Size = UDim2.fromOffset(200, 56)
+	gui.StudsOffsetWorldSpace = Vector3.new(0, height, 0)
+	gui.MaxDistance = 60
+	gui.LightInfluence = 0
+	gui.Parent = parent
+
+	local function line(name: string, text: string, color: Color3, y: number, h: number)
+		local label = Instance.new("TextLabel")
+		label.Name = name
+		label.Position = UDim2.fromScale(0, y)
+		label.Size = UDim2.fromScale(1, h)
+		label.BackgroundTransparency = 1
+		label.Font = Enum.Font.FredokaOne
+		label.TextScaled = true
+		label.TextColor3 = color
+		label.TextStrokeTransparency = 0.2
+		label.Text = text
+		label.Parent = gui
+	end
+	line("Title", title, titleColor, 0, 0.55)
+	line("Subtitle", subtitle, Color3.new(1, 1, 1), 0.55, 0.45)
+	return gui
+end
+
+---------------------------------------------------------------------------
+-- Positions on a pad
+---------------------------------------------------------------------------
+
+local function padTop(pad: BasePart): number
+	return pad.Position.Y + pad.Size.Y / 2
+end
+
+-- Eggs sit centered on the pad, half sunk into it.
 local function eggCFrameOnPad(pad: BasePart): CFrame
-	local padTop = pad.Position.Y + pad.Size.Y / 2
-	local centerY = padTop + Config.Eggs.Size.Y * (Config.Eggs.VisibleFraction - 0.5)
+	local centerY = padTop(pad) + Config.Eggs.Size.Y * (Config.Eggs.VisibleFraction - 0.5)
 	return CFrame.new(pad.Position.X, centerY, pad.Position.Z) * pad.CFrame.Rotation
 end
 
-function PetService.GetPadItem(plot: Types.PlotInfo, padIndex: number): PadItem?
-	return getItems(plot)[padIndex]
+-- Pets float above the pad, facing the middle of the plot.
+local function petCFrameOnPad(pad: BasePart): CFrame
+	local position = Vector3.new(pad.Position.X, padTop(pad) + Config.PetDisplay.HoverHeight, pad.Position.Z)
+	return CFrame.lookAt(position, position + pad.CFrame.LookVector)
 end
 
-function PetService.GetFreePadCount(player: Player): number
-	local plot = PlotService.GetPlot(player)
-	if not plot then
-		return 0
-	end
-	local items = getItems(plot)
-	local free = 0
-	for padIndex = 1, plot.UnlockedPads do
-		if not items[padIndex] then
-			free += 1
-		end
-	end
-	return free
+---------------------------------------------------------------------------
+-- Eggs
+---------------------------------------------------------------------------
+
+local function hatchSeconds(player: Player, rarity: string): number
+	local rarityConfig = Config.Eggs.ByRarity[rarity]
+	local base = if rarityConfig then rarityConfig.HatchTime else 10
+	return base * Config.Eggs.HatchTimeMultiplier * (hatchTimeMultipliers[player] or 1)
+end
+
+local function placeEgg(player: Player, plot: Types.PlotInfo, padIndex: number, rarity: string)
+	local pad = plot.Pads[padIndex]
+	local part = EggVisual.create(rarity, true)
+	part.CFrame = eggCFrameOnPad(pad)
+	part:SetAttribute("PadIndex", padIndex)
+
+	local endsAt = serverNow() + hatchSeconds(player, rarity)
+	part:SetAttribute(Constants.Attributes.HatchEndsAt, endsAt)
+	-- The client fills in the countdown ("0:35") on the Subtitle line.
+	makeLabel(part, `{rarity} Egg`, Rarity.color(rarity), "", 2.8)
+	CollectionService:AddTag(part, Constants.Tags.HatchingEgg)
+	part.Parent = plot.Model
+
+	getItems(plot)[padIndex] = {
+		Kind = "Egg",
+		Rarity = rarity,
+		PetName = nil,
+		Income = 0,
+		Level = 1,
+		Instance = part,
+		HatchEndsAt = endsAt,
+	}
 end
 
 function PetService.AcceptEgg(player: Player, rarity: string, nearPosition: Vector3): boolean
@@ -100,27 +198,186 @@ function PetService.AcceptEgg(player: Player, rarity: string, nearPosition: Vect
 	if not bestIndex then
 		return false
 	end
-
-	local pad = plot.Pads[bestIndex]
-	local part = EggVisual.create(rarity, true)
-	part.CFrame = eggCFrameOnPad(pad)
-	part:SetAttribute("PadIndex", bestIndex)
-	Build.billboard(part, `{rarity} Egg`, 2.5, 40)
-	part.Parent = plot.Model
-
-	items[bestIndex] = { Kind = "Egg", Rarity = rarity, PetName = nil, Part = part }
+	placeEgg(player, plot, bestIndex, rarity)
 	return true
 end
+
+---------------------------------------------------------------------------
+-- Hatching
+---------------------------------------------------------------------------
+
+-- Roll which pet comes out of an egg of `eggRarity`.
+local function rollPet(eggRarity: string): Config.PetConfig
+	local odds = Config.HatchOdds[eggRarity] or { [eggRarity] = 1 }
+	local petRarity = Rarity.pick(odds) or eggRarity
+
+	local function petsOf(rarity: string): { Config.PetConfig }
+		local list = {}
+		for _, pet in Config.Pets do
+			if pet.Rarity == rarity then
+				table.insert(list, pet)
+			end
+		end
+		return list
+	end
+	local candidates = petsOf(petRarity)
+	if #candidates == 0 then
+		candidates = petsOf(eggRarity)
+	end
+	if #candidates == 0 then
+		candidates = Config.Pets
+	end
+	return candidates[rng:NextInteger(1, #candidates)]
+end
+
+local function placePet(plot: Types.PlotInfo, padIndex: number, pet: Config.PetConfig, level: number): Model
+	local pad = plot.Pads[padIndex]
+	local model = PetVisual.create(pet.Name, pet.Rarity, pet.Color, petCFrameOnPad(pad))
+	model:SetAttribute("PadIndex", padIndex)
+	local root = model.PrimaryPart :: BasePart
+	makeLabel(root, pet.Name, Rarity.color(pet.Rarity), `${Format.short(pet.Income)}/s`, 3.2)
+	model.Parent = plot.Model
+
+	getItems(plot)[padIndex] = {
+		Kind = "Pet",
+		Rarity = pet.Rarity,
+		PetName = pet.Name,
+		Income = pet.Income,
+		Level = level,
+		Instance = model,
+		HatchEndsAt = nil,
+	}
+	return model
+end
+
+local function hatch(plot: Types.PlotInfo, padIndex: number, egg: PadItem)
+	local owner = plot.Owner
+	local pet = rollPet(egg.Rarity)
+	local pad = plot.Pads[padIndex]
+
+	egg.Instance:Destroy()
+	placePet(plot, padIndex, pet, 1)
+
+	-- Burst effect for everyone nearby, reveal card for the owner.
+	Net.event(Net.Names.PetHatched):FireAllClients(pad.Position, pet.Rarity)
+	if owner then
+		Net.event(Net.Names.HatchReveal):FireClient(owner, pet.Name, pet.Rarity, pet.Income)
+		if Rarity.rank(pet.Rarity) >= Rarity.rank(Config.PetDisplay.AnnounceFrom) then
+			notifyAll(`🎉 {owner.DisplayName} hatched a {pet.Rarity} {pet.Name}!`)
+		end
+		if Config.Debug then
+			print(`[{Config.GameName}] {owner.Name} hatched {pet.Rarity} {pet.Name} from a {egg.Rarity} Egg`)
+		end
+		PetService.PetHatched:Fire(owner, pet.Name, pet.Rarity)
+	end
+end
+
+local function checkHatches()
+	local now = serverNow()
+	for _, plot in PlotService.GetPlots() do
+		local items = padItems[plot.Index]
+		if items then
+			for padIndex, item in items do
+				if item.Kind == "Egg" and item.HatchEndsAt and now >= item.HatchEndsAt then
+					hatch(plot, padIndex, item)
+				end
+			end
+		end
+	end
+end
+
+function PetService.FinishHatching(player: Player)
+	local plot = PlotService.GetPlot(player)
+	if not plot then
+		return
+	end
+	for _, item in getItems(plot) do
+		if item.Kind == "Egg" then
+			item.HatchEndsAt = 0
+		end
+	end
+	checkHatches()
+end
+
+function PetService.SetHatchTimeMultiplier(player: Player, value: number)
+	hatchTimeMultipliers[player] = value
+end
+
+---------------------------------------------------------------------------
+-- Queries
+---------------------------------------------------------------------------
+
+function PetService.GetPadItem(plot: Types.PlotInfo, padIndex: number): PadItem?
+	return getItems(plot)[padIndex]
+end
+
+function PetService.GetFreePadCount(player: Player): number
+	local plot = PlotService.GetPlot(player)
+	if not plot then
+		return 0
+	end
+	local items = getItems(plot)
+	local free = 0
+	for padIndex = 1, plot.UnlockedPads do
+		if not items[padIndex] then
+			free += 1
+		end
+	end
+	return free
+end
+
+-- Income of one pet item, including its level bonus.
+local function petIncome(item: PadItem): number
+	local bonus = Config.Upgrades.PetLevel.IncomeBonusPerLevel
+	return item.Income * (1 + (item.Level - 1) * bonus)
+end
+
+function PetService.GetIncomePerSecond(player: Player): number
+	local plot = PlotService.GetPlot(player)
+	if not plot then
+		return 0
+	end
+	local total = 0
+	for _, item in getItems(plot) do
+		if item.Kind == "Pet" then
+			total += petIncome(item)
+		end
+	end
+	return total
+end
+
+---------------------------------------------------------------------------
+-- Lifecycle
+---------------------------------------------------------------------------
 
 -- Remove everything from a plot's pads (when its owner leaves).
 local function clearPads(plotIndex: number)
 	local items = padItems[plotIndex]
 	if items then
 		for _, item in items do
-			item.Part:Destroy()
+			item.Instance:Destroy()
 		end
 	end
 	padItems[plotIndex] = nil
+end
+
+local function registerDebugCommands()
+	DebugCommands.register("hatch", function(player, _args)
+		PetService.FinishHatching(player)
+	end)
+	DebugCommands.register("egg", function(player, args)
+		local wanted = args[1] or "common"
+		for _, info in Config.Rarities do
+			if string.lower(info.Name) == wanted then
+				local character = player.Character
+				local position = if character then character:GetPivot().Position else Vector3.zero
+				if not PetService.AcceptEgg(player, info.Name, position) then
+					Net.event(Net.Names.Notify):FireClient(player, "[Studio] All your pads are full!")
+				end
+				return
+			end
+		end
+	end)
 end
 
 function PetService.Init()
@@ -129,6 +386,19 @@ end
 function PetService.Start()
 	PlotService.PlotReleased:Connect(function(_player: Player, plot: Types.PlotInfo)
 		clearPads(plot.Index)
+	end)
+	Players.PlayerRemoving:Connect(function(player)
+		hatchTimeMultipliers[player] = nil
+	end)
+	registerDebugCommands()
+
+	local elapsed = 0
+	RunService.Heartbeat:Connect(function(dt: number)
+		elapsed += dt
+		if elapsed >= HATCH_CHECK_INTERVAL then
+			elapsed = 0
+			checkHatches()
+		end
 	end)
 end
 

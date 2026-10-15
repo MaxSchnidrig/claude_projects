@@ -14,6 +14,10 @@ return {
 		TreadmillBelt = "TreadmillBelt",
 		-- Treadmill parts whose color cycles through the rainbow (client side).
 		RainbowPart = "RainbowPart",
+		-- Eggs on a pad that are counting down to hatch (client shows the timer).
+		HatchingEgg = "HatchingEgg",
+		-- Pet models on pads (the client makes them bob gently).
+		PetModel = "PetModel",
 	},
 	Attributes = {
 		-- Set on the Player while they carry an egg. Value = the egg's rarity.
@@ -26,5 +30,11 @@ return {
 		Training = "Training",
 		-- On a treadmill belt: true while someone trains on it (it animates).
 		BeltActive = "BeltActive",
+		-- On a hatching egg: the server time (workspace:GetServerTimeNow()) it hatches at.
+		HatchEndsAt = "HatchEndsAt",
+		-- On the Player: money they hold (number).
+		Money = "Money",
+		-- On the Player: total pet income per second (number).
+		Income = "Income",
 	},
 }

@@ -38,6 +38,8 @@ hides the block. If a name is missing, you just see the placeholder.
 | `PlotSign` | the board above each plot's entrance |
 | `Treadmill` | the treadmill on each plot |
 | `Pad` | each egg/pet pad along the sides of a plot |
+| `CollectPad` | the green pad where you collect your pets' money |
+| a pet's exact name (e.g. `Kraken`) | that pet (otherwise a colored placeholder fish) |
 | `Egg<Rarity>` (e.g. `EggLegendary`) or `Egg` | eggs (rarity-specific name is tried first) |
 | `Shark` (`Config.Bots.ModelName`) | the chaser bots (Milestone 3) |
 
@@ -157,8 +159,8 @@ paste it into that setting as `"rbxassetid://<the number>"`. Adjust
 | 1 | Plots | ✅ |
 | 2 | Eggs and the danger zone | ✅ |
 | 3 | Chaser bots (sharks) | ✅ |
-| 4 | **Speed & treadmill** (Speed stat, training, treadmill tiers 1–10 defined) | 🔨 testing |
-| 5 | Hatching and pets | |
+| 4 | Speed & treadmill (Speed stat, training, treadmill tiers 1–10 defined) | ✅ |
+| 5 | **Hatching and pets** (eggs hatch on their pad, pets earn money, collect pad) | 🔨 testing |
 | 6 | Upgrades and economy, including **buying treadmill tiers** with money (`SpeedService.SetTreadmillTier`) | |
 | 7 | Saving (money, Speed stat, owned treadmill tier, upgrades, pets) | |
 | 8 | UI and polish | |
@@ -173,6 +175,9 @@ Only work while play-testing in Studio. Type them in the chat:
 | `!speed 5000` | set your Speed stat to 5000 |
 | `!speed zone 4` | set your Speed stat to just enough to outrun zone 4's shark |
 | `!tier 7` | rebuild your treadmill as tier 7 (Neon) |
+| `!egg mythic` | put a Mythic egg on your nearest free pad |
+| `!hatch` | hatch all your eggs right now |
+| `!money 5000` | set your money |
 
 If chat commands don't do anything, open **View → Command Bar**, set its dropdown to
 **Server**, and run, for example:

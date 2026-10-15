@@ -53,6 +53,7 @@ local Format = require(ReplicatedStorage.Shared.Format)
 local Net = require(ReplicatedStorage.Shared.Net)
 local Signal = require(ReplicatedStorage.Shared.Signal)
 local Types = require(ReplicatedStorage.Shared.Types)
+local DebugCommands = require(script.Parent.Parent.Util.DebugCommands)
 local Leaderstats = require(script.Parent.Parent.Util.Leaderstats)
 local PlayerSpeed = require(script.Parent.Parent.Util.PlayerSpeed)
 local RateLimiter = require(script.Parent.Parent.Util.RateLimiter)
@@ -337,28 +338,28 @@ local function printBalanceTable()
 	print(table.concat(lines, "\n"))
 end
 
-local function handleDebugCommand(player: Player, message: string)
-	local words = string.split(string.lower(message), " ")
-	if words[1] == "!speed" then
+local function registerDebugCommands()
+	DebugCommands.register("speed", function(player, args)
 		local value: number?
-		if words[2] == "zone" then
-			local zone = tonumber(words[3])
+		if args[1] == "zone" then
+			local zone = tonumber(args[2])
 			local shark = if zone then Config.Sharks[zone] else nil
 			value = if shark then shark.SpeedStatNeeded else nil
 		else
-			value = tonumber(words[2])
+			value = tonumber(args[1])
 		end
 		if value and value < math.huge then
 			SpeedService.SetStat(player, value)
 			notify(player, `[Studio] Speed stat set to {Format.short(value)} (WalkSpeed {Format.decimal(PlayerSpeed.Get(player), 1)})`)
 		end
-	elseif words[1] == "!tier" then
-		local tier = tonumber(words[2])
+	end)
+	DebugCommands.register("tier", function(player, args)
+		local tier = tonumber(args[1])
 		if tier then
 			SpeedService.SetTreadmillTier(player, tier)
 			notify(player, `[Studio] Treadmill tier set to {SpeedService.GetTreadmillTier(player)}`)
 		end
-	end
+	end)
 end
 
 ---------------------------------------------------------------------------
@@ -383,21 +384,6 @@ local function watchPlayer(player: Player)
 	if player.Character then
 		task.spawn(watchCharacter, player.Character)
 	end
-
-	if RunService:IsStudio() then
-		player.Chatted:Connect(function(message)
-			handleDebugCommand(player, message)
-		end)
-		-- Backup for the Command Bar (Server), in case chat doesn't reach us:
-		--   game.Players:GetPlayers()[1]:SetAttribute("DebugCommand", "!speed 5000")
-		player:GetAttributeChangedSignal("DebugCommand"):Connect(function()
-			local command = player:GetAttribute("DebugCommand")
-			if typeof(command) == "string" then
-				player:SetAttribute("DebugCommand", nil)
-				handleDebugCommand(player, command)
-			end
-		end)
-	end
 end
 
 function SpeedService.Init()
@@ -407,6 +393,7 @@ function SpeedService.Start()
 	if Config.Debug then
 		printBalanceTable()
 	end
+	registerDebugCommands()
 
 	Players.PlayerAdded:Connect(watchPlayer)
 	for _, player in Players:GetPlayers() do
