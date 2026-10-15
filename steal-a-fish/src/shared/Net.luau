@@ -31,6 +31,7 @@ local Net = {}
 -- strings by hand avoids typos. Later milestones add more names here.
 Net.Names = {
 	Notify = "Notify", -- server -> client: show a notification message
+	Knockback = "Knockback", -- server -> client: push your own character (Vector3 velocity)
 }
 
 local function getFolder(): Folder

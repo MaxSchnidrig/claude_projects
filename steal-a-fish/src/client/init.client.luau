@@ -25,6 +25,7 @@ local CONTROLLERS: { Types.Controller } = {
 	require(Controllers.EggController),
 	require(Controllers.TreadmillController),
 	require(Controllers.ShiftLockController),
+	require(Controllers.EffectsController),
 }
 
 local failures = 0

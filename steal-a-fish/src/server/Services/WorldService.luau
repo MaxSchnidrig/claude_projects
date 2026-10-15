@@ -22,9 +22,11 @@
 	Public interface:
 		WorldService.GetFolder() -> Folder          -- Workspace.World
 		WorldService.CollisionGroups.Bots           -- put bot parts in this group
+		(player characters are put in the "Players" group automatically)
 ]]
 
 local PhysicsService = game:GetService("PhysicsService")
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
@@ -38,6 +40,7 @@ WorldService.Name = "WorldService"
 WorldService.CollisionGroups = {
 	Bots = "Bots",
 	BotBarrier = "BotBarrier",
+	Players = "Players",
 }
 
 local worldFolder: Folder
@@ -49,13 +52,33 @@ end
 -- Bots collide with the barrier; players (the "Default" group) pass through.
 local function setupCollisionGroups()
 	local groups = WorldService.CollisionGroups
-	for _, name in { groups.Bots, groups.BotBarrier } do
+	for _, name in { groups.Bots, groups.BotBarrier, groups.Players } do
 		if not PhysicsService:IsCollisionGroupRegistered(name) then
 			PhysicsService:RegisterCollisionGroup(name)
 		end
 	end
+	-- The barrier only stops bots.
 	PhysicsService:CollisionGroupSetCollidable(groups.BotBarrier, "Default", false)
+	PhysicsService:CollisionGroupSetCollidable(groups.BotBarrier, groups.Players, false)
 	PhysicsService:CollisionGroupSetCollidable(groups.BotBarrier, groups.Bots, true)
+	-- Bots swim through players and each other (catching is checked by
+	-- distance), so they never shove players around or get stuck in a pile.
+	PhysicsService:CollisionGroupSetCollidable(groups.Bots, groups.Players, false)
+	PhysicsService:CollisionGroupSetCollidable(groups.Bots, groups.Bots, false)
+end
+
+-- Put every part of a player's character in the "Players" collision group.
+local function setCharacterGroup(character: Model)
+	local function apply(item: Instance)
+		if item:IsA("BasePart") then
+			item.CollisionGroup = WorldService.CollisionGroups.Players
+		end
+	end
+	for _, item in character:GetDescendants() do
+		apply(item)
+	end
+	-- Accessories and carried eggs are added later, so catch those too.
+	character.DescendantAdded:Connect(apply)
 end
 
 -- The "Baseplate" template comes with a SpawnLocation in the middle of the
@@ -305,6 +328,16 @@ function WorldService.Init()
 end
 
 function WorldService.Start()
+	local function watchPlayer(player: Player)
+		player.CharacterAdded:Connect(setCharacterGroup)
+		if player.Character then
+			setCharacterGroup(player.Character)
+		end
+	end
+	Players.PlayerAdded:Connect(watchPlayer)
+	for _, player in Players:GetPlayers() do
+		watchPlayer(player)
+	end
 end
 
 return WorldService

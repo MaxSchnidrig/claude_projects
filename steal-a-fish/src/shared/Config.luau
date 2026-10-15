@@ -210,7 +210,7 @@ local zones: { ZoneConfig } = {
 		MaxEggs = 8,
 		EggWeights = { Common = 70, Uncommon = 25, Rare = 5 },
 		BotCount = 2,
-		BotSpeed = 14,
+		BotSpeed = 19,
 	},
 	{
 		Name = "Coral Reef",
@@ -219,7 +219,7 @@ local zones: { ZoneConfig } = {
 		MaxEggs = 6,
 		EggWeights = { Common = 25, Uncommon = 40, Rare = 25, Epic = 10 },
 		BotCount = 3,
-		BotSpeed = 17,
+		BotSpeed = 22,
 	},
 	{
 		Name = "Twilight Deep",
@@ -228,7 +228,7 @@ local zones: { ZoneConfig } = {
 		MaxEggs = 5,
 		EggWeights = { Uncommon = 20, Rare = 40, Epic = 30, Legendary = 10 },
 		BotCount = 3,
-		BotSpeed = 20,
+		BotSpeed = 25,
 	},
 	{
 		Name = "The Abyss",
@@ -237,7 +237,7 @@ local zones: { ZoneConfig } = {
 		MaxEggs = 4,
 		EggWeights = { Rare = 20, Epic = 40, Legendary = 30, Mythic = 10 },
 		BotCount = 4,
-		BotSpeed = 23,
+		BotSpeed = 28,
 	},
 }
 Config.Zones = zones
@@ -247,14 +247,30 @@ Config.Zones = zones
 ---------------------------------------------------------------------------
 Config.Bots = {
 	ModelName = "Shark", -- looked up in ReplicatedStorage.Assets; placeholder if missing
+	-- Chase speed is set per zone (Config.Zones[...].BotSpeed). For reference:
+	-- players walk at Player.BaseWalkSpeed (24), slower while carrying an egg.
+	PatrolSpeedMultiplier = 0.55, -- patrol speed = zone BotSpeed * this
+	MaxBotsTotal = 16, -- hard cap on sharks in the server (sum of zone BotCounts)
+	HoverHeight = 2.5, -- how high sharks swim above the floor
+
+	-- Chasing
 	AggroRadius = 50, -- starts chasing an egg carrier within this distance
 	GiveUpDistance = 90, -- stops chasing once the target is farther than this
-	CatchDistance = 4.5, -- touching distance that counts as "caught"
-	PathRecomputeInterval = 0.5, -- seconds between path recalculations per bot
-	DirectChaseDistance = 20, -- closer than this: skip pathfinding, run straight at them
-	PatrolPauseTime = 2, -- seconds a bot waits at each patrol point
-	CatchCooldown = 3, -- seconds a player is immune after being caught
-	KnockbackForce = 80, -- how hard a caught player is pushed back
+	LeashPadding = 20, -- sharks may follow this far outside their own zone (never out of the danger zone)
+	CatchDistance = 5.5, -- distance (center to center) that counts as "caught"
+	DirectChaseDistance = 20, -- closer than this: skip pathfinding, swim straight at them
+	PathRecomputeInterval = 0.5, -- seconds between path recalculations per shark
+	MaxPathComputesPerSecond = 10, -- pathfinding budget shared by ALL sharks
+	UpdateInterval = 0.1, -- seconds between shark brain updates
+
+	-- Patrolling
+	PatrolPauseTime = 2, -- seconds a shark waits at each patrol point
+
+	-- Being caught
+	CatchCooldown = 3, -- seconds a player is ignored by sharks after being caught
+	PostCatchPause = 1.5, -- seconds a shark rests after catching someone
+	KnockbackForce = 70, -- sideways push on a caught player
+	KnockbackUpForce = 35, -- upward push on a caught player
 	KillOnCatch = false, -- true = catching kills the player instead of knocking back
 }
 
