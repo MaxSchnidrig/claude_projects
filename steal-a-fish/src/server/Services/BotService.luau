@@ -2,8 +2,8 @@
 --[[
 	BotService
 	==========
-	The sharks. Each zone in Config.Zones gets `BotCount` sharks that swim at
-	that zone's `BotSpeed`.
+	The sharks. Each zone gets the number of sharks and the chase speed from
+	its row in Config.Sharks (row 1 = zone 1, and so on).
 
 	What a shark does (checked every Config.Bots.UpdateInterval seconds):
 	  - PATROL: swim slowly to a random point in its home zone, wait, repeat.
@@ -191,6 +191,7 @@ end
 
 local function createBot(zoneIndex: number): Bot
 	local zone = Config.Zones[zoneIndex]
+	local sharkSpeed = Config.Sharks[zoneIndex].Speed
 	local spawnPoint = randomPointInZone(zoneIndex)
 	local hover = Config.Bots.HoverHeight
 
@@ -216,7 +217,7 @@ local function createBot(zoneIndex: number): Bot
 	local humanoid = Instance.new("Humanoid")
 	humanoid.RigType = Enum.HumanoidRigType.R15
 	humanoid.HipHeight = hover
-	humanoid.WalkSpeed = zone.BotSpeed * Config.Bots.PatrolSpeedMultiplier
+	humanoid.WalkSpeed = sharkSpeed * Config.Bots.PatrolSpeedMultiplier
 	humanoid.AutoJumpEnabled = false
 	humanoid.UseJumpPower = true
 	humanoid.JumpPower = 0
@@ -259,7 +260,7 @@ local function createBot(zoneIndex: number): Bot
 		Indicator = indicator,
 		Path = path,
 		Zone = zoneIndex,
-		Speed = zone.BotSpeed,
+		Speed = sharkSpeed,
 		MinX = -halfWidth,
 		MaxX = halfWidth,
 		MinZ = math.max(far - pad, Layout.DangerZoneBack + edge),
@@ -500,8 +501,13 @@ function BotService.Start()
 	botsFolder.Name = "Sharks"
 	botsFolder.Parent = WorldService.GetFolder()
 
-	for zoneIndex, zone in Config.Zones do
-		for _ = 1, zone.BotCount do
+	for zoneIndex in Config.Zones do
+		local row = Config.Sharks[zoneIndex]
+		if not row then
+			warn(`[{Config.GameName}] Config.Sharks has no row for zone {zoneIndex}; no shark there.`)
+			continue
+		end
+		for _ = 1, row.Count do
 			if #bots >= Config.Bots.MaxBotsTotal then
 				break
 			end

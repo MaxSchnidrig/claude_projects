@@ -8,6 +8,7 @@
 	Usage:
 		Rarity.color("Rare")                  -> Color3
 		Rarity.rank("Rare")                   -> 3   (1 = Common, higher = rarer)
+		Rarity.glow("Rare")                   -> 1   (0 = no glow)
 		Rarity.pick({ Common = 3, Rare = 1 }) -> "Common" (75%) or "Rare" (25%)
 		Rarity.percentages(weights)           -> { { Name = "Common", Percent = 75 }, ... }
 ]]
@@ -35,6 +36,16 @@ function Rarity.color(name: string): Color3
 		end
 	end
 	return Color3.new(1, 1, 1)
+end
+
+-- How strongly eggs of this rarity glow (0 = not at all).
+function Rarity.glow(name: string): number
+	for _, info in Config.Rarities do
+		if info.Name == name then
+			return info.Glow
+		end
+	end
+	return 0
 end
 
 -- Pick one rarity name at random. Bigger weight = more likely.

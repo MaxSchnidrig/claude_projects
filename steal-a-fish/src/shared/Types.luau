@@ -11,8 +11,18 @@
 		local r: Types.Rarity = "Rare"
 ]]
 
--- The six egg/pet rarity tiers. Must match the names in Config.Rarities.
-export type Rarity = "Common" | "Uncommon" | "Rare" | "Epic" | "Legendary" | "Mythic"
+-- The egg/pet rarity tiers. Must match the names in Config.Rarities.
+export type Rarity =
+	"Common"
+	| "Uncommon"
+	| "Rare"
+	| "Epic"
+	| "Legendary"
+	| "Mythic"
+	| "Divine"
+	| "Celestial"
+	| "Cosmic"
+	| "Secret"
 
 -- Every service module returns a table shaped like this.
 -- Init()  runs first, for ALL services, before anything starts. Set up state

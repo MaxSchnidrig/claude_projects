@@ -10,8 +10,8 @@
 	    owns a plot, isn't already carrying one, and isn't spamming.
 	  - Carrying: the egg floats above the player's head and heavy eggs slow
 	    them down (Config.Eggs.ByRarity[...].CarrySpeedMultiplier).
-	  - Dropping: on death or being caught, the egg drops on the ground or is
-	    lost (Config.Eggs.OnCaught).
+	  - Losing it: being caught by a shark follows Config.Eggs.OnCaught, dying
+	    any other way follows Config.Eggs.OnDeath ("Drop" or "Lose").
 	  - Delivering: standing on your own hatch pad hands the egg to PetService.
 
 	Public interface:
@@ -71,6 +71,12 @@ local carrying: { [Player]: Carry } = {}
 local pickupLimiter = RateLimiter.new(4, 1) -- max 4 pickup attempts per second
 local lastPadFullNotice: { [Player]: number } = {}
 
+-- Height of an egg's center when it rests on a surface at height `surfaceY`,
+-- partly buried (Config.Eggs.VisibleFraction sticks out).
+local function restingY(surfaceY: number): number
+	return surfaceY + Config.Eggs.Size.Y * (Config.Eggs.VisibleFraction - 0.5)
+end
+
 local function notify(player: Player, message: string)
 	Net.event(Net.Names.Notify):FireClient(player, message)
 end
@@ -121,8 +127,9 @@ local function randomSpotInZone(zoneIndex: number): Vector3?
 	local halfX = math.max(size.X / 2 - margin, 0)
 	local halfZ = math.max(size.Z / 2 - margin, 0)
 	for _ = 1, 10 do
-		local offset = CFrame.new(rng:NextNumber(-halfX, halfX), Config.Eggs.Size.Y / 2 + 0.3, rng:NextNumber(-halfZ, halfZ))
-		local position = (cf * offset).Position
+		local offset = CFrame.new(rng:NextNumber(-halfX, halfX), 0, rng:NextNumber(-halfZ, halfZ))
+		local spot = (cf * offset).Position
+		local position = Vector3.new(spot.X, restingY(Layout.GroundTop), spot.Z)
 		local tooClose = false
 		for _, other in zoneEggs[zoneIndex] do
 			if (other.Part.Position - position).Magnitude < Config.Eggs.MinSpacing then
@@ -144,7 +151,7 @@ local function createGroundEgg(rarity: string, zoneIndex: number, position: Vect
 	local part = EggVisual.create(rarity, true)
 	part.CFrame = CFrame.new(position) * CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0)
 
-	local label = Build.billboard(part, `{rarity} Egg`, 3, 70)
+	local label = Build.billboard(part, `{rarity} Egg`, 2.5, 70)
 	label.TextColor3 = Rarity.color(rarity)
 
 	local prompt = Instance.new("ProximityPrompt")
@@ -277,8 +284,10 @@ function EggService.GetCarriedRarity(player: Player): string?
 	return if carry then carry.Rarity else nil
 end
 
--- The player loses their egg. Depending on Config.Eggs.OnCaught it either
--- drops on the ground (only inside the danger zone) or disappears.
+-- The player loses their egg. reason "caught" follows Config.Eggs.OnCaught;
+-- anything else ("died", "respawned", ...) follows Config.Eggs.OnDeath.
+-- "Drop" puts the egg on the ground (only inside the danger zone);
+-- "Lose" makes it disappear.
 function EggService.DropEgg(player: Player, reason: string)
 	local root = getRoot(player)
 	local position = if root then root.Position else nil
@@ -287,10 +296,11 @@ function EggService.DropEgg(player: Player, reason: string)
 		return
 	end
 
-	if Config.Eggs.OnCaught == "Drop" and position then
+	local rule = if reason == "caught" then Config.Eggs.OnCaught else Config.Eggs.OnDeath
+	if rule == "Drop" and position then
 		local zoneIndex = Layout.zoneIndexAt(position)
 		if zoneIndex then
-			local groundPosition = Vector3.new(position.X, Layout.GroundTop + Config.Eggs.Size.Y / 2 + 0.3, position.Z)
+			local groundPosition = Vector3.new(position.X, restingY(Layout.GroundTop), position.Z)
 			createGroundEgg(carry.Rarity, zoneIndex, groundPosition, true)
 		end
 	end

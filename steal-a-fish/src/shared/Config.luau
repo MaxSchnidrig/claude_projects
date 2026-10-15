@@ -29,8 +29,17 @@ export type ZoneConfig = {
 	Color: Color3,
 	MaxEggs: number,
 	EggWeights: Weights,
-	BotCount: number,
-	BotSpeed: number,
+}
+
+export type RarityConfig = {
+	Name: string,
+	Color: Color3,
+	Glow: number, -- 0 = no glow; higher = brighter and wider light
+}
+
+export type SharkConfig = {
+	Speed: number, -- chase speed in studs per second
+	Count: number, -- how many sharks patrol this zone
 }
 
 export type EggRarityConfig = {
@@ -59,14 +68,19 @@ Config.Debug = true
 -- Ordered from most common to rarest. The order matters: "deeper" zones and
 -- "upgrade one tier" logic use this list's order.
 ---------------------------------------------------------------------------
-Config.Rarities = {
-	{ Name = "Common", Color = Color3.fromRGB(200, 200, 200) },
-	{ Name = "Uncommon", Color = Color3.fromRGB(85, 220, 110) },
-	{ Name = "Rare", Color = Color3.fromRGB(60, 140, 255) },
-	{ Name = "Epic", Color = Color3.fromRGB(170, 80, 255) },
-	{ Name = "Legendary", Color = Color3.fromRGB(255, 180, 40) },
-	{ Name = "Mythic", Color = Color3.fromRGB(255, 60, 120) },
+local rarities: { RarityConfig } = {
+	{ Name = "Common", Color = Color3.fromRGB(200, 200, 200), Glow = 0 },
+	{ Name = "Uncommon", Color = Color3.fromRGB(85, 220, 110), Glow = 0 },
+	{ Name = "Rare", Color = Color3.fromRGB(60, 140, 255), Glow = 1 },
+	{ Name = "Epic", Color = Color3.fromRGB(170, 80, 255), Glow = 1.5 },
+	{ Name = "Legendary", Color = Color3.fromRGB(255, 180, 40), Glow = 2 },
+	{ Name = "Mythic", Color = Color3.fromRGB(255, 60, 120), Glow = 2.5 },
+	{ Name = "Divine", Color = Color3.fromRGB(255, 245, 190), Glow = 3 },
+	{ Name = "Celestial", Color = Color3.fromRGB(120, 230, 255), Glow = 3.5 },
+	{ Name = "Cosmic", Color = Color3.fromRGB(90, 50, 210), Glow = 4 },
+	{ Name = "Secret", Color = Color3.fromRGB(20, 20, 25), Glow = 5 },
 }
+Config.Rarities = rarities
 
 ---------------------------------------------------------------------------
 -- PLAYER
@@ -134,9 +148,9 @@ Config.Plots = {
 -- WORLD LAYOUT
 -- Seen from above (everything is surrounded by one tall map wall):
 --
---                 |  The Abyss      |     (deepest, toward -Z)
+--                 | The Void Below  |     (zone 10, deepest, toward -Z)
 --                 |  ...            |
---                 |  Shallows       |
+--                 |  Shallows       |     (zone 1)
 --   +-------------[ entrance arch   ]-------------+
 --   |          big open front area (safe)         |
 --   |     [P1][P2][P3][P4]   [P5][P6][P7][P8]     |  (plots, toward +Z)
@@ -171,86 +185,150 @@ Config.Eggs = {
 	PickupHoldDuration = 0.4, -- seconds to hold the ProximityPrompt key
 	PickupMaxDistance = 10, -- studs; the server re-checks this
 	RespawnInterval = 4, -- seconds between egg spawn attempts in each zone
-	MaxEggsTotal = 30, -- hard cap on eggs lying in the whole danger zone
+	MaxEggsTotal = 50, -- hard cap on eggs lying in the whole danger zone
 	SpawnMargin = 10, -- eggs never spawn closer than this to the zone's walls/edges
 	MinSpacing = 8, -- eggs try not to spawn closer than this to each other
 	Size = Vector3.new(2.4, 3, 2.4), -- placeholder egg size (width, height, depth)
 	CarryHeight = 5, -- how far above the character's middle the carried egg floats
-	GlowFrom = "Rare", -- eggs of this rarity and rarer give off light
+	-- How much of an egg sticks out of the ground (0.5 = top half, like it's
+	-- stuck in the sand). Also used for eggs on the hatch pad.
+	VisibleFraction = 0.5,
 	MaxEggsOnPad = 3, -- how many eggs can sit on your hatch pad at once
+	-- How glowing eggs look: light range and brightness grow with Rarities[...].Glow.
+	GlowRangePerLevel = 4,
+	GlowBrightnessPerLevel = 0.6,
 
-	-- What happens to a carried egg when the carrier is caught or dies:
+	-- What happens to a carried egg:
 	--   "Drop" = the egg falls on the ground where they were and can be picked up again
-	--   "Lose" = the egg disappears
-	OnCaught = "Drop",
+	--   "Lose" = the egg disappears instantly
+	OnCaught = "Lose", -- caught by a shark
+	OnDeath = "Drop", -- died or reset in any other way
 	DroppedEggLifetime = 20, -- seconds a dropped egg stays before vanishing
 
+	-- CarrySpeedMultiplier: 1 = no slow-down. (0.9 would mean walking at 90% speed.)
 	ByRarity = ({
-		Common = { HatchTime = 10, CarrySpeedMultiplier = 1.0 },
-		Uncommon = { HatchTime = 20, CarrySpeedMultiplier = 0.95 },
-		Rare = { HatchTime = 40, CarrySpeedMultiplier = 0.9 },
-		Epic = { HatchTime = 75, CarrySpeedMultiplier = 0.85 },
-		Legendary = { HatchTime = 120, CarrySpeedMultiplier = 0.8 },
-		Mythic = { HatchTime = 180, CarrySpeedMultiplier = 0.75 },
+		Common = { HatchTime = 10, CarrySpeedMultiplier = 1 },
+		Uncommon = { HatchTime = 20, CarrySpeedMultiplier = 1 },
+		Rare = { HatchTime = 40, CarrySpeedMultiplier = 1 },
+		Epic = { HatchTime = 75, CarrySpeedMultiplier = 1 },
+		Legendary = { HatchTime = 120, CarrySpeedMultiplier = 1 },
+		Mythic = { HatchTime = 180, CarrySpeedMultiplier = 1 },
+		Divine = { HatchTime = 240, CarrySpeedMultiplier = 1 },
+		Celestial = { HatchTime = 300, CarrySpeedMultiplier = 1 },
+		Cosmic = { HatchTime = 420, CarrySpeedMultiplier = 1 },
+		Secret = { HatchTime = 600, CarrySpeedMultiplier = 1 },
 	} :: { [string]: EggRarityConfig }),
 }
 
 ---------------------------------------------------------------------------
 -- DANGER ZONES (Milestones 2 + 3)
 -- Listed from the entrance (shallowest) to the deepest. Each zone is a strip
--- of the danger area. Deeper zones: rarer eggs, more and faster bots.
+-- of the danger area, Length studs deep. Deeper zones: rarer eggs and faster
+-- sharks (see Config.Sharks). The rarest tiers only appear in the deepest zones.
 -- EggWeights are relative weights, not percents: {Common = 3, Rare = 1}
 -- means Common is 3x as likely as Rare (75% vs 25%).
 ---------------------------------------------------------------------------
 local zones: { ZoneConfig } = {
 	{
-		Name = "Shallows",
-		Length = 120, -- how deep (Z direction) this zone strip is
+		Name = "Shallows", -- zone 1
+		Length = 90,
 		Color = Color3.fromRGB(90, 200, 230),
-		MaxEggs = 8,
-		EggWeights = { Common = 70, Uncommon = 25, Rare = 5 },
-		BotCount = 2,
-		BotSpeed = 19,
+		MaxEggs = 6,
+		EggWeights = { Common = 80, Uncommon = 18, Rare = 2 },
 	},
 	{
-		Name = "Coral Reef",
-		Length = 120,
+		Name = "Coral Reef", -- zone 2
+		Length = 90,
 		Color = Color3.fromRGB(240, 120, 150),
 		MaxEggs = 6,
-		EggWeights = { Common = 25, Uncommon = 40, Rare = 25, Epic = 10 },
-		BotCount = 3,
-		BotSpeed = 22,
+		EggWeights = { Common = 40, Uncommon = 40, Rare = 17, Epic = 3 },
 	},
 	{
-		Name = "Twilight Deep",
-		Length = 120,
+		Name = "Kelp Forest", -- zone 3
+		Length = 90,
+		Color = Color3.fromRGB(60, 150, 90),
+		MaxEggs = 5,
+		EggWeights = { Uncommon = 40, Rare = 40, Epic = 17, Legendary = 3 },
+	},
+	{
+		Name = "Shipwreck Bay", -- zone 4
+		Length = 90,
+		Color = Color3.fromRGB(120, 95, 70),
+		MaxEggs = 5,
+		EggWeights = { Rare = 45, Epic = 40, Legendary = 13, Mythic = 2 },
+	},
+	{
+		Name = "Twilight Deep", -- zone 5
+		Length = 90,
 		Color = Color3.fromRGB(70, 60, 160),
 		MaxEggs = 5,
-		EggWeights = { Uncommon = 20, Rare = 40, Epic = 30, Legendary = 10 },
-		BotCount = 3,
-		BotSpeed = 25,
+		EggWeights = { Epic = 50, Legendary = 38, Mythic = 11, Divine = 1 },
 	},
 	{
-		Name = "The Abyss",
-		Length = 120,
+		Name = "Midnight Trench", -- zone 6
+		Length = 90,
+		Color = Color3.fromRGB(35, 40, 90),
+		MaxEggs = 4,
+		EggWeights = { Legendary = 50, Mythic = 38, Divine = 11, Celestial = 1 },
+	},
+	{
+		Name = "Hydrothermal Vents", -- zone 7
+		Length = 90,
+		Color = Color3.fromRGB(90, 35, 30),
+		MaxEggs = 4,
+		EggWeights = { Mythic = 55, Divine = 35, Celestial = 9.5, Cosmic = 0.5 },
+	},
+	{
+		Name = "The Abyss", -- zone 8
+		Length = 90,
 		Color = Color3.fromRGB(25, 20, 50),
 		MaxEggs = 4,
-		EggWeights = { Rare = 20, Epic = 40, Legendary = 30, Mythic = 10 },
-		BotCount = 4,
-		BotSpeed = 28,
+		EggWeights = { Divine = 55, Celestial = 35, Cosmic = 9.8, Secret = 0.2 },
+	},
+	{
+		Name = "Leviathan's Lair", -- zone 9
+		Length = 90,
+		Color = Color3.fromRGB(20, 30, 35),
+		MaxEggs = 3,
+		EggWeights = { Celestial = 60, Cosmic = 37, Secret = 3 },
+	},
+	{
+		Name = "The Void Below", -- zone 10
+		Length = 90,
+		Color = Color3.fromRGB(8, 8, 14),
+		MaxEggs = 3,
+		EggWeights = { Celestial = 30, Cosmic = 60, Secret = 10 },
 	},
 }
 Config.Zones = zones
 
 ---------------------------------------------------------------------------
--- CHASER BOTS (Milestone 3)
+-- SHARKS PER ZONE (Milestone 3)
+-- One row per zone, in the same order as Config.Zones above.
+-- A player can only escape a zone's shark if they walk FASTER than its Speed.
+---------------------------------------------------------------------------
+local sharks: { SharkConfig } = {
+	--  chase speed     sharks in zone
+	{ Speed = 14, Count = 1 }, -- 1  Shallows
+	{ Speed = 20, Count = 1 }, -- 2  Coral Reef
+	{ Speed = 24, Count = 1 }, -- 3  Kelp Forest
+	{ Speed = 28, Count = 1 }, -- 4  Shipwreck Bay
+	{ Speed = 33, Count = 1 }, -- 5  Twilight Deep
+	{ Speed = 38, Count = 1 }, -- 6  Midnight Trench
+	{ Speed = 44, Count = 1 }, -- 7  Hydrothermal Vents
+	{ Speed = 50, Count = 1 }, -- 8  The Abyss
+	{ Speed = 57, Count = 1 }, -- 9  Leviathan's Lair
+	{ Speed = 66, Count = 1 }, -- 10 The Void Below
+}
+Config.Sharks = sharks
+
+---------------------------------------------------------------------------
+-- CHASER BOTS (Milestone 3): how every shark behaves
 ---------------------------------------------------------------------------
 Config.Bots = {
 	ModelName = "Shark", -- looked up in ReplicatedStorage.Assets; placeholder if missing
-	-- Chase speed is set per zone (Config.Zones[...].BotSpeed). For reference:
-	-- players walk at Player.BaseWalkSpeed (24), slower while carrying an egg.
-	PatrolSpeedMultiplier = 0.55, -- patrol speed = zone BotSpeed * this
-	MaxBotsTotal = 16, -- hard cap on sharks in the server (sum of zone BotCounts)
+	PatrolSpeedMultiplier = 0.55, -- patrol speed = the zone's shark Speed * this
+	MaxBotsTotal = 16, -- hard cap on sharks in the server (sum of all Counts)
 	HoverHeight = 2.5, -- how high sharks swim above the floor
 
 	-- Chasing
@@ -291,6 +369,14 @@ local pets: { PetConfig } = {
 	{ Name = "Giant Squid", Rarity = "Legendary", Income = 175 },
 	{ Name = "Kraken", Rarity = "Mythic", Income = 500 },
 	{ Name = "Golden Megalodon", Rarity = "Mythic", Income = 650 },
+	{ Name = "Angel Jellyfish", Rarity = "Divine", Income = 2000 },
+	{ Name = "Pearl Narwhal", Rarity = "Divine", Income = 2600 },
+	{ Name = "Starfish Sovereign", Rarity = "Celestial", Income = 7000 },
+	{ Name = "Comet Orca", Rarity = "Celestial", Income = 9000 },
+	{ Name = "Nebula Ray", Rarity = "Cosmic", Income = 25000 },
+	{ Name = "Galaxy Whale", Rarity = "Cosmic", Income = 32000 },
+	{ Name = "Abyssal Leviathan", Rarity = "Secret", Income = 100000 },
+	{ Name = "The Deep One", Rarity = "Secret", Income = 150000 },
 }
 Config.Pets = pets
 
@@ -303,7 +389,11 @@ local hatchOdds: { [string]: Weights } = {
 	Rare = { Rare = 92, Epic = 8 },
 	Epic = { Epic = 94, Legendary = 6 },
 	Legendary = { Legendary = 96, Mythic = 4 },
-	Mythic = { Mythic = 100 },
+	Mythic = { Mythic = 96, Divine = 4 },
+	Divine = { Divine = 96, Celestial = 4 },
+	Celestial = { Celestial = 97, Cosmic = 3 },
+	Cosmic = { Cosmic = 98, Secret = 2 },
+	Secret = { Secret = 100 },
 }
 Config.HatchOdds = hatchOdds
 

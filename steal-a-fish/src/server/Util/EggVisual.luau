@@ -6,7 +6,7 @@
 	the hatch pad.
 
 	Placeholder: an egg-shaped part (a stretched sphere) in the rarity's color.
-	Rare and rarer eggs glow (Config.Eggs.GlowFrom).
+	Rarer eggs glow more (Config.Rarities[...].Glow).
 
 	Custom models: put a model named "Egg<Rarity>" (for example "EggLegendary")
 	or just "Egg" into ReplicatedStorage > Assets. The rarity-specific name is
@@ -46,12 +46,14 @@ function EggVisual.create(rarity: string, anchored: boolean): Part
 	mesh.MeshType = Enum.MeshType.Sphere
 	mesh.Parent = egg
 
-	if Rarity.rank(rarity) >= Rarity.rank(Config.Eggs.GlowFrom) then
+	local glow = Rarity.glow(rarity)
+	if glow > 0 then
 		egg.Material = Enum.Material.Neon
 		local light = Instance.new("PointLight")
-		light.Color = color
-		light.Range = 10
-		light.Brightness = 2
+		-- Very dark eggs (like Secret) still cast a visible, bright light.
+		light.Color = if color.R + color.G + color.B < 0.5 then Color3.new(1, 1, 1) else color
+		light.Range = 4 + glow * Config.Eggs.GlowRangePerLevel
+		light.Brightness = glow * Config.Eggs.GlowBrightnessPerLevel
 		light.Parent = egg
 	end
 

@@ -42,7 +42,9 @@ local function padSpotCFrame(plot: Types.PlotInfo, spot: number): CFrame
 	local count = Config.Eggs.MaxEggsOnPad
 	local spacing = math.min(3.2, (pad.Size.Y - 2) / math.max(count, 1))
 	local x = (spot - (count + 1) / 2) * spacing
-	local base = CFrame.new(pad.Position.X, padTop + Config.Eggs.Size.Y / 2, pad.Position.Z) * plot.CFrame.Rotation
+	-- Eggs sit partly sunk into the pad, like the ones in the sand.
+	local centerY = padTop + Config.Eggs.Size.Y * (Config.Eggs.VisibleFraction - 0.5)
+	local base = CFrame.new(pad.Position.X, centerY, pad.Position.Z) * plot.CFrame.Rotation
 	return base * CFrame.new(x, 0, 0)
 end
 
@@ -82,7 +84,7 @@ function PetService.AcceptEgg(player: Player, rarity: string): boolean
 	local part = EggVisual.create(rarity, true)
 	part.CFrame = padSpotCFrame(plot, spot)
 	part:SetAttribute("PadSpot", spot)
-	Build.billboard(part, `{rarity} Egg`, 3, 40)
+	Build.billboard(part, `{rarity} Egg`, 2.5, 40)
 	part.Parent = plot.Model
 
 	local padEgg: PadEgg = { Rarity = rarity, Part = part }
