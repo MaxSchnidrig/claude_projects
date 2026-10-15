@@ -27,4 +27,18 @@ export type Service = {
 -- Client controllers follow the same pattern as services.
 export type Controller = Service
 
+-- Everything the server knows about one plot (see PlotService).
+export type PlotInfo = {
+	Index: number, -- 1 to Config.Plots.Count
+	Model: Model, -- Workspace.World.Plots.Plot<Index>
+	Owner: Player?, -- nil when the plot is free
+	CFrame: CFrame, -- center of the floor's top surface; LookVector = front
+	Spawn: SpawnLocation, -- where the owner spawns
+	HatchPad: BasePart, -- deliver eggs here
+	Treadmill: BasePart, -- run on it to train Speed
+	Slots: { BasePart }, -- ALL pet pedestals (locked ones are hidden)
+	UnlockedSlots: number, -- how many of Slots are usable
+	SignLabels: { TextLabel }, -- owner name text (front and back of the sign)
+}
+
 return {}

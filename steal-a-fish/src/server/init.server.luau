@@ -23,6 +23,7 @@ local Types = require(ReplicatedStorage.Shared.Types)
 local Services = script.Services
 
 local SERVICES: { Types.Service } = {
+	require(Services.WorldService),
 	require(Services.DataService),
 	require(Services.EconomyService),
 	require(Services.PlotService),

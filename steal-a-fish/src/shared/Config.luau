@@ -81,6 +81,35 @@ Config.Plots = {
 	Gap = 8, -- empty space between two plots
 	StartingPetSlots = 4, -- pedestals unlocked on a brand new plot
 	MaxPetSlots = 12, -- most pedestals a plot can ever have
+	SafeMargin = 3, -- the safe area reaches this many studs past the plot's edges
+	-- One floor color per plot (Plot 1 gets the first color, and so on).
+	Colors = {
+		Color3.fromRGB(110, 190, 255),
+		Color3.fromRGB(255, 150, 110),
+		Color3.fromRGB(140, 230, 140),
+		Color3.fromRGB(230, 140, 230),
+		Color3.fromRGB(255, 220, 110),
+		Color3.fromRGB(120, 230, 220),
+		Color3.fromRGB(200, 170, 255),
+		Color3.fromRGB(255, 130, 160),
+	},
+}
+
+---------------------------------------------------------------------------
+-- WORLD LAYOUT (Milestone 1)
+-- Seen from above:
+--
+--        [ danger zones: Shallows -> Coral Reef -> ... ]   (toward -Z)
+--                    [ entrance arch ]
+--   ~~~~~~~~~~~~~~~~~~~~ beach (safe) ~~~~~~~~~~~~~~~~~~~~~
+--   [P1][P2][P3][P4]                      [P5][P6][P7][P8]   (plots, toward +Z)
+---------------------------------------------------------------------------
+Config.World = {
+	GroundTop = 1, -- height (Y) of the walkable ground surface
+	BeachDepth = 30, -- depth of the safe strip between the plots and the danger zone
+	DangerZoneWidth = 160, -- width of the danger zone (and its entrance)
+	WallHeight = 16, -- glass walls around the danger zone (players jump ~7 studs)
+	GroundColor = Color3.fromRGB(235, 215, 160), -- sand
 }
 
 ---------------------------------------------------------------------------

@@ -29,9 +29,19 @@ steal-a-fish/
 └── (ReplicatedStorage.Assets) a folder you fill in Studio with real models later
 ```
 
-**Swapping in real models later:** put a model in `ReplicatedStorage > Assets` in Studio,
-named as in `Config` (for example `Shark`). The game uses it automatically. If it's missing,
-the game builds a simple placeholder block instead.
+**Swapping in real models later:** put a Model (or Part) in `ReplicatedStorage > Assets` in
+Studio with one of the names below. The game places it on top of the placeholder block and
+hides the block. If a name is missing, you just see the placeholder.
+
+| Asset name | Where it's used |
+|---|---|
+| `PlotSign` | the board above each plot's entrance |
+| `HatchPad` | the pad you deliver eggs to |
+| `Treadmill` | the treadmill on each plot |
+| `PetSlot` | each pet pedestal |
+| `Shark` (`Config.Bots.ModelName`) | the chaser bots (Milestone 3) |
+
+The model's **pivot** goes to the center of the placeholder, so center your model on its pivot.
 
 ---
 
