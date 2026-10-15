@@ -1,0 +1,8 @@
+{
+  "luau-lsp.sourcemap.rojoProjectFile": "default.project.json",
+  "luau-lsp.platform.type": "roblox",
+  "luau-lsp.completion.autocompleteEnd": true,
+  "files.associations": {
+    "*.luau": "luau"
+  }
+}
