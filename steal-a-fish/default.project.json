@@ -20,6 +20,10 @@
     },
 
     "StarterPlayer": {
+      "$properties": {
+        "EnableMouseLockOption": false,
+        "CharacterWalkSpeed": 24
+      },
       "StarterPlayerScripts": {
         "Client": {
           "$path": "src/client"

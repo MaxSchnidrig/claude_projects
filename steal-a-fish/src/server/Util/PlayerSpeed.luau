@@ -5,14 +5,16 @@
 	The ONE place that sets a player's WalkSpeed, so different systems don't
 	fight over it.
 
-	WalkSpeed = min(base, Config.Player.MaxWalkSpeed) * (all multipliers multiplied together)
+	WalkSpeed = min(Config.Player.BaseWalkSpeed + bonus, Config.Player.MaxWalkSpeed)
+	            * (all multipliers multiplied together)
 
-	  - The base comes from the Speed stat (UpgradeService, Milestone 5).
+	  - The bonus comes from the Speed stat (UpgradeService, Milestone 5). It
+	    ADDS to the base speed and never replaces it.
 	  - Multipliers are named, so each system controls its own:
 	      "Carry" = slow-down from holding a heavy egg (EggService)
 
 	Usage:
-		PlayerSpeed.SetBase(player, 24)
+		PlayerSpeed.SetBonus(player, 6)                  -- +6 WalkSpeed from the Speed stat
 		PlayerSpeed.SetMultiplier(player, "Carry", 0.9)
 		PlayerSpeed.SetMultiplier(player, "Carry", nil)  -- remove it
 
@@ -28,7 +30,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Config)
 
 type State = {
-	Base: number,
+	Bonus: number,
 	Multipliers: { [string]: number },
 }
 
@@ -39,7 +41,7 @@ local states: { [Player]: State } = {}
 local function getState(player: Player): State
 	local state = states[player]
 	if not state then
-		state = { Base = Config.Player.BaseWalkSpeed, Multipliers = {} }
+		state = { Bonus = 0, Multipliers = {} }
 		states[player] = state
 	end
 	return state
@@ -48,7 +50,7 @@ end
 -- The WalkSpeed this player should have right now.
 function PlayerSpeed.Get(player: Player): number
 	local state = getState(player)
-	local speed = math.min(state.Base, Config.Player.MaxWalkSpeed)
+	local speed = math.min(Config.Player.BaseWalkSpeed + state.Bonus, Config.Player.MaxWalkSpeed)
 	for _, multiplier in state.Multipliers do
 		speed *= multiplier
 	end
@@ -64,8 +66,8 @@ function PlayerSpeed.Apply(player: Player)
 	end
 end
 
-function PlayerSpeed.SetBase(player: Player, base: number)
-	getState(player).Base = base
+function PlayerSpeed.SetBonus(player: Player, bonus: number)
+	getState(player).Bonus = math.max(bonus, 0)
 	PlayerSpeed.Apply(player)
 end
 

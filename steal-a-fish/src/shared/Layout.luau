@@ -9,9 +9,10 @@
 	Coordinate system (seen from above):
 	  - The plots sit in one row along the X axis. Their front edges are at Z = 0
 	    and they extend toward +Z.
-	  - The beach (safe) runs from Z = 0 to Z = -BeachDepth.
-	  - The danger zones start at Z = -BeachDepth and go further toward -Z,
+	  - The big open front area (safe) runs from Z = 0 to Z = -FrontAreaDepth.
+	  - The danger zones start at Z = -FrontAreaDepth and go further toward -Z,
 	    centered on X = 0. Zone 1 is the shallowest; the last zone is the deepest.
+	  - One tall wall runs around all of it (see Layout.mapOutline).
 	  - "Front" of a plot = the side facing the danger zone (-Z).
 
 	This module only does math; it never creates parts.
@@ -30,7 +31,7 @@ Layout.PlotFloorTop = World.GroundTop + 0.2
 Layout.RowWidth = Plots.Count * Plots.Size.X + (Plots.Count - 1) * Plots.Gap
 
 -- Z position of the danger zone entrance line.
-Layout.DangerZoneFront = -World.BeachDepth
+Layout.DangerZoneFront = -World.FrontAreaDepth
 
 -- Total depth of all danger zones together.
 local totalLength = 0
@@ -38,6 +39,33 @@ for _, zone in Config.Zones do
 	totalLength += zone.Length
 end
 Layout.DangerZoneLength = totalLength
+-- Z position of the far end of the deepest zone.
+Layout.DangerZoneBack = Layout.DangerZoneFront - totalLength
+
+-- Edges of the wide part of the map (plots + front area).
+Layout.MapHalfWidth = Layout.RowWidth / 2 + World.MapSideMargin
+Layout.MapBackZ = Plots.Size.Z + World.MapBackMargin
+
+-- The inside edge of the map wall, as corner points (X, Z) going around the
+-- map. The wall is built just outside this line. Seen from above, the shape
+-- is a wide rectangle (plots + front area) with the narrower danger zone
+-- sticking out of its front.
+function Layout.mapOutline(): { Vector2 }
+	local wide = Layout.MapHalfWidth
+	local zone = World.DangerZoneWidth / 2
+	local front = Layout.DangerZoneFront
+	local back = Layout.DangerZoneBack
+	return {
+		Vector2.new(-wide, Layout.MapBackZ),
+		Vector2.new(wide, Layout.MapBackZ),
+		Vector2.new(wide, front),
+		Vector2.new(zone, front),
+		Vector2.new(zone, back),
+		Vector2.new(-zone, back),
+		Vector2.new(-zone, front),
+		Vector2.new(-wide, front),
+	}
+end
 
 -- The center of plot `index`'s floor top surface. Its LookVector points to
 -- the front of the plot (toward the danger zone).

@@ -11,7 +11,7 @@
 	  - Sign gate at the front with the owner's name
 	  - SpawnLocation: the owner spawns here
 	  - HatchPad: deliver eggs here (Milestone 2)
-	  - Treadmill: train Speed here (Milestone 5)
+	  - Treadmill at the front: train Speed here (Milestone 5)
 	  - PetSlots: pedestals for pets (Milestone 4). All Config.Plots.MaxPetSlots
 	    pedestals are built, but only the unlocked ones are shown.
 
@@ -38,6 +38,7 @@ local Signal = require(ReplicatedStorage.Shared.Signal)
 local Types = require(ReplicatedStorage.Shared.Types)
 local Assets = require(script.Parent.Parent.Util.Assets)
 local Build = require(script.Parent.Parent.Util.Build)
+local TreadmillBuilder = require(script.Parent.Parent.Util.TreadmillBuilder)
 local WorldService = require(script.Parent.WorldService)
 
 type PlotInfo = Types.PlotInfo
@@ -87,6 +88,7 @@ local function buildPlot(index: number, parent: Instance): PlotInfo
 		Size = size,
 		CFrame = cf * CFrame.new(0, -size.Y / 2, 0),
 		Color = color,
+		StudFaces = { Enum.NormalId.Top },
 		Parent = model,
 	})
 	model.PrimaryPart = floor
@@ -126,10 +128,11 @@ local function buildPlot(index: number, parent: Instance): PlotInfo
 		Size = Vector3.new(30, 5, 1),
 		CFrame = cf * CFrame.new(0, 14, frontZ),
 		Color = Color3.fromRGB(35, 45, 70),
+		Studs = false, -- keep the name easy to read
 		Parent = model,
 	})
 	Assets.decorate(board, "PlotSign")
-	-- "Front" faces the beach; "Back" faces into the plot.
+	-- "Front" faces the open front area; "Back" faces into the plot.
 	local signLabels = {
 		Build.surfaceText(board, Enum.NormalId.Front, ""),
 		Build.surfaceText(board, Enum.NormalId.Back, ""),
@@ -162,30 +165,10 @@ local function buildPlot(index: number, parent: Instance): PlotInfo
 	-- High enough to clear the eggs sitting on the pad.
 	Build.billboard(hatchPad, "🥚 Hatch Pad", 9, 60)
 
-	-- Treadmill on the right side.
-	local treadmill = Build.part({
-		Name = "Treadmill",
-		Size = Vector3.new(8, 0.6, 24),
-		CFrame = cf * CFrame.new(size.X / 2 - 8, 0.3, -12),
-		Color = Color3.fromRGB(45, 45, 50),
-		Parent = model,
-	})
-	-- Neon side stripes so it's easy to spot (hidden if a custom model is used).
-	local treadmillModel = Assets.decorate(treadmill, "Treadmill")
-	for _, side in { -1, 1 } do
-		Build.part({
-			Name = "TreadmillStripe",
-			Size = Vector3.new(0.6, 0.7, 24),
-			CFrame = treadmill.CFrame * CFrame.new(side * 4.3, 0, 0),
-			Color = Color3.fromRGB(80, 255, 140),
-			Material = Enum.Material.Neon,
-			Transparency = if treadmillModel then 1 else 0,
-			CanCollide = false,
-			CanTouch = false,
-			Parent = treadmill,
-		})
-	end
-	Build.billboard(treadmill, "🏃 Treadmill", 6, 60)
+	-- Treadmill at the front right corner, so it's easy to reach from the
+	-- open area. You step on from the front and run toward the console.
+	local treadmill = TreadmillBuilder.build(cf * CFrame.new(size.X / 2 - 9, 0, -size.Z / 2 + 11), model)
+	Build.billboard(treadmill, "🏃 Treadmill", 8, 60)
 
 	-- Pet pedestals in the back half.
 	local slotsFolder = Instance.new("Folder")

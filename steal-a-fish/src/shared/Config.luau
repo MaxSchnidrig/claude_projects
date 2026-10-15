@@ -72,9 +72,39 @@ Config.Rarities = {
 -- PLAYER
 ---------------------------------------------------------------------------
 Config.Player = {
-	BaseWalkSpeed = 16, -- Roblox default
-	MaxWalkSpeed = 50, -- hard cap, no matter how high the Speed stat gets
-	WalkSpeedPerSpeedPoint = 0.05, -- WalkSpeed = Base + SpeedStat * this (then capped)
+	-- Starting walk speed for everyone (Roblox's default is 16).
+	BaseWalkSpeed = 24,
+	-- The Speed stat (treadmill, Milestone 5) ADDS to the base:
+	--   WalkSpeed = min(BaseWalkSpeed + SpeedStat * WalkSpeedPerSpeedPoint, MaxWalkSpeed)
+	-- Egg carry slow-downs are then multiplied on top of that.
+	WalkSpeedPerSpeedPoint = 0.05,
+	MaxWalkSpeed = 60, -- hard cap, no matter how high the Speed stat gets
+}
+
+---------------------------------------------------------------------------
+-- CONTROLS
+---------------------------------------------------------------------------
+Config.Controls = {
+	-- Shift lock: press Shift to lock the camera behind your character (it
+	-- turns with the mouse). Press Shift again to unlock. On phones/tablets a
+	-- small lock button appears instead.
+	ShiftLock = true,
+	ShiftLockCameraOffset = Vector3.new(1.75, 0, 0), -- camera sits over the right shoulder
+}
+
+---------------------------------------------------------------------------
+-- VISUALS
+---------------------------------------------------------------------------
+Config.Visuals = {
+	-- Classic Roblox studs, drawn with a tiling Texture on top of each part.
+	-- The texture is tinted with the part's own color, so colors stay the same.
+	StudsEnabled = true,
+	-- If you don't see studs in Studio, find a stud texture in the Toolbox
+	-- (Creator Store > Images, search "studs"), copy its ID, and paste it here.
+	StudTexture = "rbxassetid://8130710802",
+	StudsPerTile = 1, -- size of one stud texture tile, in studs
+	StudTransparency = 0.3, -- 0 = strong studs, 1 = invisible studs
+	TreadmillBeltSpeed = 6, -- how fast the belt markings scroll (studs per second)
 }
 
 ---------------------------------------------------------------------------
@@ -101,20 +131,35 @@ Config.Plots = {
 }
 
 ---------------------------------------------------------------------------
--- WORLD LAYOUT (Milestone 1)
--- Seen from above:
+-- WORLD LAYOUT
+-- Seen from above (everything is surrounded by one tall map wall):
 --
---        [ danger zones: Shallows -> Coral Reef -> ... ]   (toward -Z)
---                    [ entrance arch ]
---   ~~~~~~~~~~~~~~~~~~~~ beach (safe) ~~~~~~~~~~~~~~~~~~~~~
---   [P1][P2][P3][P4]                      [P5][P6][P7][P8]   (plots, toward +Z)
+--                 |  The Abyss      |     (deepest, toward -Z)
+--                 |  ...            |
+--                 |  Shallows       |
+--   +-------------[ entrance arch   ]-------------+
+--   |          big open front area (safe)         |
+--   |     [P1][P2][P3][P4]   [P5][P6][P7][P8]     |  (plots, toward +Z)
+--   +---------------------------------------------+
 ---------------------------------------------------------------------------
 Config.World = {
 	GroundTop = 1, -- height (Y) of the walkable ground surface
-	BeachDepth = 30, -- depth of the safe strip between the plots and the danger zone
+	-- Depth of the big open (safe) area between the plots and the danger zone
+	-- entrance. Shops and upgrade stations will go here later.
+	FrontAreaDepth = 75,
 	DangerZoneWidth = 160, -- width of the danger zone (and its entrance)
-	WallHeight = 16, -- glass walls around the danger zone (players jump ~7 studs)
+	MapSideMargin = 20, -- space between the outer plots and the map wall
+	MapBackMargin = 20, -- space between the back of the plots and the map wall
 	GroundColor = Color3.fromRGB(235, 215, 160), -- sand
+	OceanColor = Color3.fromRGB(40, 130, 200), -- what you see beyond the wall
+
+	-- The tall wall around the whole map.
+	MapWallHeight = 40, -- players jump about 7 studs
+	MapWallThickness = 4,
+	WallTileSize = 10, -- size of one checkerboard square
+	WallColorA = Color3.fromRGB(240, 215, 160), -- sand
+	WallColorB = Color3.fromRGB(245, 145, 120), -- coral
+	WallTrimColor = Color3.fromRGB(40, 190, 185), -- sea-green trim along the top
 }
 
 ---------------------------------------------------------------------------

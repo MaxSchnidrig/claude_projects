@@ -23,6 +23,8 @@ local Controllers = script.Controllers
 local CONTROLLERS: { Types.Controller } = {
 	require(Controllers.UIController),
 	require(Controllers.EggController),
+	require(Controllers.TreadmillController),
+	require(Controllers.ShiftLockController),
 }
 
 local failures = 0

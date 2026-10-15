@@ -141,3 +141,9 @@ The next time you open Studio, you'll see a **Rojo** button in the **Plugins** t
 Open `src/shared/Config.luau`. Every number that changes how the game feels is in there
 (egg odds, hatch times, pet income, upgrade prices, bot speeds, ...), with a comment
 explaining what it does. Save the file, and Rojo syncs it right away.
+
+**Studs not showing?** The stud look comes from one texture ID in
+`Config.Visuals.StudTexture`. If you see plain parts, open Studio's **Toolbox** → **Creator
+Store** → **Images**, search for `studs`, right-click one you like → **Copy Asset ID**, and
+paste it into that setting as `"rbxassetid://<the number>"`. Adjust
+`Config.Visuals.StudsPerTile` if the studs look too big or too small.

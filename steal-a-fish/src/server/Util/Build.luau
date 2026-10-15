@@ -5,12 +5,23 @@
 	Small helpers for making placeholder parts and text labels from code.
 	Everything they create is Anchored (it doesn't fall or move).
 
+	STUDS: every part made with Build.part gets the classic Roblox stud look
+	automatically (a tiling Texture, tinted with the part's color; see
+	Config.Visuals). Studs are skipped automatically for Neon, Glass and see-
+	through parts. To turn them off for one part, pass `Studs = false`. To
+	choose which faces get studs, pass `StudFaces = { Enum.NormalId.Top }`.
+
 	Usage:
 		Build.part({ Name = "Floor", Size = ..., CFrame = ..., Parent = model })
 		Build.cylinder({ ... })               -- upright cylinder; CFrame = center
+		Build.addStuds(part)                  -- add studs to any part yourself
 		Build.surfaceText(part, Enum.NormalId.Front, "Hello")
 		Build.billboard(part, "Hatch Pad", 4)
 ]]
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Config = require(ReplicatedStorage.Shared.Config)
 
 export type PartProps = {
 	Name: string,
@@ -23,9 +34,62 @@ export type PartProps = {
 	CanCollide: boolean?, -- default true
 	CanTouch: boolean?, -- default true
 	CanQuery: boolean?, -- default true
+	Studs: boolean?, -- default true for blocks, false for cylinders
+	StudFaces: { Enum.NormalId }?, -- default: every face except the bottom
 }
 
 local Build = {}
+
+local DEFAULT_STUD_FACES: { Enum.NormalId } = {
+	Enum.NormalId.Top,
+	Enum.NormalId.Front,
+	Enum.NormalId.Back,
+	Enum.NormalId.Left,
+	Enum.NormalId.Right,
+}
+local STUD_TEXTURE_NAME = "Studs"
+
+-- Add stud textures to `part`. The studs follow the part's color, even if the
+-- color changes later (for example, a plot floor that brightens when owned).
+function Build.addStuds(part: BasePart, faces: { Enum.NormalId }?)
+	local visuals = Config.Visuals
+	if not visuals.StudsEnabled then
+		return
+	end
+	local faceList: { Enum.NormalId } = faces or DEFAULT_STUD_FACES
+	for _, face in faceList do
+		local texture = Instance.new("Texture")
+		texture.Name = STUD_TEXTURE_NAME
+		texture.Texture = visuals.StudTexture
+		texture.Face = face
+		texture.StudsPerTileU = visuals.StudsPerTile
+		texture.StudsPerTileV = visuals.StudsPerTile
+		texture.Transparency = visuals.StudTransparency
+		texture.Color3 = part.Color
+		texture.Parent = part
+	end
+	part:GetPropertyChangedSignal("Color"):Connect(function()
+		for _, child in part:GetChildren() do
+			if child:IsA("Texture") and child.Name == STUD_TEXTURE_NAME then
+				child.Color3 = part.Color
+			end
+		end
+	end)
+end
+
+local function wantsStuds(props: PartProps, default: boolean): boolean
+	if props.Studs ~= nil then
+		return props.Studs
+	end
+	local material = props.Material
+	if material == Enum.Material.Neon or material == Enum.Material.Glass or material == Enum.Material.ForceField then
+		return false
+	end
+	if (props.Transparency or 0) >= 0.5 then
+		return false
+	end
+	return default
+end
 
 local function applyProps(part: Part, props: PartProps)
 	part.Name = props.Name
@@ -46,18 +110,25 @@ function Build.part(props: PartProps): Part
 	applyProps(part, props)
 	part.Size = props.Size
 	part.CFrame = props.CFrame
+	if wantsStuds(props, true) then
+		Build.addStuds(part, props.StudFaces)
+	end
 	part.Parent = props.Parent
 	return part
 end
 
 -- An upright cylinder. Size = Vector3.new(diameter, height, diameter).
 -- (Roblox cylinders lie on their side by default, so we rotate them upright.)
+-- No studs unless you pass Studs = true (textures wrap oddly on round parts).
 function Build.cylinder(props: PartProps): Part
 	local part = Instance.new("Part")
 	applyProps(part, props)
 	part.Shape = Enum.PartType.Cylinder
 	part.Size = Vector3.new(props.Size.Y, props.Size.X, props.Size.Z)
 	part.CFrame = props.CFrame * CFrame.Angles(0, 0, math.rad(90))
+	if wantsStuds(props, false) then
+		Build.addStuds(part, props.StudFaces)
+	end
 	part.Parent = props.Parent
 	return part
 end
