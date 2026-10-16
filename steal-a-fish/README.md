@@ -163,7 +163,8 @@ paste it into that setting as `"rbxassetid://<the number>"`. Adjust
 | 5 | Hatching and pets (eggs hatch on their pad, pets earn money, collect pad) | ✅ |
 | 6 | Upgrades and economy: plot space (pads), treadmill tiers, pet levels, selling pets | ✅ |
 | 7 | Saving (money, Speed stat, treadmill tier, pads, eggs and pets) | ✅ |
-| 8 | **UI and polish**: Pets window, colored notifications, sounds, effects, screen scaling, tutorial | 🔨 testing |
+| 8 | UI and polish: Pets window, colored notifications, sounds, effects, screen scaling, tutorial | ✅ |
+| 8b | **Gameplay changes**: egg hotbar inventory, carry pose, hold-E hatching, caught = drop, one alerted shark | 🔨 testing |
 | 9 | Monetization (Robux); Speed boosts plug into `SpeedService.SetGainMultiplier` | |
 
 ## Sounds
@@ -193,8 +194,8 @@ Only work while play-testing in Studio. Type them in the chat:
 | `!speed 5000` | set your Speed stat to 5000 |
 | `!speed zone 4` | set your Speed stat to just enough to outrun zone 4's shark |
 | `!tier 7` | rebuild your treadmill as tier 7 (Neon) |
-| `!egg mythic` | put a Mythic egg on your nearest free pad |
-| `!hatch` | hatch all your eggs right now |
+| `!egg mythic` | put a Mythic egg in your egg inventory (hotbar) |
+| `!hatch` | make all your eggs on pads READY right now (then hold E on them) |
 | `!money 5000` | set your money |
 | `!save` | save your progress right now |
 | `!wipe` | reset your progress to a brand-new player (and save that) |

@@ -349,6 +349,12 @@ Config.Eggs = {
 	PickupMaxDistance = 10, -- studs; the server re-checks this
 	RespawnInterval = 4, -- seconds between egg spawn attempts in each zone
 	MaxEggsTotal = 50, -- hard cap on eggs lying in the whole danger zone
+	-- Egg inventory: when you reach the safe zone with a stolen egg, it goes
+	-- into your hotbar as a Tool ("Rare Egg"). Equip it, walk to a free pad
+	-- and press E to place it there. Inventory eggs are saved.
+	MaxInventory = 7,
+	PlaceHoldDuration = 0, -- seconds to hold E to place an egg on a pad
+	HatchHoldDuration = 1, -- seconds to hold E on a READY egg to hatch it
 	SpawnMargin = 10, -- eggs never spawn closer than this to the zone's walls/edges
 	MinSpacing = 8, -- eggs try not to spawn closer than this to each other
 	Size = Vector3.new(2.4, 3, 2.4), -- placeholder egg size (width, height, depth)
@@ -366,7 +372,7 @@ Config.Eggs = {
 	-- What happens to a carried egg:
 	--   "Drop" = the egg falls on the ground where they were and can be picked up again
 	--   "Lose" = the egg disappears instantly
-	OnCaught = "Lose", -- caught by a shark
+	OnCaught = "Drop", -- caught by a shark (anyone can pick it up again)
 	OnDeath = "Drop", -- died or reset in any other way
 	DroppedEggLifetime = 20, -- seconds a dropped egg stays before vanishing
 
@@ -497,9 +503,10 @@ Config.Bots = {
 	HoverHeight = 2.5, -- how high sharks swim above the floor
 
 	-- Chasing
-	AggroRadius = 50, -- starts chasing an egg carrier within this distance
-	GiveUpDistance = 90, -- stops chasing once the target is farther than this
-	LeashPadding = 20, -- sharks may follow this far outside their own zone (never out of the danger zone)
+	-- Only the shark(s) of the zone an egg was stolen from chase the thief.
+	-- They follow across zone borders until the thief reaches the safe zone,
+	-- drops the egg or dies, then swim back to their own zone.
+	SafeLineMargin = 3, -- sharks stop this many studs before the safe zone starts
 	CatchDistance = 5.5, -- distance (center to center) that counts as "caught"
 	DirectChaseDistance = 20, -- closer than this: skip pathfinding, swim straight at them
 	PathRecomputeInterval = 0.5, -- seconds between path recalculations per shark

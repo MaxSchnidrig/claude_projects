@@ -8,12 +8,17 @@
 	    there and earns money (EconomyService pays it out) until it is sold.
 	So pads are egg slots and pet slots at the same time.
 
+	Placing: the player equips an egg from their hotbar and presses E on a
+	free pad ("Place Egg" prompt). EggService checks the egg, then calls
+	PetService.PlaceEggOnPad.
+
 	Hatching:
 	  - Hatch time = Config.Eggs.ByRarity[rarity].HatchTime
 	                 * Config.Eggs.HatchTimeMultiplier * the player's own
 	                 hatch multiplier (for a "Faster Hatching" pass later).
 	  - The countdown is shown above the egg (the client draws it from the
-	    egg's HatchEndsAt attribute).
+	    egg's HatchEndsAt attribute). When it reaches zero the egg is READY:
+	    it glows and gets a "Hatch" prompt. The owner holds E to hatch it.
 	  - The pet's rarity is rolled with Config.HatchOdds[eggRarity]; then one
 	    pet of that rarity is picked at random (all equally likely).
 	  - Everyone sees a burst effect; the owner gets a "You hatched ...!" card;
@@ -22,16 +27,15 @@
 	Eggs and pets are saved by DataService (ExportPads / ImportPads). An egg's
 	hatch timer pauses while its owner is offline.
 
-	Studio-only test commands:
-		!hatch          hatch all your eggs right now
-		!egg mythic     put a Mythic egg on your nearest free pad
+	Studio-only test command:
+		!hatch          make all your eggs READY right now
 
 	Public interface:
-		PetService.AcceptEgg(player, rarity, nearPosition) -> boolean
 		PetService.GetFreePadCount(player) -> number
 		PetService.GetPadItem(plot, padIndex) -> PadItem?
 		PetService.GetIncomePerSecond(player) -> number   -- all pets, before boosts
-		PetService.FinishHatching(player)                 -- hatch every egg now (Instant Hatch product later)
+		PetService.FinishHatching(player)                 -- make every egg READY now (Instant Hatch product later)
+		PetService.PlaceEggOnPad(player, padIndex, rarity) -> boolean
 		PetService.SetHatchTimeMultiplier(player, value)  -- e.g. 0.5 for a Faster Hatching pass
 		PetService.ExportPads(player) / ImportPads(player, list)  -- saving (DataService)
 		PetService.SetPetLevel(plot, padIndex, level)     -- after a paid upgrade
@@ -67,7 +71,8 @@ export type PadItem = {
 	Income: number, -- pets only: money per second at level 1 (0 for eggs)
 	Level: number, -- pets only (pet upgrades come later)
 	Instance: Instance, -- the egg Part or the pet Model
-	HatchEndsAt: number?, -- eggs only: server time it hatches at
+	HatchEndsAt: number?, -- eggs only: server time its timer finishes
+	Ready: boolean, -- eggs only: timer finished, waiting for the owner to hold E
 }
 
 local PetService = {}
@@ -78,6 +83,9 @@ PetService.PetHatched = Signal.new()
 -- Fired with (player, plot, padIndex, "Upgrade" or "Sell") when someone uses
 -- a pet's prompt. UpgradeService checks and handles it.
 PetService.PetPromptTriggered = Signal.new()
+-- Fired with (player, plot, padIndex) when someone uses a pad's "Place Egg"
+-- prompt. EggService checks the player's equipped egg and places it.
+PetService.PadPromptTriggered = Signal.new()
 
 local HATCH_CHECK_INTERVAL = 0.2
 
@@ -97,6 +105,14 @@ local function getItems(plot: Types.PlotInfo): { [number]: PadItem }
 		padItems[plot.Index] = items
 	end
 	return items
+end
+
+-- Mark a pad as taken/free (the client uses this to show "Place Egg" prompts).
+local function setOccupied(plot: Types.PlotInfo, padIndex: number, occupied: boolean)
+	local pad = plot.Pads[padIndex]
+	if pad then
+		pad:SetAttribute(Constants.Attributes.Occupied, occupied)
+	end
 end
 
 local function notifyAll(message: string, kind: string?)
@@ -183,32 +199,23 @@ local function placeEgg(player: Player, plot: Types.PlotInfo, padIndex: number, 
 		Level = 1,
 		Instance = part,
 		HatchEndsAt = endsAt,
+		Ready = false,
 	}
+	setOccupied(plot, padIndex, true)
 end
 
-function PetService.AcceptEgg(player: Player, rarity: string, nearPosition: Vector3): boolean
+-- Put an egg from the player's inventory on one of their pads. Returns
+-- false if that pad isn't theirs, isn't unlocked, or isn't free.
+-- (EggService checks the inventory and the equipped egg first.)
+function PetService.PlaceEggOnPad(player: Player, padIndex: number, rarity: string): boolean
 	local plot = PlotService.GetPlot(player)
-	if not plot then
+	if not plot or padIndex < 1 or padIndex > plot.UnlockedPads then
 		return false
 	end
-	local items = getItems(plot)
-
-	-- The closest free unlocked pad.
-	local bestIndex: number? = nil
-	local bestDistance = math.huge
-	for padIndex = 1, plot.UnlockedPads do
-		if not items[padIndex] then
-			local distance = (plot.Pads[padIndex].Position - nearPosition).Magnitude
-			if distance < bestDistance then
-				bestIndex = padIndex
-				bestDistance = distance
-			end
-		end
-	end
-	if not bestIndex then
+	if getItems(plot)[padIndex] then
 		return false
 	end
-	placeEgg(player, plot, bestIndex, rarity)
+	placeEgg(player, plot, padIndex, rarity)
 	return true
 end
 
@@ -316,7 +323,9 @@ local function placePet(plot: Types.PlotInfo, padIndex: number, pet: Config.PetC
 		Level = level,
 		Instance = model,
 		HatchEndsAt = nil,
+		Ready = false,
 	}
+	setOccupied(plot, padIndex, true)
 	refreshPet(plot, padIndex)
 	return model
 end
@@ -337,6 +346,7 @@ function PetService.RemovePet(plot: Types.PlotInfo, padIndex: number)
 	if item and item.Kind == "Pet" then
 		item.Instance:Destroy()
 		items[padIndex] = nil
+		setOccupied(plot, padIndex, false)
 	end
 end
 
@@ -362,14 +372,55 @@ local function hatch(plot: Types.PlotInfo, padIndex: number, egg: PadItem)
 	end
 end
 
+-- An egg's timer finished: it glows, says READY and gets a "Hatch" prompt.
+-- It only hatches when its owner holds E on it.
+local function markReady(plot: Types.PlotInfo, padIndex: number, item: PadItem)
+	item.Ready = true
+	local egg = item.Instance
+	if not egg:IsA("BasePart") then
+		return
+	end
+	egg:SetAttribute(Constants.Attributes.Ready, true)
+	egg.Material = Enum.Material.Neon
+	local light = egg:FindFirstChildOfClass("PointLight") or Instance.new("PointLight")
+	light.Color = Rarity.color(item.Rarity)
+	light.Range = 12
+	light.Brightness = 3
+	light.Parent = egg
+
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "HatchPrompt"
+	prompt.ActionText = "Hatch"
+	prompt.ObjectText = `{item.Rarity} Egg`
+	prompt.HoldDuration = Config.Eggs.HatchHoldDuration
+	prompt.MaxActivationDistance = 10
+	prompt.RequiresLineOfSight = false
+	-- Same tag as the pet prompts: only the owner sees it.
+	prompt:SetAttribute(Constants.Attributes.OwnerUserId, if plot.Owner then plot.Owner.UserId else 0)
+	prompt.Parent = egg
+	CollectionService:AddTag(prompt, Constants.Tags.PetPrompt)
+	prompt.Triggered:Connect(function(player: Player)
+		-- Check everything again: right owner, same egg still there, close enough.
+		if plot.Owner ~= player or getItems(plot)[padIndex] ~= item or not item.Ready then
+			return
+		end
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		if not (root and root:IsA("BasePart")) or (root.Position - egg.Position).Magnitude > 15 then
+			return
+		end
+		hatch(plot, padIndex, item)
+	end)
+end
+
 local function checkHatches()
 	local now = serverNow()
 	for _, plot in PlotService.GetPlots() do
 		local items = padItems[plot.Index]
 		if items then
 			for padIndex, item in items do
-				if item.Kind == "Egg" and item.HatchEndsAt and now >= item.HatchEndsAt then
-					hatch(plot, padIndex, item)
+				if item.Kind == "Egg" and not item.Ready and item.HatchEndsAt and now >= item.HatchEndsAt then
+					markReady(plot, padIndex, item)
 				end
 			end
 		end
@@ -533,6 +584,7 @@ function PetService.ClearPlayerPads(player: Player)
 	for padIndex, item in getItems(plot) do
 		item.Instance:Destroy()
 		getItems(plot)[padIndex] = nil
+		setOccupied(plot, padIndex, false)
 	end
 end
 
@@ -541,41 +593,74 @@ end
 ---------------------------------------------------------------------------
 
 -- Remove everything from a plot's pads (when its owner leaves).
-local function clearPads(plotIndex: number)
-	local items = padItems[plotIndex]
+local function clearPads(plot: Types.PlotInfo)
+	local items = padItems[plot.Index]
 	if items then
-		for _, item in items do
+		for padIndex, item in items do
 			item.Instance:Destroy()
+			setOccupied(plot, padIndex, false)
 		end
 	end
-	padItems[plotIndex] = nil
+	padItems[plot.Index] = nil
 end
 
 local function registerDebugCommands()
 	DebugCommands.register("hatch", function(player, _args)
 		PetService.FinishHatching(player)
 	end)
-	DebugCommands.register("egg", function(player, args)
-		local wanted = args[1] or "common"
-		for _, info in Config.Rarities do
-			if string.lower(info.Name) == wanted then
-				local character = player.Character
-				local position = if character then character:GetPivot().Position else Vector3.zero
-				if not PetService.AcceptEgg(player, info.Name, position) then
-					Notify.send(player, "[Studio] All your pads are full!", "warning")
-				end
-				return
-			end
+
+end
+
+-- A "Place Egg" prompt on every pad of every plot. The client only shows
+-- it to the owner, while they hold an egg and the pad is free.
+local function addPadPrompts()
+	for _, plot in PlotService.GetPlots() do
+		for padIndex, pad in plot.Pads do
+			local prompt = Instance.new("ProximityPrompt")
+			prompt.Name = "PlacePrompt"
+			prompt.ActionText = "Place Egg"
+			prompt.ObjectText = `Pad {padIndex}`
+			prompt.HoldDuration = Config.Eggs.PlaceHoldDuration
+			prompt.MaxActivationDistance = 8
+			prompt.RequiresLineOfSight = false
+			prompt.Enabled = false
+			prompt:SetAttribute(Constants.Attributes.OwnerUserId, 0)
+			prompt.Parent = pad
+			CollectionService:AddTag(prompt, Constants.Tags.PadPrompt)
+			pad:SetAttribute(Constants.Attributes.Occupied, false)
+			prompt.Triggered:Connect(function(player: Player)
+				PetService.PadPromptTriggered:Fire(player, plot, padIndex)
+			end)
 		end
-	end)
+	end
+end
+
+-- Keep the owner on every pad prompt up to date.
+local function setPadPromptOwner(plot: Types.PlotInfo, userId: number)
+	for _, pad in plot.Pads do
+		local prompt = pad:FindFirstChild("PlacePrompt")
+		if prompt then
+			prompt:SetAttribute(Constants.Attributes.OwnerUserId, userId)
+		end
+	end
 end
 
 function PetService.Init()
 end
 
 function PetService.Start()
+	addPadPrompts()
+	PlotService.PlotAssigned:Connect(function(player: Player, plot: Types.PlotInfo)
+		setPadPromptOwner(plot, player.UserId)
+	end)
+	for _, plot in PlotService.GetPlots() do
+		if plot.Owner then
+			setPadPromptOwner(plot, plot.Owner.UserId)
+		end
+	end
 	PlotService.PlotReleased:Connect(function(_player: Player, plot: Types.PlotInfo)
-		clearPads(plot.Index)
+		clearPads(plot)
+		setPadPromptOwner(plot, 0)
 	end)
 	PlayerLifecycle.onLeave(function(player)
 		hatchTimeMultipliers[player] = nil

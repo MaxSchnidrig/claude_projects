@@ -7,22 +7,26 @@
 
 	What a shark does (checked every Config.Bots.UpdateInterval seconds):
 	  - PATROL: swim slowly to a random point in its home zone, wait, repeat.
-	  - CHASE: when a player CARRYING AN EGG comes within AggroRadius (and is
-	    inside the shark's leash area), swim after them at full speed.
+	    If it is outside its home zone (after a chase), it swims back at full
+	    speed first.
+	  - CHASE: ONLY when an egg is stolen from ITS zone (EggService tells us
+	    which zone). Sharks never react just because someone walks by.
+	    It chases that thief across zone borders, at full speed:
 	      * Close by (DirectChaseDistance): swim straight at them.
 	      * Farther away: follow a path from PathfindingService. Paths are
 	        recalculated at most every PathRecomputeInterval seconds per shark,
 	        and all sharks share a budget of MaxPathComputesPerSecond.
-	      * Give up when the target is farther than GiveUpDistance, leaves the
-	        leash area, delivers or loses the egg, or dies.
-	  - CATCH: getting within CatchDistance = caught. The player loses or drops
-	    the egg (EggService), gets knocked back (or killed, if
-	    Config.Bots.KillOnCatch), and is ignored by all sharks for CatchCooldown
+	      * Give up when the thief reaches the safe zone, drops/loses the egg,
+	        dies or leaves. Then swim back home.
+	  - CATCH: getting within CatchDistance = caught. The egg drops (or is lost,
+	    see Config.Eggs.OnCaught), the player is knocked back (or killed, if
+	    Config.Bots.KillOnCatch) and can't be caught again for CatchCooldown
 	    seconds. The shark rests for PostCatchPause seconds.
 
-	Leash: each shark stays inside its home zone plus LeashPadding studs, and
-	never leaves the danger zone. That (plus the invisible BotBarrier from
-	WorldService) keeps sharks away from the plots and the front area.
+	Leash: sharks may go anywhere in the danger zone while chasing, but stop
+	Config.Bots.SafeLineMargin studs before the safe zone. That (plus the
+	invisible BotBarrier from WorldService) keeps them away from the open
+	area and the plots.
 
 	Model: a placeholder shark built from parts, or your own model named
 	Config.Bots.ModelName ("Shark") in ReplicatedStorage.Assets. Sharks use a
@@ -110,10 +114,6 @@ end
 
 local function flatDistance(a: Vector3, b: Vector3): number
 	return Vector3.new(a.X - b.X, 0, a.Z - b.Z).Magnitude
-end
-
-local function inLeash(bot: Bot, position: Vector3): boolean
-	return position.X >= bot.MinX and position.X <= bot.MaxX and position.Z >= bot.MinZ and position.Z <= bot.MaxZ
 end
 
 -- The closest point inside the shark's leash area, at swimming height.
@@ -241,9 +241,7 @@ local function createBot(zoneIndex: number): Bot
 	-- The server controls sharks' physics (so players can't mess with them).
 	root:SetNetworkOwner(nil)
 
-	-- Leash area: home zone + padding, but never outside the danger zone.
-	local near, far = Layout.zoneZRange(zoneIndex)
-	local pad = Config.Bots.LeashPadding
+	-- Leash area: the whole danger zone, but never the safe zone.
 	local halfWidth = Config.World.DangerZoneWidth / 2 - 4
 	local edge = 3
 	local path = PathfindingService:CreatePath({
@@ -264,8 +262,8 @@ local function createBot(zoneIndex: number): Bot
 		Speed = sharkSpeed,
 		MinX = -halfWidth,
 		MaxX = halfWidth,
-		MinZ = math.max(far - pad, Layout.DangerZoneBack + edge),
-		MaxZ = math.min(near + pad, Layout.DangerZoneFront - edge),
+		MinZ = Layout.DangerZoneBack + edge,
+		MaxZ = Layout.DangerZoneFront - Config.Bots.SafeLineMargin,
 		State = "Patrol",
 		Target = nil,
 		PatrolPoint = nil,
@@ -281,34 +279,20 @@ end
 -- Brain
 ---------------------------------------------------------------------------
 
--- Can sharks chase this player right now?
-local function isValidTarget(player: Player, now: number): boolean
+-- Should a shark keep chasing this player? Only while they are alive, still
+-- carry an egg and are still in the danger zone.
+local function isValidTarget(player: Player): boolean
 	if player.Parent == nil or not EggService.IsCarrying(player) or not isAlive(player) then
 		return false
 	end
-	local caughtAt = lastCaught[player]
-	if caughtAt and now - caughtAt < Config.Bots.CatchCooldown then
-		return false
-	end
-	return getRoot(player) ~= nil
+	local root = getRoot(player)
+	return root ~= nil and root.Position.Z < Layout.DangerZoneFront
 end
 
-local function findTarget(bot: Bot, now: number): Player?
-	local best: Player? = nil
-	local bestDistance = Config.Bots.AggroRadius
-	for _, player in Players:GetPlayers() do
-		if isValidTarget(player, now) then
-			local root = getRoot(player)
-			if root and inLeash(bot, root.Position) then
-				local distance = (root.Position - bot.Root.Position).Magnitude
-				if distance <= bestDistance then
-					best = player
-					bestDistance = distance
-				end
-			end
-		end
-	end
-	return best
+-- Just caught? Then the player can't be caught again for a moment.
+local function onCatchCooldown(player: Player, now: number): boolean
+	local caughtAt = lastCaught[player]
+	return caughtAt ~= nil and now - caughtAt < Config.Bots.CatchCooldown
 end
 
 local function startChase(bot: Bot, player: Player)
@@ -399,7 +383,7 @@ local function chaseStep(bot: Bot, now: number)
 	end
 
 	local distance = (targetRoot.Position - bot.Root.Position).Magnitude
-	if distance <= Config.Bots.CatchDistance then
+	if distance <= Config.Bots.CatchDistance and not onCatchCooldown(player, now) then
 		catch(bot, player, now)
 		return
 	end
@@ -439,6 +423,11 @@ local function patrolStep(bot: Bot, now: number)
 		point = randomPointInZone(bot.Zone)
 		bot.PatrolPoint = point
 	end
+	-- Outside its home zone (after a chase)? Hurry back at full speed.
+	local near, far = Layout.zoneZRange(bot.Zone)
+	local z = bot.Root.Position.Z
+	local atHome = z <= near and z >= far
+	bot.Humanoid.WalkSpeed = if atHome then bot.Speed * Config.Bots.PatrolSpeedMultiplier else bot.Speed
 	bot.Humanoid:MoveTo(point :: Vector3)
 end
 
@@ -451,12 +440,6 @@ local function updateBot(bot: Bot, now: number)
 
 	if bot.State == "Pause" then
 		if now < bot.PauseUntil then
-			-- Resting sharks still react to egg carriers swimming by. (A player
-			-- who was just caught is ignored anyway, thanks to CatchCooldown.)
-			local target = findTarget(bot, now)
-			if target then
-				startChase(bot, target)
-			end
 			return
 		end
 		bot.State = "Patrol"
@@ -464,22 +447,8 @@ local function updateBot(bot: Bot, now: number)
 
 	if bot.State == "Chase" then
 		local player = bot.Target
-		local root = if player then getRoot(player) else nil
-		if
-			not player
-			or not root
-			or not isValidTarget(player, now)
-			or not inLeash(bot, root.Position)
-			or (root.Position - bot.Root.Position).Magnitude > Config.Bots.GiveUpDistance
-		then
-			stopChase(bot)
-		end
-	end
-
-	if bot.State ~= "Chase" then
-		local target = findTarget(bot, now)
-		if target then
-			startChase(bot, target)
+		if not (player and isValidTarget(player)) then
+			stopChase(bot) -- safe, dropped the egg, died or left: go home
 		end
 	end
 
@@ -521,6 +490,15 @@ function BotService.Start()
 
 	Players.PlayerRemoving:Connect(function(player)
 		lastCaught[player] = nil
+	end)
+
+	-- An egg was stolen: ONLY the shark(s) of that zone come after the thief.
+	EggService.EggPickedUp:Connect(function(player: Player, _rarity: string, zoneIndex: number)
+		for _, bot in bots do
+			if bot.Zone == zoneIndex and bot.State ~= "Chase" then
+				startChase(bot, player)
+			end
+		end
 	end)
 
 	local elapsed = 0

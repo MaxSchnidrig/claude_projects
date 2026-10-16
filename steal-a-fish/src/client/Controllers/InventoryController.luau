@@ -136,7 +136,8 @@ local function buildRow(entry: Entry, order: number, money: number)
 	Kit.label(row, entry.Name, UDim2.new(0.5, -20, 0, 30), UDim2.fromOffset(18, 6), color)
 	if entry.Kind == "Egg" then
 		local left = entry.HatchEndsAt - Workspace:GetServerTimeNow()
-		Kit.label(row, `🥚 Hatches in {formatTime(left)}`, UDim2.new(0.6, -20, 0, 24), UDim2.fromOffset(18, 38), Kit.Colors.SubText)
+		local text = if left > 0 then `🥚 Hatches in {formatTime(left)}` else "✨ READY! Hold E on it to hatch"
+		Kit.label(row, text, UDim2.new(0.6, -20, 0, 24), UDim2.fromOffset(18, 38), Kit.Colors.SubText)
 		return
 	end
 

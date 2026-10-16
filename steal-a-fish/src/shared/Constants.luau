@@ -20,6 +20,8 @@ return {
 		PetModel = "PetModel",
 		-- Upgrade/Sell prompts on pets (the client hides other players' prompts).
 		PetPrompt = "PetPrompt",
+		-- "Place Egg" prompts on pads (the client shows them only when useful).
+		PadPrompt = "PadPrompt",
 	},
 	Attributes = {
 		-- Set on the Player while they carry an egg. Value = the egg's rarity.
@@ -50,5 +52,13 @@ return {
 		Level = "Level",
 		-- On the Player: true while the new-player tutorial should run.
 		ShowTutorial = "ShowTutorial",
+		-- On the Player: how many eggs are in their egg inventory.
+		EggCount = "EggCount",
+		-- On an egg Tool: the egg's rarity.
+		EggRarity = "EggRarity",
+		-- On a pad: true while an egg or pet sits on it.
+		Occupied = "Occupied",
+		-- On a pad egg: true once its timer finished (hold E to hatch).
+		Ready = "Ready",
 	},
 }

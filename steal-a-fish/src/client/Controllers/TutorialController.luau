@@ -5,11 +5,13 @@
 	A short guide for new players (the server turns it on with the player
 	attribute "ShowTutorial", and remembers when it's done):
 
-	  1. "Go to the Danger Zone and steal an egg!"   -> arrow to the entrance
-	  2. "Run back to your plot!"                    -> arrow to your plot
+	  1. Steal an egg in the Danger Zone       -> arrow to the entrance
+	  2. Run back to the safe zone            -> arrow to your plot
 	     (caught? back to step 1)
-	  3. "Train on your treadmill to get faster!"    -> arrow to your treadmill
-	  4. "Faster = deeper zones = rarer eggs!"       -> done after a few seconds
+	  3. Equip the egg, press E on a free pad -> arrow to your plot
+	  4. Hold E on the egg when it's READY    -> arrow to your plot
+	  5. Train on your treadmill              -> arrow to your treadmill
+	  6. "Faster = deeper zones = rarer eggs!" -> done after a few seconds
 
 	The arrow floats above your character and points at the target. A tall
 	glowing beacon marks the target. Both exist only on your own screen.
@@ -36,10 +38,13 @@ local player = Players.LocalPlayer
 
 local STEPS = {
 	"🥚 Go to the Danger Zone and steal an egg!",
-	"🏃 Run back to your plot before the shark gets you!",
+	"🏃 Run back to the safe zone before the shark gets you!",
+	"🎒 Equip the egg from your hotbar and press E on a free pad!",
+	"✨ When the egg says READY, hold E on it to hatch!",
 	"⚡ Step on your treadmill to train your Speed!",
 	"🎉 Faster = deeper zones = rarer eggs. Have fun!",
 }
+local FINAL_STEP = #STEPS
 local FINAL_STEP_SECONDS = 6
 
 local step = 0 -- 0 = tutorial not running
@@ -47,7 +52,10 @@ local banner: TextLabel
 local bannerFrame: Frame
 local arrow: Model? = nil
 local beacon: BasePart? = nil
+-- Counts when the current step started, to notice progress.
 local eggsAtStepStart = 0
+local padEggsAtStepStart = 0
+local petsAtStepStart = 0
 local finalStepEndsAt = 0
 local lostEggSince: number? = nil -- when we first noticed "not carrying" in step 2
 
@@ -69,18 +77,24 @@ local function myPlot(): Model?
 	return nil
 end
 
-local function countMyPadItems(): number
+-- How many things with this tag are on my plot (eggs or pets).
+local function countOnMyPlot(tag: string): number
 	local plot = myPlot()
 	if not plot then
 		return 0
 	end
 	local count = 0
 	for _, child in plot:GetChildren() do
-		if CollectionService:HasTag(child, Constants.Tags.HatchingEgg) or CollectionService:HasTag(child, Constants.Tags.PetModel) then
+		if CollectionService:HasTag(child, tag) then
 			count += 1
 		end
 	end
 	return count
+end
+
+local function eggCount(): number
+	local value = player:GetAttribute(Constants.Attributes.EggCount)
+	return if typeof(value) == "number" then value else 0
 end
 
 -- Where the current step wants you to go (nil = nowhere).
@@ -93,10 +107,10 @@ local function targetPosition(): Vector3?
 	if not plot then
 		return nil
 	end
-	if step == 2 then
+	if step == 2 or step == 3 or step == 4 then
 		local floor = plot.PrimaryPart
 		return if floor then floor.Position else nil
-	elseif step == 3 then
+	elseif step == 5 then
 		local model = plot:FindFirstChild("TreadmillModel")
 		local belt = model and model:FindFirstChild("Treadmill")
 		return if belt and belt:IsA("BasePart") then belt.Position else nil
@@ -211,8 +225,10 @@ local function setStep(newStep: number)
 	end
 	bannerFrame.Visible = true
 	banner.Text = STEPS[step]
-	eggsAtStepStart = countMyPadItems()
-	if step == 4 then
+	eggsAtStepStart = eggCount()
+	padEggsAtStepStart = countOnMyPlot(Constants.Tags.HatchingEgg)
+	petsAtStepStart = countOnMyPlot(Constants.Tags.PetModel)
+	if step == FINAL_STEP then
 		finalStepEndsAt = os.clock() + FINAL_STEP_SECONDS
 		clearMarkers()
 	end
@@ -242,9 +258,9 @@ local function update()
 	if step == 1 and carrying then
 		setStep(2)
 	elseif step == 2 then
-		if countMyPadItems() > eggsAtStepStart then
+		if eggCount() > eggsAtStepStart then
 			lostEggSince = nil
-			setStep(3) -- delivered!
+			setStep(3) -- the egg is safe in the hotbar!
 		elseif not carrying then
 			-- The egg may simply not have shown up on the pad yet; wait a moment
 			-- before deciding it was lost.
@@ -256,9 +272,13 @@ local function update()
 		else
 			lostEggSince = nil
 		end
-	elseif step == 3 and training then
-		setStep(4)
-	elseif step == 4 and os.clock() >= finalStepEndsAt then
+	elseif step == 3 and countOnMyPlot(Constants.Tags.HatchingEgg) > padEggsAtStepStart then
+		setStep(4) -- placed on a pad
+	elseif step == 4 and countOnMyPlot(Constants.Tags.PetModel) > petsAtStepStart then
+		setStep(5) -- hatched!
+	elseif step == 5 and training then
+		setStep(6)
+	elseif step == FINAL_STEP and os.clock() >= finalStepEndsAt then
 		finish()
 		return
 	end

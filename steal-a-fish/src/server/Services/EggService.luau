@@ -8,18 +8,30 @@
 	  - Picking up an egg with a ProximityPrompt. The server checks
 	    everything: the egg is still there, the player is alive, close enough,
 	    owns a plot, isn't already carrying one, and isn't spamming.
-	  - Carrying: the egg floats above the player's head and heavy eggs slow
-	    them down (Config.Eggs.ByRarity[...].CarrySpeedMultiplier).
+	  - Carrying: the player holds the egg above their head with both arms
+	    (CarryPose). Heavy eggs can slow them down
+	    (Config.Eggs.ByRarity[...].CarrySpeedMultiplier, 1 = no slow-down).
 	  - Losing it: being caught by a shark follows Config.Eggs.OnCaught, dying
 	    any other way follows Config.Eggs.OnDeath ("Drop" or "Lose").
-	  - Delivering: stepping onto your own plot hands the egg to PetService,
-	    which puts it on the nearest free pad.
+	  - Reaching the safe zone (the open area and the plots): the egg goes into
+	    the player's EGG INVENTORY (max Config.Eggs.MaxInventory). Each egg is
+	    a Tool in the Roblox hotbar ("Rare Egg"). The server keeps the real
+	    list; the Tools are rebuilt from it (for example after a respawn).
+	  - Placing: equip an egg, walk to one of your free pads, press E ("Place
+	    Egg"). The server checks the pad, the equipped egg and the inventory,
+	    then PetService puts it on the pad and starts its timer.
+
+	Studio-only test command:
+		!egg mythic     put a Mythic egg in your egg inventory
 
 	Public interface:
 		EggService.IsCarrying(player) -> boolean
 		EggService.GetCarriedRarity(player) -> string?
 		EggService.DropEgg(player, reason)     -- reason: "caught", "died", ...
-		EggService.EggPickedUp:Connect(function(player, rarity) end)
+		EggService.GetInventory(player) -> { string }      -- saving
+		EggService.SetInventory(player, rarities)          -- loading
+		EggService.AddToInventory(player, rarity) -> boolean
+		EggService.EggPickedUp:Connect(function(player, rarity, zoneIndex) end)
 		EggService.EggDropped:Connect(function(player, rarity, reason) end)
 		EggService.EggDelivered:Connect(function(player, rarity) end)
 ]]
@@ -34,10 +46,13 @@ local Constants = require(ReplicatedStorage.Shared.Constants)
 local Layout = require(ReplicatedStorage.Shared.Layout)
 local Rarity = require(ReplicatedStorage.Shared.Rarity)
 local Signal = require(ReplicatedStorage.Shared.Signal)
+local Types = require(ReplicatedStorage.Shared.Types)
 local Notify = require(script.Parent.Parent.Util.Notify)
 local Build = require(script.Parent.Parent.Util.Build)
 local EggVisual = require(script.Parent.Parent.Util.EggVisual)
 local PlayerSpeed = require(script.Parent.Parent.Util.PlayerSpeed)
+local CarryPose = require(script.Parent.Parent.Util.CarryPose)
+local DebugCommands = require(script.Parent.Parent.Util.DebugCommands)
 local RateLimiter = require(script.Parent.Parent.Util.RateLimiter)
 local PlayerLifecycle = require(script.Parent.Parent.Util.PlayerLifecycle)
 local PetService = require(script.Parent.PetService)
@@ -71,7 +86,6 @@ local eggsFolder: Folder
 local zoneEggs: { [number]: { GroundEgg } } = {}
 local carrying: { [Player]: Carry } = {}
 local pickupLimiter = RateLimiter.new(4, 1) -- max 4 pickup attempts per second
-local lastPadFullNotice: { [Player]: number } = {}
 
 -- Height of an egg's center when it rests on a surface at height `surfaceY`,
 -- partly buried (Config.Eggs.VisibleFraction sticks out).
@@ -225,6 +239,10 @@ local function attachCarriedEgg(player: Player, rarity: string, root: BasePart)
 
 	carrying[player] = { Rarity = rarity, Part = part }
 	player:SetAttribute(Constants.Attributes.CarryingEgg, rarity)
+	local character = root.Parent
+	if character and character:IsA("Model") then
+		CarryPose.set(character, true)
+	end
 
 	local rarityConfig = Config.Eggs.ByRarity[rarity]
 	PlayerSpeed.SetMultiplier(player, "Carry", if rarityConfig then rarityConfig.CarrySpeedMultiplier else 1)
@@ -239,6 +257,9 @@ local function takeCarry(player: Player): Carry?
 	carrying[player] = nil
 	carry.Part:Destroy()
 	player:SetAttribute(Constants.Attributes.CarryingEgg, nil)
+	if player.Character then
+		CarryPose.set(player.Character, false)
+	end
 	PlayerSpeed.SetMultiplier(player, "Carry", nil)
 	return carry
 end
@@ -267,10 +288,12 @@ tryPickUp = function(player: Player, egg: GroundEgg)
 	end
 
 	local rarity = egg.Rarity
+	local zoneIndex = egg.Zone
 	removeGroundEgg(egg)
 	attachCarriedEgg(player, rarity, root)
-	notify(player, `You stole a {rarity} Egg! Run back to your plot!`, "success")
-	EggService.EggPickedUp:Fire(player, rarity)
+	notify(player, `You stole a {rarity} Egg! Run back to the safe zone!`, "success")
+	-- BotService alerts the shark of THIS zone.
+	EggService.EggPickedUp:Fire(player, rarity, zoneIndex)
 end
 
 ---------------------------------------------------------------------------
@@ -314,30 +337,152 @@ function EggService.DropEgg(player: Player, reason: string)
 end
 
 ---------------------------------------------------------------------------
--- Delivery check (runs a few times per second)
+-- Egg inventory (hotbar Tools)
 ---------------------------------------------------------------------------
 
-local DELIVERY_CHECK_INTERVAL = 0.15
-local PAD_FULL_NOTICE_COOLDOWN = 3
+local SAFE_CHECK_INTERVAL = 0.15
+local FULL_NOTICE_COOLDOWN = 3
 
-local function checkDeliveries()
+local inventories: { [Player]: { string } } = {}
+
+local function isEggTool(item: Instance): boolean
+	return item:IsA("Tool") and typeof(item:GetAttribute(Constants.Attributes.EggRarity)) == "string"
+end
+
+local function makeEggTool(rarity: string): Tool
+	local tool = Instance.new("Tool")
+	tool.Name = `{rarity} Egg`
+	tool.CanBeDropped = false
+	tool.RequiresHandle = true
+	tool.ToolTip = "Walk to one of your free pads and press E"
+	tool:SetAttribute(Constants.Attributes.EggRarity, rarity)
+	local handle = EggVisual.create(rarity, false)
+	handle.Name = "Handle"
+	handle.Parent = tool
+	return tool
+end
+
+local function getBackpack(player: Player): Backpack?
+	local backpack = player:FindFirstChildOfClass("Backpack")
+	return backpack
+end
+
+-- Make the Tools in the backpack match the server's inventory list.
+local function rebuildTools(player: Player)
+	local backpack = getBackpack(player)
+	if not backpack then
+		return
+	end
+	local containers: { Instance } = { backpack }
+	if player.Character then
+		table.insert(containers, player.Character)
+	end
+	for _, container in containers do
+		for _, item in container:GetChildren() do
+			if isEggTool(item) then
+				item:Destroy()
+			end
+		end
+	end
+	local list: { string } = inventories[player] or {}
+	for _, rarity in list do
+		makeEggTool(rarity).Parent = backpack
+	end
+end
+
+local function updateCount(player: Player)
+	player:SetAttribute(Constants.Attributes.EggCount, #(inventories[player] or {}))
+end
+
+function EggService.GetInventory(player: Player): { string }
+	return table.clone(inventories[player] or {})
+end
+
+function EggService.SetInventory(player: Player, rarities: { string })
+	local list = {}
+	for _, rarity in rarities do
+		if Rarity.rank(rarity) > 0 and #list < Config.Eggs.MaxInventory then
+			table.insert(list, rarity)
+		end
+	end
+	inventories[player] = list
+	updateCount(player)
+	rebuildTools(player)
+end
+
+-- Add one egg (and its Tool). False if the inventory is full.
+function EggService.AddToInventory(player: Player, rarity: string): boolean
+	local list = inventories[player]
+	if not list then
+		list = {}
+		inventories[player] = list
+	end
+	if #list >= Config.Eggs.MaxInventory then
+		return false
+	end
+	table.insert(list, rarity)
+	updateCount(player)
+	local backpack = getBackpack(player)
+	if backpack then
+		makeEggTool(rarity).Parent = backpack
+	end
+	return true
+end
+
+-- Runs a few times per second: a carried egg that reaches the safe zone
+-- (the open area in front of the plots, or the plots) goes into the inventory.
+local lastFullNotice: { [Player]: number } = {}
+local function checkSafeArrivals()
 	for player, carry in carrying do
-		local plot = PlotService.GetPlot(player)
 		local root = getRoot(player)
-		-- Anywhere on your own plot counts: the egg goes to the nearest free pad.
-		if plot and root and PlotService.GetPlotAt(root.Position) == plot then
-			if PetService.AcceptEgg(player, carry.Rarity, root.Position) then
+		if root and root.Position.Z > Layout.DangerZoneFront then
+			if EggService.AddToInventory(player, carry.Rarity) then
 				takeCarry(player)
-				notify(player, `{carry.Rarity} Egg placed on a pad!`, "success")
+				notify(player, `🎒 {carry.Rarity} Egg added to your hotbar! Equip it and press E on a free pad.`, "success")
 				EggService.EggDelivered:Fire(player, carry.Rarity)
 			else
 				local now = os.clock()
-				if now - (lastPadFullNotice[player] or 0) > PAD_FULL_NOTICE_COOLDOWN then
-					lastPadFullNotice[player] = now
-					notify(player, "All your pads are full!", "warning")
+				if now - (lastFullNotice[player] or 0) > FULL_NOTICE_COOLDOWN then
+					lastFullNotice[player] = now
+					notify(player, `Your egg inventory is full ({Config.Eggs.MaxInventory})! Place some eggs on your pads first.`, "warning")
 				end
 			end
 		end
+	end
+end
+
+-- The "Place Egg" prompt on a pad was used.
+local placeLimiter = RateLimiter.new(4, 1)
+local function onPadPrompt(player: Player, plot: Types.PlotInfo, padIndex: number)
+	if not placeLimiter.allow(player) or plot.Owner ~= player then
+		return
+	end
+	local character = player.Character
+	local tool = character and character:FindFirstChildOfClass("Tool")
+	if not (tool and isEggTool(tool)) then
+		notify(player, "Equip an egg from your hotbar first!", "warning")
+		return
+	end
+	local rarity = tool:GetAttribute(Constants.Attributes.EggRarity) :: string
+	local list = inventories[player] or {}
+	local index = table.find(list, rarity)
+	if not index then
+		tool:Destroy() -- a Tool the server doesn't know about: remove it
+		return
+	end
+	-- Close enough to the pad?
+	local root = getRoot(player)
+	local pad = plot.Pads[padIndex]
+	if not (root and pad) or (root.Position - pad.Position).Magnitude > 14 then
+		return
+	end
+	if PetService.PlaceEggOnPad(player, padIndex, rarity) then
+		table.remove(list, index)
+		tool:Destroy()
+		updateCount(player)
+		notify(player, `{rarity} Egg placed! It hatches when the timer runs out.`, "success")
+	else
+		notify(player, "That pad isn't free!", "warning")
 	end
 end
 
@@ -357,6 +502,10 @@ end
 local function watchPlayer(player: Player)
 	player.CharacterAdded:Connect(function(character)
 		watchCharacter(player, character)
+		-- A new character gets a new, empty backpack: give the eggs back.
+		task.wait(0.1)
+		player:WaitForChild("Backpack", 5)
+		rebuildTools(player)
 	end)
 	-- If the character disappears without dying (for example, a respawn),
 	-- the egg goes with it.
@@ -384,8 +533,23 @@ function EggService.Start()
 		watchPlayer(player)
 	end
 	PlayerLifecycle.onLeave(function(player)
-		takeCarry(player) -- a leaving player's egg is simply removed
-		lastPadFullNotice[player] = nil
+		takeCarry(player) -- a carried (not yet safe) egg is simply removed
+		inventories[player] = nil
+		lastFullNotice[player] = nil
+	end)
+
+	PetService.PadPromptTriggered:Connect(onPadPrompt)
+
+	DebugCommands.register("egg", function(player, args)
+		local wanted = args[1] or "common"
+		for _, info in Config.Rarities do
+			if string.lower(info.Name) == wanted then
+				if not EggService.AddToInventory(player, info.Name) then
+					notify(player, "[Studio] Your egg inventory is full!", "warning")
+				end
+				return
+			end
+		end
 	end)
 
 	-- Fill every zone right away, then keep topping them up.
@@ -406,9 +570,9 @@ function EggService.Start()
 	local elapsed = 0
 	RunService.Heartbeat:Connect(function(dt)
 		elapsed += dt
-		if elapsed >= DELIVERY_CHECK_INTERVAL then
+		if elapsed >= SAFE_CHECK_INTERVAL then
 			elapsed = 0
-			checkDeliveries()
+			checkSafeArrivals()
 		end
 	end)
 end

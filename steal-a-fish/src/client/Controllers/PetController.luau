@@ -4,7 +4,8 @@
 	=============
 	Egg and pet visuals on your own screen (the server decides everything):
 	  - Countdown under every hatching egg ("0:35"), from its HatchEndsAt time.
-	  - Eggs wiggle in their last seconds before hatching.
+	  - Eggs wiggle in their last seconds; READY eggs bounce and say
+	    "READY! Hold E to hatch".
 	  - Pets gently bob up and down above their pads.
 	  - A colorful burst where an egg hatches (everyone nearby sees it).
 	  - A "You hatched ...!" card for your own hatches.
@@ -62,14 +63,26 @@ local function updateEgg(egg: BasePart, now: number, time: number)
 	end
 	local remaining = endsAt - now
 
+	local ready = egg:GetAttribute(Constants.Attributes.Ready) == true
 	local label = egg:FindFirstChild("Label")
 	local subtitle = label and label:FindFirstChild("Subtitle")
 	if subtitle and subtitle:IsA("TextLabel") then
-		subtitle.Text = if remaining > 0 then `⏳ {formatTime(remaining)}` else "Hatching..."
+		if ready then
+			subtitle.Text = "✨ READY! Hold E to hatch"
+		elseif remaining > 0 then
+			subtitle.Text = `⏳ {formatTime(remaining)}`
+		else
+			subtitle.Text = "Almost ready..."
+		end
 	end
 
 	local base = basePivot(egg)
-	if remaining < WIGGLE_SECONDS then
+	if ready then
+		-- Bouncing happily, waiting for its owner.
+		local hop = math.abs(math.sin(time * 5)) * 0.8
+		local angle = math.sin(time * 10) * 0.12
+		egg.CFrame = base * CFrame.new(0, hop, 0) * CFrame.Angles(0, 0, angle)
+	elseif remaining < WIGGLE_SECONDS then
 		-- Wiggle harder as the moment gets closer.
 		local strength = 1 - math.max(remaining, 0) / WIGGLE_SECONDS
 		local angle = math.sin(time * 30) * 0.25 * strength

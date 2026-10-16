@@ -6,7 +6,8 @@
 
 	What is saved (one record per player, key "Player_<UserId>"):
 	  Money (wallet + money waiting on the collect pad), Speed stat, treadmill
-	  tier, pads bought, every egg/pet on the pads, and (for the Robux
+	  tier, pads bought, every egg/pet on the pads, the eggs in the hotbar
+	  inventory, and (for the Robux
 	  milestone) the IDs of processed purchases.
 
 	How it stays safe:
@@ -49,6 +50,7 @@ local Notify = require(script.Parent.Parent.Util.Notify)
 local DebugCommands = require(script.Parent.Parent.Util.DebugCommands)
 local PlayerLifecycle = require(script.Parent.Parent.Util.PlayerLifecycle)
 local EconomyService = require(script.Parent.EconomyService)
+local EggService = require(script.Parent.EggService)
 local PetService = require(script.Parent.PetService)
 local PlotService = require(script.Parent.PlotService)
 local SpeedService = require(script.Parent.SpeedService)
@@ -63,6 +65,7 @@ export type SaveData = {
 	TreadmillTier: number,
 	PadsBought: number,
 	Pads: { PetService.SavedPadItem },
+	EggInventory: { string }, -- rarities of the eggs in the hotbar
 	ProcessedPurchases: { [string]: boolean },
 	TutorialDone: boolean,
 	LastSave: number, -- os.time() of the last save (0 = never saved)
@@ -110,6 +113,7 @@ local function defaultData(): SaveData
 		TreadmillTier = 1,
 		PadsBought = 0,
 		Pads = {},
+		EggInventory = {},
 		ProcessedPurchases = {},
 		TutorialDone = false,
 		LastSave = 0,
@@ -152,6 +156,13 @@ local function reconcile(raw: unknown): SaveData
 					Name = if typeof(entry.Name) == "string" then entry.Name else nil,
 					Level = if typeof(entry.Level) == "number" then entry.Level else nil,
 				})
+			end
+		end
+	end
+	if typeof(old.EggInventory) == "table" then
+		for _, rarity in old.EggInventory do
+			if typeof(rarity) == "string" and #data.EggInventory < Config.Eggs.MaxInventory then
+				table.insert(data.EggInventory, rarity)
 			end
 		end
 	end
@@ -258,6 +269,7 @@ local function apply(player: Player, data: SaveData)
 	end
 	UpgradeService.SetPadsBought(player, data.PadsBought)
 	PetService.ImportPads(player, data.Pads)
+	EggService.SetInventory(player, data.EggInventory)
 	-- New players get the tutorial (the client runs it).
 	player:SetAttribute(Constants.Attributes.ShowTutorial, not data.TutorialDone)
 end
@@ -273,6 +285,7 @@ local function collect(player: Player, profile: Profile)
 	data.TreadmillTier = SpeedService.GetTreadmillTier(player)
 	data.PadsBought = UpgradeService.GetPadsBought(player)
 	data.Pads = PetService.ExportPads(player)
+	data.EggInventory = EggService.GetInventory(player)
 end
 
 -- Write the record. release = true also removes the session lock (leaving).
