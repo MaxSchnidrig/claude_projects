@@ -51,12 +51,15 @@ local DebugCommands = require(script.Parent.Parent.Util.DebugCommands)
 local PlayerLifecycle = require(script.Parent.Parent.Util.PlayerLifecycle)
 local EconomyService = require(script.Parent.EconomyService)
 local EggService = require(script.Parent.EggService)
+local Fish = require(ReplicatedStorage.Shared.Fish)
 local PetService = require(script.Parent.PetService)
 local PlotService = require(script.Parent.PlotService)
 local SpeedService = require(script.Parent.SpeedService)
 local UpgradeService = require(script.Parent.UpgradeService)
 
-local DATA_VERSION = 1
+-- 2: eggs remember their zone (EggInventory entries are { Rarity, Zone }),
+--    pets are fish from Config.Fish (old pets are converted when loading).
+local DATA_VERSION = 2
 
 export type SaveData = {
 	Version: number,
@@ -65,7 +68,7 @@ export type SaveData = {
 	TreadmillTier: number,
 	PadsBought: number,
 	Pads: { PetService.SavedPadItem },
-	EggInventory: { string }, -- rarities of the eggs in the hotbar
+	EggInventory: { EggService.InventoryEgg }, -- eggs in the hotbar: { Rarity, Zone }
 	ProcessedPurchases: { [string]: boolean },
 	TutorialDone: boolean,
 	LastSave: number, -- os.time() of the last save (0 = never saved)
@@ -152,6 +155,7 @@ local function reconcile(raw: unknown): SaveData
 					Pad = entry.Pad,
 					Kind = entry.Kind,
 					Rarity = if typeof(entry.Rarity) == "string" then entry.Rarity else nil,
+					Zone = if typeof(entry.Zone) == "number" then entry.Zone else nil,
 					SecondsLeft = if typeof(entry.SecondsLeft) == "number" then entry.SecondsLeft else nil,
 					Name = if typeof(entry.Name) == "string" then entry.Name else nil,
 					Level = if typeof(entry.Level) == "number" then entry.Level else nil,
@@ -160,9 +164,16 @@ local function reconcile(raw: unknown): SaveData
 		end
 	end
 	if typeof(old.EggInventory) == "table" then
-		for _, rarity in old.EggInventory do
-			if typeof(rarity) == "string" and #data.EggInventory < Config.Eggs.MaxInventory then
-				table.insert(data.EggInventory, rarity)
+		for _, egg in old.EggInventory do
+			if #data.EggInventory >= Config.Eggs.MaxInventory then
+				break
+			end
+			if typeof(egg) == "table" and typeof(egg.Rarity) == "string" and typeof(egg.Zone) == "number" then
+				table.insert(data.EggInventory, { Rarity = egg.Rarity, Zone = egg.Zone })
+			elseif typeof(egg) == "string" then
+				-- Version 1 saved only the rarity: give it the zone where
+				-- that rarity is most common.
+				table.insert(data.EggInventory, { Rarity = egg, Zone = Fish.likelyZone(egg) })
 			end
 		end
 	end

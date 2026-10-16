@@ -6,7 +6,7 @@
 	  - Countdown under every hatching egg ("0:35"), from its HatchEndsAt time.
 	  - Eggs wiggle in their last seconds; READY eggs bounce and say
 	    "READY! Hold E to hatch".
-	  - Pets gently bob up and down above their pads.
+	  - Pets gently bob up and down above their pads and slowly turn.
 	  - A colorful burst where an egg hatches (everyone nearby sees it).
 	  - A "You hatched ...!" card for your own hatches.
 
@@ -35,6 +35,8 @@ local ANIMATE_DISTANCE = 120
 local WIGGLE_SECONDS = 3 -- eggs start wiggling this long before they hatch
 local BOB_HEIGHT = 0.35
 local BOB_SPEED = 2
+local TURN_SPEED = 0.45 -- slow turning
+local TURN_ANGLE = math.rad(22)
 
 -- The position the server gave each egg/pet, so our local animation always
 -- starts from the right place. Weak keys: destroyed eggs/pets drop out.
@@ -92,9 +94,13 @@ end
 
 local function updatePet(pet: Model, time: number)
 	local base = basePivot(pet)
-	-- Each pet bobs at its own phase so they don't all move together.
+	-- Each pet bobs (and slowly looks left and right) at its own phase, so
+	-- they don't all move together. Tails and fins are animated by
+	-- CreatureController.
 	local phase = (base.Position.X + base.Position.Z) * 0.3
-	pet:PivotTo(base * CFrame.new(0, math.sin(time * BOB_SPEED + phase) * BOB_HEIGHT, 0))
+	local bob = math.sin(time * BOB_SPEED + phase) * BOB_HEIGHT
+	local turn = math.sin(time * TURN_SPEED + phase * 1.7) * TURN_ANGLE
+	pet:PivotTo(base * CFrame.new(0, bob, 0) * CFrame.Angles(0, turn, 0))
 end
 
 ---------------------------------------------------------------------------

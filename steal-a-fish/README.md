@@ -39,9 +39,9 @@ hides the block. If a name is missing, you just see the placeholder.
 | `Treadmill` | the treadmill on each plot |
 | `Pad` | each egg/pet pad along the sides of a plot |
 | `CollectPad` | the green pad where you collect your pets' money |
-| a pet's exact name (e.g. `Kraken`) | that pet (otherwise a colored placeholder fish) |
+| a fish's exact name (e.g. `Pinchy Crab`) | that fish (otherwise the built-in blocky fish) |
 | `Egg<Rarity>` (e.g. `EggLegendary`) or `Egg` | eggs (rarity-specific name is tried first) |
-| `Shark` (`Config.Bots.ModelName`) | the chaser bots (Milestone 3) |
+| `Shark<zone>` (e.g. `Shark7`) or `Shark` | the sharks (zone-specific name is tried first) |
 
 The model's **pivot** goes to the center of the placeholder, so center your model on its pivot.
 
@@ -164,7 +164,8 @@ paste it into that setting as `"rbxassetid://<the number>"`. Adjust
 | 6 | Upgrades and economy: plot space (pads), treadmill tiers, pet levels, selling pets | ✅ |
 | 7 | Saving (money, Speed stat, treadmill tier, pads, eggs and pets) | ✅ |
 | 8 | UI and polish: Pets window, colored notifications, sounds, effects, screen scaling, tutorial | ✅ |
-| 8b | **Gameplay changes**: egg hotbar inventory, carry pose, hold-E hatching, caught = drop, one alerted shark | 🔨 testing |
+| 8b | Gameplay changes: egg hotbar inventory, carry pose, hold-E hatching, caught = drop, one alerted shark | ✅ |
+| 8c | **80 fish + visual makeover**: 8 fish per zone, eggs remember their zone, blocky fish/eggs/sharks with effects and animation | 🔨 testing |
 | 9 | Monetization (Robux); Speed boosts plug into `SpeedService.SetGainMultiplier` | |
 
 ## Sounds
@@ -194,12 +195,17 @@ Only work while play-testing in Studio. Type them in the chat:
 | `!speed 5000` | set your Speed stat to 5000 |
 | `!speed zone 4` | set your Speed stat to just enough to outrun zone 4's shark |
 | `!tier 7` | rebuild your treadmill as tier 7 (Neon) |
-| `!egg mythic` | put a Mythic egg in your egg inventory (hotbar) |
+| `!egg mythic` | put a Mythic egg in your egg inventory (hotbar), from the zone where Mythic eggs are most common |
+| `!egg mythic 4` | ... a Mythic egg from zone 4 (it hatches into zone 4's fish) |
 | `!hatch` | make all your eggs on pads READY right now (then hold E on them) |
 | `!money 5000` | set your money |
 | `!save` | save your progress right now |
 | `!wipe` | reset your progress to a brand-new player (and save that) |
 | `!tutorial` | show the new-player tutorial again |
+| `!showfish 3` | show all 8 fish of zone 3 in a row on your plot |
+| `!showeggs` | show one egg of each rarity on your plot (`!showeggs 7`: all from zone 7) |
+| `!showsharks` | show all 10 sharks on your plot |
+| `!showclear` | remove the preview (it also disappears by itself after 3 minutes) |
 
 If chat commands don't do anything, open **View → Command Bar**, set its dropdown to
 **Server**, and run, for example:

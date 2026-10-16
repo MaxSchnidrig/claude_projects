@@ -22,6 +22,11 @@ return {
 		PetPrompt = "PetPrompt",
 		-- "Place Egg" prompts on pads (the client shows them only when useful).
 		PadPrompt = "PadPrompt",
+		-- Fish, eggs and sharks whose "Wiggle" joints the client animates
+		-- (tails, fins, tentacles).
+		Animated = "Animated",
+		-- Lights and particles that the client switches off when far away.
+		LodEffect = "LodEffect",
 	},
 	Attributes = {
 		-- Set on the Player while they carry an egg. Value = the egg's rarity.
@@ -54,8 +59,11 @@ return {
 		ShowTutorial = "ShowTutorial",
 		-- On the Player: how many eggs are in their egg inventory.
 		EggCount = "EggCount",
-		-- On an egg Tool: the egg's rarity.
+		-- On an egg Tool: the egg's rarity, and the zone it was stolen from.
 		EggRarity = "EggRarity",
+		EggZone = "EggZone",
+		-- On a pet model or pad egg: the zone it comes from.
+		Zone = "Zone",
 		-- On a pad: true while an egg or pet sits on it.
 		Occupied = "Occupied",
 		-- On a pad egg: true once its timer finished (hold E to hatch).

@@ -8,9 +8,11 @@
 	    since you can only carry one at a time.
 	  - "Place Egg" prompts on pads are shown only on YOUR free pads, and only
 	    while you hold an egg from your hotbar.
-	  - Carrying pose: for every player carrying an egg, the arms stay raised
-	    above the head. (The server raises the shoulders; here we stop the walk
-	    animation from swinging the arms, so the legs walk but the arms don't.)
+	  - Carrying pose: for every player carrying an egg, the arms stay
+	    straight up. The server turns the shoulders up (CarryRig.setRaised);
+	    here, every frame AFTER the animations ran, we undo the walk/run
+	    animation's arm swing (CarryRig.holdArmsStill), so the legs walk but
+	    the arms stay up. Works with Motor6D and AnimationConstraint joints.
 ]]
 
 local CollectionService = game:GetService("CollectionService")
@@ -18,24 +20,13 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
+local CarryRig = require(ReplicatedStorage.Shared.CarryRig)
 local Constants = require(ReplicatedStorage.Shared.Constants)
 
 local EggController = {}
 EggController.Name = "EggController"
 
 local player = Players.LocalPlayer
-
--- Arm joints that should stay still (no walk swing) while carrying.
-local ARM_JOINTS = {
-	{ "RightUpperArm", "RightShoulder" },
-	{ "LeftUpperArm", "LeftShoulder" },
-	{ "RightLowerArm", "RightElbow" },
-	{ "LeftLowerArm", "LeftElbow" },
-	{ "RightHand", "RightWrist" },
-	{ "LeftHand", "LeftWrist" },
-	{ "Torso", "Right Shoulder" },
-	{ "Torso", "Left Shoulder" },
-}
 
 local function isCarrying(): boolean
 	return player:GetAttribute(Constants.Attributes.CarryingEgg) ~= nil
@@ -108,17 +99,34 @@ end
 -- Carrying pose (for every carrying player you can see)
 ---------------------------------------------------------------------------
 
+-- Each character's arm joints, found once (weak keys: old characters drop out).
+local jointCache: { [Model]: { CarryRig.ArmJoint } } = setmetatable({}, { __mode = "k" }) :: any
+
+local function armJoints(character: Model): { CarryRig.ArmJoint }
+	local joints = jointCache[character]
+	-- Look again if we found nothing yet (the character may still be loading)
+	-- or a joint was replaced.
+	local stale = joints == nil or #joints == 0
+	if joints and not stale then
+		for _, arm in joints do
+			if arm.Joint.Parent == nil then
+				stale = true
+				break
+			end
+		end
+	end
+	if stale then
+		joints = CarryRig.armJoints(character)
+		jointCache[character] = joints
+	end
+	return joints :: { CarryRig.ArmJoint }
+end
+
 local function holdArmsStill()
 	for _, other in Players:GetPlayers() do
-		if other:GetAttribute(Constants.Attributes.CarryingEgg) ~= nil and other.Character then
-			local character = other.Character
-			for _, names in ARM_JOINTS do
-				local part = character:FindFirstChild(names[1])
-				local joint = part and part:FindFirstChild(names[2])
-				if joint and joint:IsA("Motor6D") then
-					joint.Transform = CFrame.identity
-				end
-			end
+		local character = other.Character
+		if character and other:GetAttribute(Constants.Attributes.CarryingEgg) ~= nil then
+			CarryRig.holdArmsStill(armJoints(character))
 		end
 	end
 end
@@ -139,8 +147,9 @@ function EggController.Start()
 	end
 	refreshAll()
 
-	-- Runs after animations each frame, so it overrides the arm swing.
-	RunService.Stepped:Connect(holdArmsStill)
+	-- PreSimulation runs every frame after the animations were applied and
+	-- before physics, so what we set here is what you see.
+	RunService.PreSimulation:Connect(holdArmsStill)
 end
 
 return EggController

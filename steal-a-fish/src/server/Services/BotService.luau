@@ -28,9 +28,14 @@
 	invisible BotBarrier from WorldService) keeps them away from the open
 	area and the plots.
 
-	Model: a placeholder shark built from parts, or your own model named
-	Config.Bots.ModelName ("Shark") in ReplicatedStorage.Assets. Sharks use a
+	Model: built by SharkModel (each zone's shark looks different, deeper =
+	bigger and scarier; it glows red while chasing), or your own model named
+	"Shark<zone>" / "Shark" in ReplicatedStorage.Assets. Sharks use a
 	Humanoid without legs, floating at Config.Bots.HoverHeight.
+
+	The CHASING shark is always the one from the zone the egg was ORIGINALLY
+	stolen from (EggService remembers that zone for the egg's whole life,
+	also when it's dropped and picked up again).
 
 	Public interface:
 		BotService.PlayerCaught:Connect(function(player) end)
@@ -46,8 +51,8 @@ local Layout = require(ReplicatedStorage.Shared.Layout)
 local Net = require(ReplicatedStorage.Shared.Net)
 local Signal = require(ReplicatedStorage.Shared.Signal)
 local Notify = require(script.Parent.Parent.Util.Notify)
-local Assets = require(script.Parent.Parent.Util.Assets)
 local Build = require(script.Parent.Parent.Util.Build)
+local SharkModel = require(script.Parent.Parent.Util.Models.SharkModel)
 local EggService = require(script.Parent.EggService)
 local WorldService = require(script.Parent.WorldService)
 
@@ -141,55 +146,6 @@ end
 -- Building a shark
 ---------------------------------------------------------------------------
 
--- A simple shark made of parts, welded to the (invisible) root part.
-local function buildPlaceholderShark(model: Model, root: BasePart)
-	local bodyColor = Color3.fromRGB(105, 125, 150)
-	local function add(name: string, size: Vector3, offset: CFrame, color: Color3, shape: string?): BasePart
-		local part: BasePart
-		if shape == "Wedge" then
-			part = Instance.new("WedgePart")
-		else
-			part = Instance.new("Part")
-		end
-		part.Name = name
-		part.Size = size
-		part.Color = color
-		part.Material = Enum.Material.SmoothPlastic
-		part.CanCollide = false
-		part.CanQuery = false
-		part.CanTouch = false
-		part.Massless = true
-		part.CFrame = root.CFrame * offset
-		if shape == "Egg" then
-			local mesh = Instance.new("SpecialMesh")
-			mesh.MeshType = Enum.MeshType.Sphere
-			mesh.Parent = part
-		end
-		local weld = Instance.new("WeldConstraint")
-		weld.Part0 = root
-		weld.Part1 = part
-		weld.Parent = part
-		part.Parent = model
-		return part
-	end
-
-	-- Body: a stretched sphere. The nose points to -Z (the way it swims).
-	add("Body", Vector3.new(3.2, 3, 9), CFrame.new(), bodyColor, "Egg")
-	-- Pale belly.
-	add("Belly", Vector3.new(2.6, 1.6, 7), CFrame.new(0, -0.8, -0.3), Color3.fromRGB(230, 235, 240), "Egg")
-	-- Dorsal fin on top (a wedge).
-	add("DorsalFin", Vector3.new(0.4, 2.6, 2.6), CFrame.new(0, 2.4, 0.6), bodyColor, "Wedge")
-	-- Tail fin at the back, standing up.
-	add("TailFin", Vector3.new(0.4, 3.2, 2), CFrame.new(0, 0.6, 5) * CFrame.Angles(0, math.pi, 0), bodyColor, "Wedge")
-	-- Side fins.
-	for _, side in { -1, 1 } do
-		add("SideFin", Vector3.new(2.2, 0.3, 1.4), CFrame.new(side * 2, -0.6, -0.8) * CFrame.Angles(0, 0, side * math.rad(-20)), bodyColor)
-		add("Eye", Vector3.new(0.45, 0.45, 0.45), CFrame.new(side * 1.05, 0.5, -3.3), Color3.new(0, 0, 0), "Egg")
-	end
-	-- Mouth.
-	add("Mouth", Vector3.new(1.6, 0.25, 0.8), CFrame.new(0, -0.5, -3.9), Color3.fromRGB(120, 20, 30))
-end
-
 local function createBot(zoneIndex: number): Bot
 	local zone = Config.Zones[zoneIndex]
 	local sharkSpeed = Config.Sharks[zoneIndex].Speed
@@ -210,9 +166,8 @@ local function createBot(zoneIndex: number): Bot
 	root.Parent = model
 	model.PrimaryPart = root
 
-	if not Assets.decorate(root, Config.Bots.ModelName, true) then
-		buildPlaceholderShark(model, root)
-	end
+	-- The looks (per zone, see Config.Sharks) come from SharkModel.
+	SharkModel.build(model, root, zoneIndex)
 
 	-- A Humanoid without legs ("R15" rig type) floats at HipHeight above the floor.
 	local humanoid = Instance.new("Humanoid")
@@ -227,7 +182,7 @@ local function createBot(zoneIndex: number): Bot
 	humanoid.Parent = model
 
 	-- "!" above the shark while it chases someone.
-	local label = Build.billboard(root, "❗", 4, 120)
+	local label = Build.billboard(root, "❗", 3 + 2.5 * Config.Sharks[zoneIndex].Scale, 120)
 	label.TextColor3 = Color3.fromRGB(255, 70, 70)
 	local indicator = label.Parent :: BillboardGui
 	indicator.Enabled = false
@@ -302,6 +257,7 @@ local function startChase(bot: Bot, player: Player)
 	bot.LastPathTime = 0
 	bot.Humanoid.WalkSpeed = bot.Speed
 	bot.Indicator.Enabled = true
+	SharkModel.setChasing(bot.Model, true)
 end
 
 local function stopChase(bot: Bot)
@@ -311,6 +267,7 @@ local function stopChase(bot: Bot)
 	bot.PatrolPoint = nil
 	bot.Humanoid.WalkSpeed = bot.Speed * Config.Bots.PatrolSpeedMultiplier
 	bot.Indicator.Enabled = false
+	SharkModel.setChasing(bot.Model, false)
 end
 
 local function catch(bot: Bot, player: Player, now: number)
@@ -492,7 +449,8 @@ function BotService.Start()
 		lastCaught[player] = nil
 	end)
 
-	-- An egg was stolen: ONLY the shark(s) of that zone come after the thief.
+	-- An egg was stolen: ONLY the shark(s) of the egg's ORIGINAL zone come
+	-- after the thief (EggService passes the zone the egg first spawned in).
 	EggService.EggPickedUp:Connect(function(player: Player, _rarity: string, zoneIndex: number)
 		for _, bot in bots do
 			if bot.Zone == zoneIndex and bot.State ~= "Chase" then

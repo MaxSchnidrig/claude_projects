@@ -8,11 +8,15 @@
 	  - Picking up an egg with a ProximityPrompt. The server checks
 	    everything: the egg is still there, the player is alive, close enough,
 	    owns a plot, isn't already carrying one, and isn't spamming.
-	  - Carrying: the player holds the egg above their head with both arms
-	    (CarryPose). Heavy eggs can slow them down
+	  - Carrying: the player holds the egg above their head, arms straight up,
+	    the egg resting on the hands (CarryRig). Heavy eggs can slow them down
 	    (Config.Eggs.ByRarity[...].CarrySpeedMultiplier, 1 = no slow-down).
 	  - Losing it: being caught by a shark follows Config.Eggs.OnCaught, dying
 	    any other way follows Config.Eggs.OnDeath ("Drop" or "Lose").
+	  - Every egg REMEMBERS THE ZONE IT FIRST SPAWNED IN, for its whole life:
+	    on the ground, carried, dropped and picked up again (by anyone), in
+	    the hotbar, on a pad and in saved data. That zone decides which shark
+	    chases the thief, and which zone's fish hatch from it.
 	  - Reaching the safe zone (the open area and the plots): the egg goes into
 	    the player's EGG INVENTORY (max Config.Eggs.MaxInventory). Each egg is
 	    a Tool in the Roblox hotbar ("Rare Egg"). The server keeps the real
@@ -22,16 +26,17 @@
 	    then PetService puts it on the pad and starts its timer.
 
 	Studio-only test command:
-		!egg mythic     put a Mythic egg in your egg inventory
+		!egg mythic     put a Mythic egg in your egg inventory (from the zone where Mythic eggs are most common)
+		!egg mythic 4   ... a Mythic egg from zone 4
 
 	Public interface:
 		EggService.IsCarrying(player) -> boolean
 		EggService.GetCarriedRarity(player) -> string?
 		EggService.DropEgg(player, reason)     -- reason: "caught", "died", ...
-		EggService.GetInventory(player) -> { string }      -- saving
-		EggService.SetInventory(player, rarities)          -- loading
-		EggService.AddToInventory(player, rarity) -> boolean
-		EggService.EggPickedUp:Connect(function(player, rarity, zoneIndex) end)
+		EggService.GetInventory(player) -> { InventoryEgg }    -- saving
+		EggService.SetInventory(player, eggs)                 -- loading
+		EggService.AddToInventory(player, rarity, zone) -> boolean
+		EggService.EggPickedUp:Connect(function(player, rarity, originalZone) end)
 		EggService.EggDropped:Connect(function(player, rarity, reason) end)
 		EggService.EggDelivered:Connect(function(player, rarity) end)
 ]]
@@ -47,11 +52,12 @@ local Layout = require(ReplicatedStorage.Shared.Layout)
 local Rarity = require(ReplicatedStorage.Shared.Rarity)
 local Signal = require(ReplicatedStorage.Shared.Signal)
 local Types = require(ReplicatedStorage.Shared.Types)
+local CarryRig = require(ReplicatedStorage.Shared.CarryRig)
+local Fish = require(ReplicatedStorage.Shared.Fish)
 local Notify = require(script.Parent.Parent.Util.Notify)
 local Build = require(script.Parent.Parent.Util.Build)
-local EggVisual = require(script.Parent.Parent.Util.EggVisual)
+local EggModel = require(script.Parent.Parent.Util.Models.EggModel)
 local PlayerSpeed = require(script.Parent.Parent.Util.PlayerSpeed)
-local CarryPose = require(script.Parent.Parent.Util.CarryPose)
 local DebugCommands = require(script.Parent.Parent.Util.DebugCommands)
 local RateLimiter = require(script.Parent.Parent.Util.RateLimiter)
 local PlayerLifecycle = require(script.Parent.Parent.Util.PlayerLifecycle)
@@ -62,7 +68,7 @@ local WorldService = require(script.Parent.WorldService)
 -- An egg lying on the ground in the danger zone.
 type GroundEgg = {
 	Rarity: string,
-	Zone: number,
+	Zone: number, -- the zone the egg ORIGINALLY spawned in (kept when dropped)
 	Part: BasePart,
 	Dropped: boolean, -- true = dropped by a player (temporary, not counted in caps)
 	Taken: boolean, -- true once picked up or removed (so it can't be taken twice)
@@ -71,7 +77,14 @@ type GroundEgg = {
 -- An egg a player is carrying.
 type Carry = {
 	Rarity: string,
+	Zone: number, -- original zone
 	Part: BasePart,
+}
+
+-- An egg in the hotbar inventory (also what's saved).
+export type InventoryEgg = {
+	Rarity: string,
+	Zone: number, -- original zone
 }
 
 local EggService = {}
@@ -164,7 +177,7 @@ end
 local tryPickUp: (player: Player, egg: GroundEgg) -> ()
 
 local function createGroundEgg(rarity: string, zoneIndex: number, position: Vector3, dropped: boolean)
-	local part = EggVisual.create(rarity, true)
+	local part = EggModel.create(rarity, zoneIndex, true)
 	part.CFrame = CFrame.new(position) * CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0)
 
 	local label = Build.billboard(part, `{rarity} Egg`, 2.5, 70)
@@ -227,21 +240,28 @@ end
 -- Carrying
 ---------------------------------------------------------------------------
 
-local function attachCarriedEgg(player: Player, rarity: string, root: BasePart)
-	local part = EggVisual.create(rarity, false)
+local function attachCarriedEgg(player: Player, rarity: string, zoneIndex: number, root: BasePart)
+	local character = root.Parent
+	-- The egg rests on the hands: measure how high they reach with the arms up.
+	local handsHeight = if character and character:IsA("Model") then CarryRig.carryHeight(character, root) else nil
+	local height = if handsHeight
+		then handsHeight + Config.Eggs.Size.Y / 2 + Config.Eggs.CarryRestOffset
+		else Config.Eggs.CarryHeight
+
+	local part = EggModel.create(rarity, zoneIndex, false)
 	part.Name = "CarriedEgg"
-	part.CFrame = root.CFrame * CFrame.new(0, Config.Eggs.CarryHeight, 0)
-	local weld = Instance.new("WeldConstraint")
+	local weld = Instance.new("Weld")
 	weld.Part0 = root
 	weld.Part1 = part
+	weld.C0 = CFrame.new(0, height, 0)
 	weld.Parent = part
-	part.Parent = root.Parent
+	part.CFrame = root.CFrame * weld.C0
+	part.Parent = character
 
-	carrying[player] = { Rarity = rarity, Part = part }
+	carrying[player] = { Rarity = rarity, Zone = zoneIndex, Part = part }
 	player:SetAttribute(Constants.Attributes.CarryingEgg, rarity)
-	local character = root.Parent
 	if character and character:IsA("Model") then
-		CarryPose.set(character, true)
+		CarryRig.setRaised(character, true)
 	end
 
 	local rarityConfig = Config.Eggs.ByRarity[rarity]
@@ -258,7 +278,7 @@ local function takeCarry(player: Player): Carry?
 	carry.Part:Destroy()
 	player:SetAttribute(Constants.Attributes.CarryingEgg, nil)
 	if player.Character then
-		CarryPose.set(player.Character, false)
+		CarryRig.setRaised(player.Character, false)
 	end
 	PlayerSpeed.SetMultiplier(player, "Carry", nil)
 	return carry
@@ -290,9 +310,10 @@ tryPickUp = function(player: Player, egg: GroundEgg)
 	local rarity = egg.Rarity
 	local zoneIndex = egg.Zone
 	removeGroundEgg(egg)
-	attachCarriedEgg(player, rarity, root)
+	attachCarriedEgg(player, rarity, zoneIndex, root)
 	notify(player, `You stole a {rarity} Egg! Run back to the safe zone!`, "success")
-	-- BotService alerts the shark of THIS zone.
+	-- BotService alerts the shark of the egg's ORIGINAL zone (for a dropped
+	-- egg that's still the zone it first spawned in, not where it was dropped).
 	EggService.EggPickedUp:Fire(player, rarity, zoneIndex)
 end
 
@@ -323,10 +344,10 @@ function EggService.DropEgg(player: Player, reason: string)
 
 	local rule = if reason == "caught" then Config.Eggs.OnCaught else Config.Eggs.OnDeath
 	if rule == "Drop" and position then
-		local zoneIndex = Layout.zoneIndexAt(position)
-		if zoneIndex then
+		-- Only inside the danger zone. The egg keeps its ORIGINAL zone.
+		if Layout.zoneIndexAt(position) then
 			local groundPosition = Vector3.new(position.X, restingY(Layout.GroundTop), position.Z)
-			createGroundEgg(carry.Rarity, zoneIndex, groundPosition, true)
+			createGroundEgg(carry.Rarity, carry.Zone, groundPosition, true)
 		end
 	end
 
@@ -343,20 +364,26 @@ end
 local SAFE_CHECK_INTERVAL = 0.15
 local FULL_NOTICE_COOLDOWN = 3
 
-local inventories: { [Player]: { string } } = {}
+local inventories: { [Player]: { InventoryEgg } } = {}
 
 local function isEggTool(item: Instance): boolean
 	return item:IsA("Tool") and typeof(item:GetAttribute(Constants.Attributes.EggRarity)) == "string"
 end
 
-local function makeEggTool(rarity: string): Tool
+local function zoneName(zoneIndex: number): string
+	local zone = Config.Zones[zoneIndex]
+	return if zone then zone.Name else "?"
+end
+
+local function makeEggTool(egg: InventoryEgg): Tool
 	local tool = Instance.new("Tool")
-	tool.Name = `{rarity} Egg`
+	tool.Name = `{egg.Rarity} Egg`
 	tool.CanBeDropped = false
 	tool.RequiresHandle = true
-	tool.ToolTip = "Walk to one of your free pads and press E"
-	tool:SetAttribute(Constants.Attributes.EggRarity, rarity)
-	local handle = EggVisual.create(rarity, false)
+	tool.ToolTip = `From {zoneName(egg.Zone)}. Walk to one of your free pads and press E`
+	tool:SetAttribute(Constants.Attributes.EggRarity, egg.Rarity)
+	tool:SetAttribute(Constants.Attributes.EggZone, egg.Zone)
+	local handle = EggModel.create(egg.Rarity, egg.Zone, false)
 	handle.Name = "Handle"
 	handle.Parent = tool
 	return tool
@@ -384,9 +411,9 @@ local function rebuildTools(player: Player)
 			end
 		end
 	end
-	local list: { string } = inventories[player] or {}
-	for _, rarity in list do
-		makeEggTool(rarity).Parent = backpack
+	local list: { InventoryEgg } = inventories[player] or {}
+	for _, egg in list do
+		makeEggTool(egg).Parent = backpack
 	end
 end
 
@@ -394,15 +421,20 @@ local function updateCount(player: Player)
 	player:SetAttribute(Constants.Attributes.EggCount, #(inventories[player] or {}))
 end
 
-function EggService.GetInventory(player: Player): { string }
-	return table.clone(inventories[player] or {})
+function EggService.GetInventory(player: Player): { InventoryEgg }
+	local result: { InventoryEgg } = {}
+	local list: { InventoryEgg } = inventories[player] or {}
+	for _, egg in list do
+		table.insert(result, { Rarity = egg.Rarity, Zone = egg.Zone })
+	end
+	return result
 end
 
-function EggService.SetInventory(player: Player, rarities: { string })
-	local list = {}
-	for _, rarity in rarities do
-		if Rarity.rank(rarity) > 0 and #list < Config.Eggs.MaxInventory then
-			table.insert(list, rarity)
+function EggService.SetInventory(player: Player, eggs: { InventoryEgg })
+	local list: { InventoryEgg } = {}
+	for _, egg in eggs do
+		if Rarity.rank(egg.Rarity) > 0 and Config.Zones[egg.Zone] and #list < Config.Eggs.MaxInventory then
+			table.insert(list, { Rarity = egg.Rarity, Zone = egg.Zone })
 		end
 	end
 	inventories[player] = list
@@ -411,7 +443,7 @@ function EggService.SetInventory(player: Player, rarities: { string })
 end
 
 -- Add one egg (and its Tool). False if the inventory is full.
-function EggService.AddToInventory(player: Player, rarity: string): boolean
+function EggService.AddToInventory(player: Player, rarity: string, zoneIndex: number): boolean
 	local list = inventories[player]
 	if not list then
 		list = {}
@@ -420,11 +452,12 @@ function EggService.AddToInventory(player: Player, rarity: string): boolean
 	if #list >= Config.Eggs.MaxInventory then
 		return false
 	end
-	table.insert(list, rarity)
+	local egg: InventoryEgg = { Rarity = rarity, Zone = zoneIndex }
+	table.insert(list, egg)
 	updateCount(player)
 	local backpack = getBackpack(player)
 	if backpack then
-		makeEggTool(rarity).Parent = backpack
+		makeEggTool(egg).Parent = backpack
 	end
 	return true
 end
@@ -436,7 +469,7 @@ local function checkSafeArrivals()
 	for player, carry in carrying do
 		local root = getRoot(player)
 		if root and root.Position.Z > Layout.DangerZoneFront then
-			if EggService.AddToInventory(player, carry.Rarity) then
+			if EggService.AddToInventory(player, carry.Rarity, carry.Zone) then
 				takeCarry(player)
 				notify(player, `🎒 {carry.Rarity} Egg added to your hotbar! Equip it and press E on a free pad.`, "success")
 				EggService.EggDelivered:Fire(player, carry.Rarity)
@@ -463,9 +496,17 @@ local function onPadPrompt(player: Player, plot: Types.PlotInfo, padIndex: numbe
 		notify(player, "Equip an egg from your hotbar first!", "warning")
 		return
 	end
-	local rarity = tool:GetAttribute(Constants.Attributes.EggRarity) :: string
-	local list = inventories[player] or {}
-	local index = table.find(list, rarity)
+	local rarity = tool:GetAttribute(Constants.Attributes.EggRarity)
+	local zoneIndex = tool:GetAttribute(Constants.Attributes.EggZone)
+	local list: { InventoryEgg } = inventories[player] or {}
+	-- Find this egg in the server's list (never trust the Tool alone).
+	local index: number? = nil
+	for i, egg in list do
+		if egg.Rarity == rarity and egg.Zone == zoneIndex then
+			index = i
+			break
+		end
+	end
 	if not index then
 		tool:Destroy() -- a Tool the server doesn't know about: remove it
 		return
@@ -476,11 +517,12 @@ local function onPadPrompt(player: Player, plot: Types.PlotInfo, padIndex: numbe
 	if not (root and pad) or (root.Position - pad.Position).Magnitude > 14 then
 		return
 	end
-	if PetService.PlaceEggOnPad(player, padIndex, rarity) then
+	local egg = list[index]
+	if PetService.PlaceEggOnPad(player, padIndex, egg.Rarity, egg.Zone) then
 		table.remove(list, index)
 		tool:Destroy()
 		updateCount(player)
-		notify(player, `{rarity} Egg placed! It hatches when the timer runs out.`, "success")
+		notify(player, `{egg.Rarity} Egg placed! It hatches when the timer runs out.`, "success")
 	else
 		notify(player, "That pad isn't free!", "warning")
 	end
@@ -544,7 +586,9 @@ function EggService.Start()
 		local wanted = args[1] or "common"
 		for _, info in Config.Rarities do
 			if string.lower(info.Name) == wanted then
-				if not EggService.AddToInventory(player, info.Name) then
+				local zoneIndex = tonumber(args[2]) or Fish.likelyZone(info.Name)
+				zoneIndex = math.clamp(math.floor(zoneIndex), 1, #Config.Zones)
+				if not EggService.AddToInventory(player, info.Name, zoneIndex) then
 					notify(player, "[Studio] Your egg inventory is full!", "warning")
 				end
 				return

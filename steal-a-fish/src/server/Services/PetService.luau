@@ -19,13 +19,16 @@
 	  - The countdown is shown above the egg (the client draws it from the
 	    egg's HatchEndsAt attribute). When it reaches zero the egg is READY:
 	    it glows and gets a "Hatch" prompt. The owner holds E to hatch it.
-	  - The pet's rarity is rolled with Config.HatchOdds[eggRarity]; then one
-	    pet of that rarity is picked at random (all equally likely).
+	  - Which fish comes out: one of the 8 fish of the zone the egg was
+	    ORIGINALLY stolen from, weighted by the egg's rarity (Fish.roll, odds
+	    in Config.Hatching). The full odds table is printed at server start.
 	  - Everyone sees a burst effect; the owner gets a "You hatched ...!" card;
 	    rare hatches are announced to the whole server.
 
 	Eggs and pets are saved by DataService (ExportPads / ImportPads). An egg's
-	hatch timer pauses while its owner is offline.
+	hatch timer pauses while its owner is offline. Saved pets that no longer
+	exist (the old pet list, or a fish renamed in Config) become a random
+	fish of the same rarity.
 
 	Studio-only test command:
 		!hatch          make all your eggs READY right now
@@ -35,7 +38,7 @@
 		PetService.GetPadItem(plot, padIndex) -> PadItem?
 		PetService.GetIncomePerSecond(player) -> number   -- all pets, before boosts
 		PetService.FinishHatching(player)                 -- make every egg READY now (Instant Hatch product later)
-		PetService.PlaceEggOnPad(player, padIndex, rarity) -> boolean
+		PetService.PlaceEggOnPad(player, padIndex, rarity, zone) -> boolean
 		PetService.SetHatchTimeMultiplier(player, value)  -- e.g. 0.5 for a Faster Hatching pass
 		PetService.ExportPads(player) / ImportPads(player, list)  -- saving (DataService)
 		PetService.SetPetLevel(plot, padIndex, level)     -- after a paid upgrade
@@ -56,10 +59,11 @@ local Net = require(ReplicatedStorage.Shared.Net)
 local Rarity = require(ReplicatedStorage.Shared.Rarity)
 local Signal = require(ReplicatedStorage.Shared.Signal)
 local Types = require(ReplicatedStorage.Shared.Types)
+local Fish = require(ReplicatedStorage.Shared.Fish)
 local Notify = require(script.Parent.Parent.Util.Notify)
 local DebugCommands = require(script.Parent.Parent.Util.DebugCommands)
-local EggVisual = require(script.Parent.Parent.Util.EggVisual)
-local PetVisual = require(script.Parent.Parent.Util.PetVisual)
+local EggModel = require(script.Parent.Parent.Util.Models.EggModel)
+local FishModel = require(script.Parent.Parent.Util.Models.FishModel)
 local PlayerLifecycle = require(script.Parent.Parent.Util.PlayerLifecycle)
 local PlotService = require(script.Parent.PlotService)
 
@@ -67,6 +71,7 @@ local PlotService = require(script.Parent.PlotService)
 export type PadItem = {
 	Kind: "Egg" | "Pet",
 	Rarity: string,
+	Zone: number, -- eggs: the zone it was stolen from; pets: the fish's zone
 	PetName: string?, -- pets only
 	Income: number, -- pets only: money per second at level 1 (0 for eggs)
 	Level: number, -- pets only (pet upgrades come later)
@@ -161,9 +166,10 @@ local function eggCFrameOnPad(pad: BasePart): CFrame
 	return CFrame.new(pad.Position.X, centerY, pad.Position.Z) * pad.CFrame.Rotation
 end
 
--- Pets float above the pad, facing the middle of the plot.
+-- Pets float above the pad, facing the middle of the plot. (FishModel
+-- lifts each fish so its lowest point is HoverHeight above the pad.)
 local function petCFrameOnPad(pad: BasePart): CFrame
-	local position = Vector3.new(pad.Position.X, padTop(pad) + Config.PetDisplay.HoverHeight, pad.Position.Z)
+	local position = Vector3.new(pad.Position.X, padTop(pad), pad.Position.Z)
 	return CFrame.lookAt(position, position + pad.CFrame.LookVector)
 end
 
@@ -178,9 +184,9 @@ local function hatchSeconds(player: Player, rarity: string): number
 end
 
 -- secondsLeft: how long until it hatches (nil = the full hatch time).
-local function placeEgg(player: Player, plot: Types.PlotInfo, padIndex: number, rarity: string, secondsLeft: number?)
+local function placeEgg(player: Player, plot: Types.PlotInfo, padIndex: number, rarity: string, zoneIndex: number, secondsLeft: number?)
 	local pad = plot.Pads[padIndex]
-	local part = EggVisual.create(rarity, true)
+	local part = EggModel.create(rarity, zoneIndex, true)
 	part.CFrame = eggCFrameOnPad(pad)
 	part:SetAttribute("PadIndex", padIndex)
 
@@ -194,6 +200,7 @@ local function placeEgg(player: Player, plot: Types.PlotInfo, padIndex: number, 
 	getItems(plot)[padIndex] = {
 		Kind = "Egg",
 		Rarity = rarity,
+		Zone = zoneIndex,
 		PetName = nil,
 		Income = 0,
 		Level = 1,
@@ -207,7 +214,7 @@ end
 -- Put an egg from the player's inventory on one of their pads. Returns
 -- false if that pad isn't theirs, isn't unlocked, or isn't free.
 -- (EggService checks the inventory and the equipped egg first.)
-function PetService.PlaceEggOnPad(player: Player, padIndex: number, rarity: string): boolean
+function PetService.PlaceEggOnPad(player: Player, padIndex: number, rarity: string, zoneIndex: number): boolean
 	local plot = PlotService.GetPlot(player)
 	if not plot or padIndex < 1 or padIndex > plot.UnlockedPads then
 		return false
@@ -215,37 +222,13 @@ function PetService.PlaceEggOnPad(player: Player, padIndex: number, rarity: stri
 	if getItems(plot)[padIndex] then
 		return false
 	end
-	placeEgg(player, plot, padIndex, rarity)
+	placeEgg(player, plot, padIndex, rarity, zoneIndex)
 	return true
 end
 
 ---------------------------------------------------------------------------
 -- Hatching
 ---------------------------------------------------------------------------
-
--- Roll which pet comes out of an egg of `eggRarity`.
-local function rollPet(eggRarity: string): Config.PetConfig
-	local odds = Config.HatchOdds[eggRarity] or { [eggRarity] = 1 }
-	local petRarity = Rarity.pick(odds) or eggRarity
-
-	local function petsOf(rarity: string): { Config.PetConfig }
-		local list = {}
-		for _, pet in Config.Pets do
-			if pet.Rarity == rarity then
-				table.insert(list, pet)
-			end
-		end
-		return list
-	end
-	local candidates = petsOf(petRarity)
-	if #candidates == 0 then
-		candidates = petsOf(eggRarity)
-	end
-	if #candidates == 0 then
-		candidates = Config.Pets
-	end
-	return candidates[rng:NextInteger(1, #candidates)]
-end
 
 -- Text for a pet's label and its Upgrade/Sell prompts.
 local function refreshPet(plot: Types.PlotInfo, padIndex: number)
@@ -304,12 +287,17 @@ local function addPetPrompt(root: BasePart, plot: Types.PlotInfo, padIndex: numb
 	end)
 end
 
-local function placePet(plot: Types.PlotInfo, padIndex: number, pet: Config.PetConfig, level: number): Model
+local function placePet(plot: Types.PlotInfo, padIndex: number, pet: Config.FishConfig, level: number): Model
 	local pad = plot.Pads[padIndex]
-	local model = PetVisual.create(pet.Name, pet.Rarity, pet.Color, petCFrameOnPad(pad))
+	local model = FishModel.create(pet, petCFrameOnPad(pad))
+	-- Lift the fish so it floats HoverHeight above the pad, whatever its shape.
+	local bottom = model:GetAttribute("Bottom")
+	local top = model:GetAttribute("Top")
+	local lift = Config.PetDisplay.HoverHeight + (if typeof(bottom) == "number" then bottom else 1)
+	model:PivotTo(model:GetPivot() + Vector3.new(0, lift, 0))
 	model:SetAttribute("PadIndex", padIndex)
 	local root = model.PrimaryPart :: BasePart
-	makeLabel(root, pet.Name, Rarity.color(pet.Rarity), "", 3.2)
+	makeLabel(root, pet.Name, Rarity.color(pet.Rarity), "", (if typeof(top) == "number" then top else 1) + 1.4)
 	addPetPrompt(root, plot, padIndex, "Upgrade", Enum.KeyCode.E, 0)
 	-- Selling needs a 1-second hold, so it doesn't happen by accident.
 	addPetPrompt(root, plot, padIndex, "Sell", Enum.KeyCode.F, 1)
@@ -318,6 +306,7 @@ local function placePet(plot: Types.PlotInfo, padIndex: number, pet: Config.PetC
 	getItems(plot)[padIndex] = {
 		Kind = "Pet",
 		Rarity = pet.Rarity,
+		Zone = pet.Zone,
 		PetName = pet.Name,
 		Income = pet.Income,
 		Level = level,
@@ -352,7 +341,7 @@ end
 
 local function hatch(plot: Types.PlotInfo, padIndex: number, egg: PadItem)
 	local owner = plot.Owner
-	local pet = rollPet(egg.Rarity)
+	local pet = Fish.roll(egg.Rarity, egg.Zone)
 	local pad = plot.Pads[padIndex]
 
 	egg.Instance:Destroy()
@@ -366,7 +355,7 @@ local function hatch(plot: Types.PlotInfo, padIndex: number, egg: PadItem)
 			notifyAll(`🎉 {owner.DisplayName} hatched a {pet.Rarity} {pet.Name}!`, "epic")
 		end
 		if Config.Debug then
-			print(`[{Config.GameName}] {owner.Name} hatched {pet.Rarity} {pet.Name} from a {egg.Rarity} Egg`)
+			print(`[{Config.GameName}] {owner.Name} hatched {pet.Rarity} {pet.Name} from a {egg.Rarity} Egg (zone {egg.Zone})`)
 		end
 		PetService.PetHatched:Fire(owner, pet.Name, pet.Rarity)
 	end
@@ -381,8 +370,8 @@ local function markReady(plot: Types.PlotInfo, padIndex: number, item: PadItem)
 		return
 	end
 	egg:SetAttribute(Constants.Attributes.Ready, true)
-	egg.Material = Enum.Material.Neon
-	local light = egg:FindFirstChildOfClass("PointLight") or Instance.new("PointLight")
+	local light = Instance.new("PointLight")
+	light.Name = "ReadyGlow"
 	light.Color = Rarity.color(item.Rarity)
 	light.Range = 12
 	light.Brightness = 3
@@ -494,7 +483,8 @@ end
 export type SavedPadItem = {
 	Pad: number,
 	Kind: string, -- "Egg" or "Pet"
-	Rarity: string?, -- eggs
+	Rarity: string?, -- eggs and pets
+	Zone: number?, -- eggs: zone it was stolen from; pets: the fish's zone
 	SecondsLeft: number?, -- eggs: hatch time left (the timer pauses while you're offline)
 	Name: string?, -- pets
 	Level: number?, -- pets
@@ -513,26 +503,58 @@ function PetService.ExportPads(player: Player): { SavedPadItem }
 				Pad = padIndex,
 				Kind = "Egg",
 				Rarity = item.Rarity,
+				Zone = item.Zone,
 				SecondsLeft = math.max(0, (item.HatchEndsAt or now) - now),
 			})
 		elseif item.PetName then
-			table.insert(result, { Pad = padIndex, Kind = "Pet", Name = item.PetName, Level = item.Level })
+			table.insert(result, {
+				Pad = padIndex,
+				Kind = "Pet",
+				Name = item.PetName,
+				Rarity = item.Rarity,
+				Zone = item.Zone,
+				Level = item.Level,
+			})
 		end
 	end
 	return result
 end
 
-local function findPet(name: string): Config.PetConfig?
-	for _, pet in Config.Pets do
-		if pet.Name == name then
-			return pet
-		end
-	end
-	return nil
-end
-
 local function isKnownRarity(name: string): boolean
 	return Rarity.rank(name) > 0
+end
+
+-- The fish for a saved pet. If that fish doesn't exist anymore (a pet from
+-- the old pet list, or a fish renamed in Config), pick a random fish of the
+-- same rarity (from the same zone if possible), so nobody loses a pet.
+local function findSavedFish(entry: SavedPadItem): Config.FishConfig?
+	local name = entry.Name or ""
+	local fish = Fish.byName(name)
+	if fish then
+		return fish
+	end
+	local rarity = entry.Rarity
+	if not (rarity and isKnownRarity(rarity)) then
+		rarity = Fish.legacyRarity(name)
+	end
+	if not rarity then
+		return nil
+	end
+	local candidates: { Config.FishConfig } = {}
+	for _, option in Fish.ofRarity(rarity) do
+		if entry.Zone == nil or option.Zone == entry.Zone then
+			table.insert(candidates, option)
+		end
+	end
+	if #candidates == 0 then
+		candidates = Fish.ofRarity(rarity)
+	end
+	if #candidates == 0 then
+		return nil
+	end
+	local replacement = candidates[rng:NextInteger(1, #candidates)]
+	print(`[{Config.GameName}] Saved pet "{name}" no longer exists: converted to {replacement.Rarity} {replacement.Name}.`)
+	return replacement
 end
 
 -- Put saved eggs and pets back on the player's plot. Items whose pad isn't
@@ -563,13 +585,16 @@ function PetService.ImportPads(player: Player, saved: { SavedPadItem })
 			continue
 		end
 		if entry.Kind == "Egg" and entry.Rarity and isKnownRarity(entry.Rarity) then
-			placeEgg(player, plot, padIndex, entry.Rarity, entry.SecondsLeft or 0)
+			-- Old saves don't know the egg's zone: use the zone where that
+			-- rarity is most common.
+			local zoneIndex = if entry.Zone and Config.Zones[entry.Zone] then entry.Zone else Fish.likelyZone(entry.Rarity)
+			placeEgg(player, plot, padIndex, entry.Rarity, zoneIndex, entry.SecondsLeft or 0)
 		elseif entry.Kind == "Pet" and entry.Name then
-			local pet = findPet(entry.Name)
+			local pet = findSavedFish(entry)
 			if pet then
 				placePet(plot, padIndex, pet, math.clamp(entry.Level or 1, 1, Config.Upgrades.PetLevel.MaxLevel))
 			else
-				warn(`[{Config.GameName}] Saved pet "{entry.Name}" is not in Config.Pets; skipped.`)
+				warn(`[{Config.GameName}] Saved pet "{entry.Name}" is not in Config.Fish; skipped.`)
 			end
 		end
 	end
@@ -666,6 +691,9 @@ function PetService.Start()
 		hatchTimeMultipliers[player] = nil
 	end)
 	registerDebugCommands()
+	if Config.Hatching.PrintOddsTable then
+		print(Fish.oddsTable())
+	end
 
 	local elapsed = 0
 	RunService.Heartbeat:Connect(function(dt: number)

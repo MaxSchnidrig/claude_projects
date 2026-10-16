@@ -29,6 +29,10 @@ export type ZoneConfig = {
 	Color: Color3,
 	MaxEggs: number,
 	EggWeights: Weights,
+	-- A small decoration on every egg from this zone (so you can tell where
+	-- an egg came from): "Shell", "Coral", "Seaweed", "Rust", "Glowworms",
+	-- "Frost", "Lava", "Tentacle", "Bones" or "Void".
+	EggDetail: string,
 }
 
 export type RarityConfig = {
@@ -40,6 +44,14 @@ export type RarityConfig = {
 export type SharkConfig = {
 	Speed: number, -- chase speed in studs per second
 	Count: number, -- how many sharks patrol this zone
+	-- Looks (deeper = bigger and scarier):
+	Color: Color3, -- back and fins
+	Belly: Color3, -- underside
+	Scale: number, -- 1 = normal size (about 11 studs long)
+	EyeColor: Color3,
+	GlowEyes: boolean, -- glowing eyes (for the dark zones)
+	Scars: number, -- 0..3 battle scars on its sides
+	Spikes: boolean, -- spiky ridge along its back
 	-- Filled in automatically at the bottom of this file (don't type these):
 	SpeedStatNeeded: number?, -- Speed stat at which you walk faster than this shark
 	MinutesAtTier1: number?, -- treadmill minutes on the Basic treadmill to get there
@@ -66,11 +78,25 @@ export type EggRarityConfig = {
 	CarrySpeedMultiplier: number,
 }
 
-export type PetConfig = {
+-- One fish you can hatch. See the FISH section below for what the look
+-- fields (Shape, Pattern, Feature) can be.
+export type FishConfig = {
 	Name: string,
+	Zone: number, -- eggs from this zone hatch into this fish (1 = Shallows)
 	Rarity: string,
-	Income: number, -- money per second
-	Color: Color3, -- body color of the placeholder fish
+	Income: number, -- money per second at level 1
+	Shape: string,
+	Pattern: string,
+	Feature: string,
+	Body: Color3, -- main color
+	Accent: Color3, -- pattern color (stripes, spots, belly, ...)
+	Fin: Color3, -- fins and tail
+}
+
+-- How an egg of one rarity looks (EGG LOOKS section).
+export type EggLook = {
+	Pattern: string,
+	Accent: Color3,
 }
 
 local Config = {}
@@ -358,7 +384,11 @@ Config.Eggs = {
 	SpawnMargin = 10, -- eggs never spawn closer than this to the zone's walls/edges
 	MinSpacing = 8, -- eggs try not to spawn closer than this to each other
 	Size = Vector3.new(2.4, 3, 2.4), -- placeholder egg size (width, height, depth)
-	CarryHeight = 5, -- how far above the character's middle the carried egg floats
+	-- Carrying: the arms point straight up and the egg rests on the hands.
+	-- The height is measured from the character's arms; CarryHeight is only
+	-- used for unusual characters whose arms can't be measured.
+	CarryHeight = 4.5,
+	CarryRestOffset = -0.25, -- move the carried egg up (+) or down (-) on the hands
 	-- How much of an egg sticks out of the ground (0.5 = top half, like it's
 	-- stuck in the sand). Also used for eggs on the plot pads.
 	VisibleFraction = 0.5,
@@ -406,6 +436,7 @@ local zones: { ZoneConfig } = {
 		Color = Color3.fromRGB(90, 200, 230),
 		MaxEggs = 6,
 		EggWeights = { Common = 80, Uncommon = 18, Rare = 2 },
+		EggDetail = "Shell",
 	},
 	{
 		Name = "Coral Reef", -- zone 2
@@ -413,6 +444,7 @@ local zones: { ZoneConfig } = {
 		Color = Color3.fromRGB(240, 120, 150),
 		MaxEggs = 6,
 		EggWeights = { Common = 40, Uncommon = 40, Rare = 17, Epic = 3 },
+		EggDetail = "Coral",
 	},
 	{
 		Name = "Kelp Forest", -- zone 3
@@ -420,6 +452,7 @@ local zones: { ZoneConfig } = {
 		Color = Color3.fromRGB(60, 150, 90),
 		MaxEggs = 5,
 		EggWeights = { Uncommon = 40, Rare = 40, Epic = 17, Legendary = 3 },
+		EggDetail = "Seaweed",
 	},
 	{
 		Name = "Shipwreck Bay", -- zone 4
@@ -427,6 +460,7 @@ local zones: { ZoneConfig } = {
 		Color = Color3.fromRGB(120, 95, 70),
 		MaxEggs = 5,
 		EggWeights = { Rare = 45, Epic = 40, Legendary = 13, Mythic = 2 },
+		EggDetail = "Rust",
 	},
 	{
 		Name = "Twilight Deep", -- zone 5
@@ -434,6 +468,7 @@ local zones: { ZoneConfig } = {
 		Color = Color3.fromRGB(70, 60, 160),
 		MaxEggs = 5,
 		EggWeights = { Epic = 50, Legendary = 38, Mythic = 11, Divine = 1 },
+		EggDetail = "Glowworms",
 	},
 	{
 		Name = "Midnight Trench", -- zone 6
@@ -441,20 +476,23 @@ local zones: { ZoneConfig } = {
 		Color = Color3.fromRGB(35, 40, 90),
 		MaxEggs = 4,
 		EggWeights = { Legendary = 50, Mythic = 38, Divine = 11, Celestial = 1 },
+		EggDetail = "Frost",
 	},
 	{
 		Name = "Hydrothermal Vents", -- zone 7
 		Length = 90,
 		Color = Color3.fromRGB(90, 35, 30),
 		MaxEggs = 4,
-		EggWeights = { Mythic = 55, Divine = 35, Celestial = 9.5, Cosmic = 0.5 },
+		EggWeights = { Mythic = 55, Divine = 35, Celestial = 10 },
+		EggDetail = "Lava",
 	},
 	{
 		Name = "The Abyss", -- zone 8
 		Length = 90,
 		Color = Color3.fromRGB(25, 20, 50),
 		MaxEggs = 4,
-		EggWeights = { Divine = 55, Celestial = 35, Cosmic = 9.8, Secret = 0.2 },
+		EggWeights = { Divine = 55, Celestial = 35, Cosmic = 10 },
+		EggDetail = "Tentacle",
 	},
 	{
 		Name = "Leviathan's Lair", -- zone 9
@@ -462,6 +500,7 @@ local zones: { ZoneConfig } = {
 		Color = Color3.fromRGB(20, 30, 35),
 		MaxEggs = 3,
 		EggWeights = { Celestial = 60, Cosmic = 37, Secret = 3 },
+		EggDetail = "Bones",
 	},
 	{
 		Name = "The Void Below", -- zone 10
@@ -469,6 +508,7 @@ local zones: { ZoneConfig } = {
 		Color = Color3.fromRGB(8, 8, 14),
 		MaxEggs = 3,
 		EggWeights = { Celestial = 30, Cosmic = 60, Secret = 10 },
+		EggDetail = "Void",
 	},
 }
 Config.Zones = zones
@@ -477,19 +517,41 @@ Config.Zones = zones
 -- SHARKS PER ZONE (Milestone 3)
 -- One row per zone, in the same order as Config.Zones above.
 -- A player can only escape a zone's shark if they walk FASTER than its Speed.
+-- The look fields set each shark's colors and size. A model named
+-- "Shark<zone number>" (e.g. "Shark7") or "Shark" in ReplicatedStorage.Assets
+-- replaces the built-in shark.
 ---------------------------------------------------------------------------
 local sharks: { SharkConfig } = {
-	--  chase speed     sharks in zone
-	{ Speed = 14, Count = 1 }, -- 1  Shallows
-	{ Speed = 20, Count = 1 }, -- 2  Coral Reef
-	{ Speed = 24, Count = 1 }, -- 3  Kelp Forest
-	{ Speed = 28, Count = 1 }, -- 4  Shipwreck Bay
-	{ Speed = 33, Count = 1 }, -- 5  Twilight Deep
-	{ Speed = 38, Count = 1 }, -- 6  Midnight Trench
-	{ Speed = 44, Count = 1 }, -- 7  Hydrothermal Vents
-	{ Speed = 50, Count = 1 }, -- 8  The Abyss
-	{ Speed = 57, Count = 1 }, -- 9  Leviathan's Lair
-	{ Speed = 66, Count = 1 }, -- 10 The Void Below
+	-- 1 Shallows: small, friendly-looking grey
+	{ Speed = 14, Count = 1, Color = Color3.fromRGB(125, 155, 180), Belly = Color3.fromRGB(240, 245, 250),
+		Scale = 0.9, EyeColor = Color3.fromRGB(20, 20, 25), GlowEyes = false, Scars = 0, Spikes = false },
+	-- 2 Coral Reef
+	{ Speed = 20, Count = 1, Color = Color3.fromRGB(95, 125, 165), Belly = Color3.fromRGB(235, 240, 245),
+		Scale = 1, EyeColor = Color3.fromRGB(20, 20, 25), GlowEyes = false, Scars = 0, Spikes = false },
+	-- 3 Kelp Forest: green camouflage
+	{ Speed = 24, Count = 1, Color = Color3.fromRGB(80, 115, 85), Belly = Color3.fromRGB(215, 225, 190),
+		Scale = 1.05, EyeColor = Color3.fromRGB(20, 20, 25), GlowEyes = false, Scars = 1, Spikes = false },
+	-- 4 Shipwreck Bay: rusty and scarred
+	{ Speed = 28, Count = 1, Color = Color3.fromRGB(120, 100, 85), Belly = Color3.fromRGB(220, 205, 180),
+		Scale = 1.1, EyeColor = Color3.fromRGB(20, 20, 25), GlowEyes = false, Scars = 2, Spikes = false },
+	-- 5 Twilight Deep: purple, eyes start glowing
+	{ Speed = 33, Count = 1, Color = Color3.fromRGB(80, 65, 140), Belly = Color3.fromRGB(190, 180, 225),
+		Scale = 1.15, EyeColor = Color3.fromRGB(255, 240, 120), GlowEyes = true, Scars = 1, Spikes = false },
+	-- 6 Midnight Trench
+	{ Speed = 38, Count = 1, Color = Color3.fromRGB(40, 45, 80), Belly = Color3.fromRGB(150, 160, 200),
+		Scale = 1.2, EyeColor = Color3.fromRGB(120, 220, 255), GlowEyes = true, Scars = 2, Spikes = false },
+	-- 7 Hydrothermal Vents: charcoal with lava eyes
+	{ Speed = 44, Count = 1, Color = Color3.fromRGB(70, 35, 30), Belly = Color3.fromRGB(150, 100, 80),
+		Scale = 1.3, EyeColor = Color3.fromRGB(255, 120, 30), GlowEyes = true, Scars = 2, Spikes = true },
+	-- 8 The Abyss
+	{ Speed = 50, Count = 1, Color = Color3.fromRGB(28, 22, 45), Belly = Color3.fromRGB(90, 80, 120),
+		Scale = 1.4, EyeColor = Color3.fromRGB(255, 40, 60), GlowEyes = true, Scars = 3, Spikes = true },
+	-- 9 Leviathan's Lair
+	{ Speed = 57, Count = 1, Color = Color3.fromRGB(20, 50, 50), Belly = Color3.fromRGB(80, 130, 120),
+		Scale = 1.5, EyeColor = Color3.fromRGB(80, 255, 160), GlowEyes = true, Scars = 3, Spikes = true },
+	-- 10 The Void Below: biggest and darkest
+	{ Speed = 66, Count = 1, Color = Color3.fromRGB(12, 10, 20), Belly = Color3.fromRGB(60, 40, 90),
+		Scale = 1.6, EyeColor = Color3.fromRGB(190, 90, 255), GlowEyes = true, Scars = 3, Spikes = true },
 }
 Config.Sharks = sharks
 
@@ -525,55 +587,256 @@ Config.Bots = {
 }
 
 ---------------------------------------------------------------------------
--- PETS (hatching milestone)
--- Income is money per second at pet level 1. Pets sit on the pad their egg
--- hatched on. Color is used by the placeholder fish; a model in
--- ReplicatedStorage.Assets with the pet's exact Name replaces it.
+-- FISH (what eggs hatch into): 8 per zone, 80 in total.
+-- An egg remembers the zone it was stolen from. When it hatches, one of THAT
+-- zone's 8 fish comes out (see HATCHING below for the odds).
+-- Income = money per second at level 1. It grows with rarity and depth.
+--
+-- Looks (all built from blocks; a model in ReplicatedStorage.Assets with the
+-- fish's exact Name replaces the built-in one):
+--   Shape:   Fish, FishSmall, FishLong, FishFlat, FishRound, FishBig, Whale,
+--            Eel, Crab, Star, Puffer, Turtle, Seahorse, Jelly, Squid, Ray
+--   Pattern: None, Stripes, Spots, Belly, Rainbow, GlowSpots, Stars, Ribs, Glitch
+--   Feature: None, Sunglasses, Crown, Spikes, Headphones, PirateHat, Eyepatch,
+--            Ghost, Nightcap, Fangs, Horn, Halo, Lure, SharkFin, Leaves, Shell
+-- Rarer fish are bigger and get effects: glow (Rare+), sparkles (Legendary+),
+-- an aura (Mythic+), and color-shifting fins + cosmic particles (Celestial+).
 ---------------------------------------------------------------------------
-local pets: { PetConfig } = {
-	{ Name = "Clownfish", Rarity = "Common", Income = 1, Color = Color3.fromRGB(255, 140, 40) },
-	{ Name = "Sardine", Rarity = "Common", Income = 1.5, Color = Color3.fromRGB(170, 190, 210) },
-	{ Name = "Pufferfish", Rarity = "Uncommon", Income = 4, Color = Color3.fromRGB(250, 220, 90) },
-	{ Name = "Seahorse", Rarity = "Uncommon", Income = 5, Color = Color3.fromRGB(255, 160, 120) },
-	{ Name = "Octopus", Rarity = "Rare", Income = 12, Color = Color3.fromRGB(200, 80, 120) },
-	{ Name = "Sea Turtle", Rarity = "Rare", Income = 15, Color = Color3.fromRGB(90, 170, 90) },
-	{ Name = "Manta Ray", Rarity = "Epic", Income = 40, Color = Color3.fromRGB(50, 70, 120) },
-	{ Name = "Swordfish", Rarity = "Epic", Income = 50, Color = Color3.fromRGB(100, 140, 190) },
-	{ Name = "Hammerhead", Rarity = "Legendary", Income = 140, Color = Color3.fromRGB(130, 140, 150) },
-	{ Name = "Giant Squid", Rarity = "Legendary", Income = 175, Color = Color3.fromRGB(220, 70, 60) },
-	{ Name = "Kraken", Rarity = "Mythic", Income = 500, Color = Color3.fromRGB(110, 40, 140) },
-	{ Name = "Golden Megalodon", Rarity = "Mythic", Income = 650, Color = Color3.fromRGB(255, 200, 50) },
-	{ Name = "Angel Jellyfish", Rarity = "Divine", Income = 2000, Color = Color3.fromRGB(255, 210, 240) },
-	{ Name = "Pearl Narwhal", Rarity = "Divine", Income = 2600, Color = Color3.fromRGB(240, 240, 250) },
-	{ Name = "Starfish Sovereign", Rarity = "Celestial", Income = 7000, Color = Color3.fromRGB(255, 170, 60) },
-	{ Name = "Comet Orca", Rarity = "Celestial", Income = 9000, Color = Color3.fromRGB(40, 40, 60) },
-	{ Name = "Nebula Ray", Rarity = "Cosmic", Income = 25000, Color = Color3.fromRGB(150, 70, 230) },
-	{ Name = "Galaxy Whale", Rarity = "Cosmic", Income = 32000, Color = Color3.fromRGB(40, 60, 170) },
-	{ Name = "Abyssal Leviathan", Rarity = "Secret", Income = 100000, Color = Color3.fromRGB(20, 90, 90) },
-	{ Name = "The Deep One", Rarity = "Secret", Income = 150000, Color = Color3.fromRGB(15, 15, 20) },
+local fish: { FishConfig } = {
+	-- Zone 1: Shallows
+	{ Name = "Clowny Clownfish", Zone = 1, Rarity = "Common", Income = 1.0, Shape = "Fish", Pattern = "Stripes", Feature = "None",
+		Body = Color3.fromRGB(255, 140, 40), Accent = Color3.fromRGB(255, 255, 255), Fin = Color3.fromRGB(30, 30, 30) },
+	{ Name = "Pinchy Crab", Zone = 1, Rarity = "Common", Income = 1.0, Shape = "Crab", Pattern = "None", Feature = "None",
+		Body = Color3.fromRGB(240, 110, 60), Accent = Color3.fromRGB(255, 200, 150), Fin = Color3.fromRGB(200, 70, 40) },
+	{ Name = "Starla Starfish", Zone = 1, Rarity = "Common", Income = 1.0, Shape = "Star", Pattern = "Spots", Feature = "None",
+		Body = Color3.fromRGB(255, 130, 170), Accent = Color3.fromRGB(255, 220, 230), Fin = Color3.fromRGB(230, 90, 140) },
+	{ Name = "Guppy McGuppface", Zone = 1, Rarity = "Uncommon", Income = 3.0, Shape = "FishSmall", Pattern = "Belly", Feature = "None",
+		Body = Color3.fromRGB(80, 200, 255), Accent = Color3.fromRGB(255, 255, 255), Fin = Color3.fromRGB(40, 140, 220) },
+	{ Name = "Bubble Puffer", Zone = 1, Rarity = "Uncommon", Income = 3.0, Shape = "Puffer", Pattern = "Spots", Feature = "None",
+		Body = Color3.fromRGB(255, 220, 80), Accent = Color3.fromRGB(255, 255, 200), Fin = Color3.fromRGB(220, 170, 40) },
+	{ Name = "Shelly Turtle", Zone = 1, Rarity = "Rare", Income = 9.0, Shape = "Turtle", Pattern = "Spots", Feature = "None",
+		Body = Color3.fromRGB(110, 190, 90), Accent = Color3.fromRGB(170, 120, 70), Fin = Color3.fromRGB(80, 150, 70) },
+	{ Name = "Sea Biscuit", Zone = 1, Rarity = "Rare", Income = 7.5, Shape = "Seahorse", Pattern = "Belly", Feature = "None",
+		Body = Color3.fromRGB(255, 200, 60), Accent = Color3.fromRGB(255, 240, 180), Fin = Color3.fromRGB(230, 150, 40) },
+	{ Name = "Sunbeam Tang", Zone = 1, Rarity = "Epic", Income = 22, Shape = "FishFlat", Pattern = "None", Feature = "Sunglasses",
+		Body = Color3.fromRGB(255, 230, 40), Accent = Color3.fromRGB(255, 255, 255), Fin = Color3.fromRGB(255, 170, 30) },
+	-- Zone 2: Coral Reef
+	{ Name = "Coral Nibbler", Zone = 2, Rarity = "Common", Income = 1.0, Shape = "Fish", Pattern = "Belly", Feature = "None",
+		Body = Color3.fromRGB(240, 120, 200), Accent = Color3.fromRGB(150, 90, 220), Fin = Color3.fromRGB(200, 80, 170) },
+	{ Name = "Reefy Shrimp", Zone = 2, Rarity = "Common", Income = 1.5, Shape = "FishLong", Pattern = "Stripes", Feature = "None",
+		Body = Color3.fromRGB(255, 110, 90), Accent = Color3.fromRGB(255, 200, 180), Fin = Color3.fromRGB(230, 80, 70) },
+	{ Name = "Parrot Pete", Zone = 2, Rarity = "Uncommon", Income = 4.5, Shape = "Fish", Pattern = "Stripes", Feature = "None",
+		Body = Color3.fromRGB(60, 200, 140), Accent = Color3.fromRGB(60, 140, 240), Fin = Color3.fromRGB(40, 160, 120) },
+	{ Name = "Polka Puffer", Zone = 2, Rarity = "Uncommon", Income = 4.0, Shape = "Puffer", Pattern = "Spots", Feature = "None",
+		Body = Color3.fromRGB(250, 250, 250), Accent = Color3.fromRGB(30, 30, 30), Fin = Color3.fromRGB(220, 220, 220) },
+	{ Name = "Lionfish Larry", Zone = 2, Rarity = "Rare", Income = 11, Shape = "Fish", Pattern = "Stripes", Feature = "Spikes",
+		Body = Color3.fromRGB(220, 60, 50), Accent = Color3.fromRGB(255, 240, 230), Fin = Color3.fromRGB(200, 50, 40) },
+	{ Name = "Bloop Jelly", Zone = 2, Rarity = "Rare", Income = 12, Shape = "Jelly", Pattern = "None", Feature = "None",
+		Body = Color3.fromRGB(255, 150, 210), Accent = Color3.fromRGB(255, 220, 240), Fin = Color3.fromRGB(255, 120, 200) },
+	{ Name = "Rainbow Wrasse", Zone = 2, Rarity = "Epic", Income = 25, Shape = "FishLong", Pattern = "Rainbow", Feature = "None",
+		Body = Color3.fromRGB(80, 170, 255), Accent = Color3.fromRGB(255, 80, 160), Fin = Color3.fromRGB(255, 200, 60) },
+	{ Name = "Queen Angelfish", Zone = 2, Rarity = "Legendary", Income = 73, Shape = "FishFlat", Pattern = "Stripes", Feature = "Crown",
+		Body = Color3.fromRGB(40, 90, 220), Accent = Color3.fromRGB(255, 220, 40), Fin = Color3.fromRGB(255, 200, 40) },
+	-- Zone 3: Kelp Forest
+	{ Name = "Kelp Crawler", Zone = 3, Rarity = "Uncommon", Income = 5.0, Shape = "Crab", Pattern = "Spots", Feature = "Leaves",
+		Body = Color3.fromRGB(90, 150, 60), Accent = Color3.fromRGB(190, 220, 120), Fin = Color3.fromRGB(70, 120, 50) },
+	{ Name = "Mossy Eel", Zone = 3, Rarity = "Uncommon", Income = 5.5, Shape = "Eel", Pattern = "Spots", Feature = "None",
+		Body = Color3.fromRGB(120, 140, 60), Accent = Color3.fromRGB(190, 200, 110), Fin = Color3.fromRGB(90, 110, 40) },
+	{ Name = "Garibaldi Gus", Zone = 3, Rarity = "Rare", Income = 16, Shape = "Fish", Pattern = "None", Feature = "None",
+		Body = Color3.fromRGB(255, 120, 20), Accent = Color3.fromRGB(255, 200, 120), Fin = Color3.fromRGB(240, 100, 20) },
+	{ Name = "Leafy Larry", Zone = 3, Rarity = "Rare", Income = 14, Shape = "Seahorse", Pattern = "None", Feature = "Leaves",
+		Body = Color3.fromRGB(130, 190, 80), Accent = Color3.fromRGB(200, 230, 130), Fin = Color3.fromRGB(90, 160, 60) },
+	{ Name = "Sneaky Octo", Zone = 3, Rarity = "Epic", Income = 38, Shape = "Squid", Pattern = "Spots", Feature = "None",
+		Body = Color3.fromRGB(150, 80, 190), Accent = Color3.fromRGB(220, 170, 240), Fin = Color3.fromRGB(120, 60, 160) },
+	{ Name = "Kelpie Ray", Zone = 3, Rarity = "Epic", Income = 42, Shape = "Ray", Pattern = "Spots", Feature = "None",
+		Body = Color3.fromRGB(50, 110, 70), Accent = Color3.fromRGB(140, 200, 150), Fin = Color3.fromRGB(40, 90, 60) },
+	{ Name = "Bob the Bass Drop", Zone = 3, Rarity = "Legendary", Income = 84, Shape = "FishBig", Pattern = "Stripes", Feature = "Headphones",
+		Body = Color3.fromRGB(40, 180, 170), Accent = Color3.fromRGB(30, 30, 40), Fin = Color3.fromRGB(30, 140, 130) },
+	{ Name = "Grove Guardian Grouper", Zone = 3, Rarity = "Mythic", Income = 250, Shape = "FishBig", Pattern = "Belly", Feature = "Crown",
+		Body = Color3.fromRGB(60, 140, 70), Accent = Color3.fromRGB(240, 210, 90), Fin = Color3.fromRGB(40, 110, 60) },
+	-- Zone 4: Shipwreck Bay
+	{ Name = "Barnacle Bill", Zone = 4, Rarity = "Uncommon", Income = 6.5, Shape = "Fish", Pattern = "Spots", Feature = "None",
+		Body = Color3.fromRGB(140, 130, 110), Accent = Color3.fromRGB(220, 210, 190), Fin = Color3.fromRGB(110, 100, 90) },
+	{ Name = "Anchor Eel", Zone = 4, Rarity = "Rare", Income = 20, Shape = "Eel", Pattern = "Stripes", Feature = "None",
+		Body = Color3.fromRGB(150, 80, 50), Accent = Color3.fromRGB(90, 90, 100), Fin = Color3.fromRGB(120, 60, 40) },
+	{ Name = "Rusty Crab", Zone = 4, Rarity = "Rare", Income = 22, Shape = "Crab", Pattern = "Spots", Feature = "None",
+		Body = Color3.fromRGB(170, 80, 40), Accent = Color3.fromRGB(220, 140, 80), Fin = Color3.fromRGB(140, 60, 30) },
+	{ Name = "Pirate Puffer", Zone = 4, Rarity = "Epic", Income = 47, Shape = "Puffer", Pattern = "Spots", Feature = "PirateHat",
+		Body = Color3.fromRGB(230, 190, 120), Accent = Color3.fromRGB(40, 40, 40), Fin = Color3.fromRGB(200, 160, 90) },
+	{ Name = "Treasure Tuna", Zone = 4, Rarity = "Epic", Income = 52, Shape = "FishLong", Pattern = "Stripes", Feature = "None",
+		Body = Color3.fromRGB(255, 200, 40), Accent = Color3.fromRGB(255, 240, 160), Fin = Color3.fromRGB(220, 160, 30) },
+	{ Name = "Captain Flounder", Zone = 4, Rarity = "Legendary", Income = 140, Shape = "Ray", Pattern = "Spots", Feature = "Eyepatch",
+		Body = Color3.fromRGB(170, 130, 90), Accent = Color3.fromRGB(240, 220, 190), Fin = Color3.fromRGB(140, 100, 70) },
+	{ Name = "Ghost Mackerel", Zone = 4, Rarity = "Legendary", Income = 110, Shape = "Fish", Pattern = "Stripes", Feature = "Ghost",
+		Body = Color3.fromRGB(190, 255, 220), Accent = Color3.fromRGB(240, 255, 250), Fin = Color3.fromRGB(150, 230, 200) },
+	{ Name = "Davy Jones Jr.", Zone = 4, Rarity = "Mythic", Income = 330, Shape = "Squid", Pattern = "Spots", Feature = "PirateHat",
+		Body = Color3.fromRGB(40, 140, 130), Accent = Color3.fromRGB(120, 220, 200), Fin = Color3.fromRGB(30, 110, 100) },
+	-- Zone 5: Twilight Deep
+	{ Name = "Dusk Minnow", Zone = 5, Rarity = "Rare", Income = 24, Shape = "FishSmall", Pattern = "Belly", Feature = "None",
+		Body = Color3.fromRGB(140, 90, 220), Accent = Color3.fromRGB(220, 190, 255), Fin = Color3.fromRGB(110, 70, 190) },
+	{ Name = "Glowworm Eel", Zone = 5, Rarity = "Rare", Income = 27, Shape = "Eel", Pattern = "GlowSpots", Feature = "None",
+		Body = Color3.fromRGB(40, 50, 120), Accent = Color3.fromRGB(120, 255, 220), Fin = Color3.fromRGB(30, 40, 100) },
+	{ Name = "Twilight Jelly", Zone = 5, Rarity = "Epic", Income = 73, Shape = "Jelly", Pattern = "GlowSpots", Feature = "None",
+		Body = Color3.fromRGB(170, 110, 255), Accent = Color3.fromRGB(230, 200, 255), Fin = Color3.fromRGB(140, 90, 230) },
+	{ Name = "Hatchet Harry", Zone = 5, Rarity = "Epic", Income = 63, Shape = "FishFlat", Pattern = "None", Feature = "None",
+		Body = Color3.fromRGB(190, 200, 215), Accent = Color3.fromRGB(110, 120, 140), Fin = Color3.fromRGB(160, 170, 190) },
+	{ Name = "Moonbeam Ray", Zone = 5, Rarity = "Legendary", Income = 170, Shape = "Ray", Pattern = "GlowSpots", Feature = "None",
+		Body = Color3.fromRGB(150, 170, 220), Accent = Color3.fromRGB(240, 245, 255), Fin = Color3.fromRGB(120, 140, 200) },
+	{ Name = "Sleepy Sunfish", Zone = 5, Rarity = "Legendary", Income = 190, Shape = "FishRound", Pattern = "None", Feature = "Nightcap",
+		Body = Color3.fromRGB(150, 155, 170), Accent = Color3.fromRGB(220, 220, 230), Fin = Color3.fromRGB(120, 125, 140) },
+	{ Name = "Vampire Squid", Zone = 5, Rarity = "Mythic", Income = 380, Shape = "Squid", Pattern = "None", Feature = "Fangs",
+		Body = Color3.fromRGB(120, 20, 40), Accent = Color3.fromRGB(255, 80, 90), Fin = Color3.fromRGB(90, 10, 30) },
+	{ Name = "Starlight Seraph", Zone = 5, Rarity = "Divine", Income = 1100, Shape = "Jelly", Pattern = "Stars", Feature = "Halo",
+		Body = Color3.fromRGB(255, 245, 210), Accent = Color3.fromRGB(255, 215, 90), Fin = Color3.fromRGB(255, 230, 160) },
+	-- Zone 6: Midnight Trench
+	{ Name = "Gulper Gus", Zone = 6, Rarity = "Epic", Income = 81, Shape = "FishRound", Pattern = "Belly", Feature = "Fangs",
+		Body = Color3.fromRGB(40, 40, 60), Accent = Color3.fromRGB(200, 60, 80), Fin = Color3.fromRGB(30, 30, 45) },
+	{ Name = "Fangtooth Fred", Zone = 6, Rarity = "Epic", Income = 90, Shape = "Fish", Pattern = "None", Feature = "Fangs",
+		Body = Color3.fromRGB(70, 60, 80), Accent = Color3.fromRGB(150, 140, 160), Fin = Color3.fromRGB(50, 40, 60) },
+	{ Name = "Midnight Eel", Zone = 6, Rarity = "Legendary", Income = 250, Shape = "Eel", Pattern = "Stripes", Feature = "None",
+		Body = Color3.fromRGB(30, 40, 90), Accent = Color3.fromRGB(90, 200, 255), Fin = Color3.fromRGB(20, 30, 70) },
+	{ Name = "Ink Blot Octo", Zone = 6, Rarity = "Legendary", Income = 210, Shape = "Squid", Pattern = "Spots", Feature = "None",
+		Body = Color3.fromRGB(30, 30, 35), Accent = Color3.fromRGB(120, 120, 140), Fin = Color3.fromRGB(20, 20, 25) },
+	{ Name = "Frostfin Narwhal", Zone = 6, Rarity = "Mythic", Income = 590, Shape = "Whale", Pattern = "Spots", Feature = "Horn",
+		Body = Color3.fromRGB(170, 220, 255), Accent = Color3.fromRGB(240, 250, 255), Fin = Color3.fromRGB(130, 190, 240) },
+	{ Name = "Trench Dragon", Zone = 6, Rarity = "Mythic", Income = 640, Shape = "Eel", Pattern = "GlowSpots", Feature = "Spikes",
+		Body = Color3.fromRGB(80, 40, 130), Accent = Color3.fromRGB(200, 120, 255), Fin = Color3.fromRGB(60, 30, 100) },
+	{ Name = "Lumen Lord", Zone = 6, Rarity = "Divine", Income = 1200, Shape = "FishBig", Pattern = "GlowSpots", Feature = "Halo",
+		Body = Color3.fromRGB(240, 250, 255), Accent = Color3.fromRGB(140, 220, 255), Fin = Color3.fromRGB(200, 230, 255) },
+	{ Name = "Aurora Whale", Zone = 6, Rarity = "Celestial", Income = 3600, Shape = "Whale", Pattern = "Rainbow", Feature = "None",
+		Body = Color3.fromRGB(40, 170, 150), Accent = Color3.fromRGB(150, 255, 200), Fin = Color3.fromRGB(60, 120, 200) },
+	-- Zone 7: Hydrothermal Vents
+	{ Name = "Vent Shrimp", Zone = 7, Rarity = "Epic", Income = 110, Shape = "FishSmall", Pattern = "Stripes", Feature = "None",
+		Body = Color3.fromRGB(230, 60, 40), Accent = Color3.fromRGB(255, 170, 120), Fin = Color3.fromRGB(200, 40, 30) },
+	{ Name = "Lava Crab", Zone = 7, Rarity = "Legendary", Income = 300, Shape = "Crab", Pattern = "GlowSpots", Feature = "None",
+		Body = Color3.fromRGB(240, 90, 30), Accent = Color3.fromRGB(255, 200, 60), Fin = Color3.fromRGB(200, 60, 20) },
+	{ Name = "Smoky Snapper", Zone = 7, Rarity = "Legendary", Income = 330, Shape = "Fish", Pattern = "Stripes", Feature = "None",
+		Body = Color3.fromRGB(110, 110, 120), Accent = Color3.fromRGB(255, 130, 40), Fin = Color3.fromRGB(90, 90, 100) },
+	{ Name = "Magma Puffer", Zone = 7, Rarity = "Mythic", Income = 720, Shape = "Puffer", Pattern = "GlowSpots", Feature = "None",
+		Body = Color3.fromRGB(220, 60, 20), Accent = Color3.fromRGB(255, 190, 40), Fin = Color3.fromRGB(180, 40, 10) },
+	{ Name = "Boiling Barracuda", Zone = 7, Rarity = "Mythic", Income = 790, Shape = "FishLong", Pattern = "Stripes", Feature = "Fangs",
+		Body = Color3.fromRGB(240, 130, 40), Accent = Color3.fromRGB(255, 230, 150), Fin = Color3.fromRGB(210, 100, 30) },
+	{ Name = "Inferno Angler", Zone = 7, Rarity = "Divine", Income = 2100, Shape = "Fish", Pattern = "GlowSpots", Feature = "Lure",
+		Body = Color3.fromRGB(200, 40, 30), Accent = Color3.fromRGB(255, 220, 80), Fin = Color3.fromRGB(160, 30, 20) },
+	{ Name = "Spicy Noodle Eel", Zone = 7, Rarity = "Divine", Income = 1700, Shape = "Eel", Pattern = "Stripes", Feature = "None",
+		Body = Color3.fromRGB(255, 190, 40), Accent = Color3.fromRGB(255, 80, 30), Fin = Color3.fromRGB(240, 150, 30) },
+	{ Name = "Phoenix Ray", Zone = 7, Rarity = "Celestial", Income = 4900, Shape = "Ray", Pattern = "Rainbow", Feature = "Crown",
+		Body = Color3.fromRGB(255, 110, 30), Accent = Color3.fromRGB(255, 230, 80), Fin = Color3.fromRGB(240, 60, 30) },
+	-- Zone 8: The Abyss
+	{ Name = "Angler Annie", Zone = 8, Rarity = "Legendary", Income = 370, Shape = "Fish", Pattern = "Spots", Feature = "Lure",
+		Body = Color3.fromRGB(50, 80, 60), Accent = Color3.fromRGB(200, 255, 120), Fin = Color3.fromRGB(40, 60, 45) },
+	{ Name = "Blobby the Blobfish", Zone = 8, Rarity = "Legendary", Income = 410, Shape = "Puffer", Pattern = "None", Feature = "None",
+		Body = Color3.fromRGB(255, 170, 190), Accent = Color3.fromRGB(255, 210, 220), Fin = Color3.fromRGB(240, 140, 170) },
+	{ Name = "Abyssal Gulper", Zone = 8, Rarity = "Mythic", Income = 1100, Shape = "Eel", Pattern = "GlowSpots", Feature = "Fangs",
+		Body = Color3.fromRGB(25, 25, 35), Accent = Color3.fromRGB(255, 60, 120), Fin = Color3.fromRGB(15, 15, 25) },
+	{ Name = "Ghost Shark Pup", Zone = 8, Rarity = "Mythic", Income = 970, Shape = "FishLong", Pattern = "Belly", Feature = "SharkFin",
+		Body = Color3.fromRGB(200, 210, 230), Accent = Color3.fromRGB(240, 245, 255), Fin = Color3.fromRGB(170, 180, 210) },
+	{ Name = "Deep Sea Dragonfish", Zone = 8, Rarity = "Divine", Income = 2600, Shape = "Eel", Pattern = "GlowSpots", Feature = "Fangs",
+		Body = Color3.fromRGB(20, 20, 30), Accent = Color3.fromRGB(120, 255, 255), Fin = Color3.fromRGB(10, 10, 20) },
+	{ Name = "Kraken Jr.", Zone = 8, Rarity = "Divine", Income = 2800, Shape = "Squid", Pattern = "Spots", Feature = "Crown",
+		Body = Color3.fromRGB(170, 30, 50), Accent = Color3.fromRGB(255, 140, 150), Fin = Color3.fromRGB(130, 20, 40) },
+	{ Name = "Void Lantern", Zone = 8, Rarity = "Celestial", Income = 5600, Shape = "Jelly", Pattern = "Stars", Feature = "Lure",
+		Body = Color3.fromRGB(60, 230, 255), Accent = Color3.fromRGB(200, 255, 255), Fin = Color3.fromRGB(40, 180, 230) },
+	{ Name = "Abyss King Angler", Zone = 8, Rarity = "Cosmic", Income = 18000, Shape = "FishBig", Pattern = "Stars", Feature = "Lure",
+		Body = Color3.fromRGB(70, 30, 120), Accent = Color3.fromRGB(190, 120, 255), Fin = Color3.fromRGB(50, 20, 90) },
+	-- Zone 9: Leviathan's Lair
+	{ Name = "Bone Fish", Zone = 9, Rarity = "Mythic", Income = 1200, Shape = "Fish", Pattern = "Ribs", Feature = "None",
+		Body = Color3.fromRGB(235, 230, 210), Accent = Color3.fromRGB(120, 110, 100), Fin = Color3.fromRGB(200, 195, 180) },
+	{ Name = "Serpent Hatchling", Zone = 9, Rarity = "Mythic", Income = 1400, Shape = "Eel", Pattern = "Spots", Feature = "Spikes",
+		Body = Color3.fromRGB(60, 140, 90), Accent = Color3.fromRGB(200, 230, 120), Fin = Color3.fromRGB(40, 110, 70) },
+	{ Name = "Scaleback Leviathan", Zone = 9, Rarity = "Divine", Income = 3600, Shape = "Whale", Pattern = "Stripes", Feature = "Spikes",
+		Body = Color3.fromRGB(30, 90, 100), Accent = Color3.fromRGB(120, 220, 210), Fin = Color3.fromRGB(20, 70, 80) },
+	{ Name = "Titan Turtle", Zone = 9, Rarity = "Divine", Income = 3100, Shape = "Turtle", Pattern = "Spots", Feature = "Crown",
+		Body = Color3.fromRGB(110, 110, 120), Accent = Color3.fromRGB(70, 160, 140), Fin = Color3.fromRGB(90, 90, 100) },
+	{ Name = "Ancient Ammonite", Zone = 9, Rarity = "Celestial", Income = 8700, Shape = "Squid", Pattern = "Stripes", Feature = "Shell",
+		Body = Color3.fromRGB(200, 150, 90), Accent = Color3.fromRGB(255, 230, 170), Fin = Color3.fromRGB(170, 120, 70) },
+	{ Name = "Tidecaller Ray", Zone = 9, Rarity = "Celestial", Income = 9500, Shape = "Ray", Pattern = "Stars", Feature = "Halo",
+		Body = Color3.fromRGB(30, 70, 200), Accent = Color3.fromRGB(120, 220, 255), Fin = Color3.fromRGB(20, 50, 170) },
+	{ Name = "Elder Kraken", Zone = 9, Rarity = "Cosmic", Income = 20000, Shape = "Squid", Pattern = "Stars", Feature = "Crown",
+		Body = Color3.fromRGB(110, 40, 160), Accent = Color3.fromRGB(255, 120, 240), Fin = Color3.fromRGB(80, 20, 120) },
+	{ Name = "Leviathan Prime", Zone = 9, Rarity = "Secret", Income = 60000, Shape = "Eel", Pattern = "GlowSpots", Feature = "Horn",
+		Body = Color3.fromRGB(20, 60, 70), Accent = Color3.fromRGB(80, 255, 200), Fin = Color3.fromRGB(10, 40, 50) },
+	-- Zone 10: The Void Below
+	{ Name = "Null Jelly", Zone = 10, Rarity = "Divine", Income = 4000, Shape = "Jelly", Pattern = "Stars", Feature = "None",
+		Body = Color3.fromRGB(30, 30, 40), Accent = Color3.fromRGB(255, 255, 255), Fin = Color3.fromRGB(60, 60, 80) },
+	{ Name = "Static Guppy", Zone = 10, Rarity = "Divine", Income = 4500, Shape = "FishSmall", Pattern = "Glitch", Feature = "None",
+		Body = Color3.fromRGB(150, 150, 150), Accent = Color3.fromRGB(255, 255, 255), Fin = Color3.fromRGB(90, 90, 90) },
+	{ Name = "Nebula Ray", Zone = 10, Rarity = "Celestial", Income = 12000, Shape = "Ray", Pattern = "Stars", Feature = "None",
+		Body = Color3.fromRGB(150, 60, 220), Accent = Color3.fromRGB(255, 120, 200), Fin = Color3.fromRGB(110, 40, 180) },
+	{ Name = "Starwhale", Zone = 10, Rarity = "Celestial", Income = 11000, Shape = "Whale", Pattern = "Stars", Feature = "Halo",
+		Body = Color3.fromRGB(20, 30, 90), Accent = Color3.fromRGB(255, 240, 140), Fin = Color3.fromRGB(30, 50, 140) },
+	{ Name = "Galaxy Puffer", Zone = 10, Rarity = "Cosmic", Income = 31000, Shape = "Puffer", Pattern = "Stars", Feature = "Spikes",
+		Body = Color3.fromRGB(60, 20, 120), Accent = Color3.fromRGB(255, 140, 255), Fin = Color3.fromRGB(40, 10, 90) },
+	{ Name = "Quasar Eel", Zone = 10, Rarity = "Cosmic", Income = 34000, Shape = "Eel", Pattern = "Rainbow", Feature = "Halo",
+		Body = Color3.fromRGB(80, 240, 255), Accent = Color3.fromRGB(255, 255, 255), Fin = Color3.fromRGB(40, 180, 230) },
+	{ Name = "The Void Itself", Zone = 10, Rarity = "Secret", Income = 69000, Shape = "Squid", Pattern = "Stars", Feature = "Crown",
+		Body = Color3.fromRGB(10, 10, 15), Accent = Color3.fromRGB(255, 255, 255), Fin = Color3.fromRGB(25, 25, 35) },
+	{ Name = "Glitch Fish", Zone = 10, Rarity = "Secret", Income = 80000, Shape = "Fish", Pattern = "Glitch", Feature = "Sunglasses",
+		Body = Color3.fromRGB(255, 40, 200), Accent = Color3.fromRGB(40, 255, 120), Fin = Color3.fromRGB(80, 60, 255) },
 }
-Config.Pets = pets
+Config.Fish = fish
 
--- Which pet rarity comes out of which egg rarity (relative weights).
--- Mostly the same rarity, with a small chance of one tier better.
--- Inside the chosen rarity, every pet of that rarity is equally likely.
-local hatchOdds: { [string]: Weights } = {
-	Common = { Common = 90, Uncommon = 10 },
-	Uncommon = { Uncommon = 90, Rare = 10 },
-	Rare = { Rare = 92, Epic = 8 },
-	Epic = { Epic = 94, Legendary = 6 },
-	Legendary = { Legendary = 96, Mythic = 4 },
-	Mythic = { Mythic = 96, Divine = 4 },
-	Divine = { Divine = 96, Celestial = 4 },
-	Celestial = { Celestial = 97, Cosmic = 3 },
-	Cosmic = { Cosmic = 98, Secret = 2 },
-	Secret = { Secret = 100 },
+---------------------------------------------------------------------------
+-- HATCHING ODDS
+-- Which fish comes out of an egg: only fish from the egg's zone. Each fish
+-- RARITY gets a weight by how many steps it is away from the egg's rarity
+-- (0 = same rarity, +1 = one rarer, -1 = one more common). Fish of the same
+-- rarity share that weight equally. Rarities with no fish in that zone are
+-- skipped. The full table is printed to Output when the server starts.
+---------------------------------------------------------------------------
+Config.Hatching = {
+	RarityStepWeights = {
+		[-2] = 3,
+		[-1] = 12,
+		[0] = 70,
+		[1] = 12,
+		[2] = 3,
+	} :: { [number]: number },
+	PrintOddsTable = true, -- print every zone's hatch odds when the server starts
 }
-Config.HatchOdds = hatchOdds
+
+---------------------------------------------------------------------------
+-- EGG LOOKS
+-- Every egg is a blocky egg in its rarity's color, with a pattern per rarity
+-- and a little detail from its zone (Config.Zones[...].EggDetail).
+-- Patterns: Spots, Stripes, Swirl, Zigzag, Cracks, Crystals, Wings, Stars,
+-- Galaxy, Glitch. Rarer eggs glow and sparkle more (same rules as fish).
+-- A model named "Egg<Rarity>" (e.g. "EggLegendary") or "Egg" in
+-- ReplicatedStorage.Assets replaces the built-in egg.
+---------------------------------------------------------------------------
+local eggLooks: { [string]: EggLook } = {
+	Common = { Pattern = "Spots", Accent = Color3.fromRGB(140, 140, 150) },
+	Uncommon = { Pattern = "Stripes", Accent = Color3.fromRGB(240, 255, 240) },
+	Rare = { Pattern = "Swirl", Accent = Color3.fromRGB(200, 230, 255) },
+	Epic = { Pattern = "Zigzag", Accent = Color3.fromRGB(240, 200, 255) },
+	Legendary = { Pattern = "Cracks", Accent = Color3.fromRGB(255, 250, 200) },
+	Mythic = { Pattern = "Crystals", Accent = Color3.fromRGB(255, 180, 210) },
+	Divine = { Pattern = "Wings", Accent = Color3.fromRGB(255, 255, 255) },
+	Celestial = { Pattern = "Stars", Accent = Color3.fromRGB(255, 255, 255) },
+	Cosmic = { Pattern = "Galaxy", Accent = Color3.fromRGB(255, 120, 230) },
+	Secret = { Pattern = "Glitch", Accent = Color3.fromRGB(0, 255, 200) },
+}
+Config.EggLooks = eggLooks
+
+-- Which rarities get which effect (on fish AND eggs).
+Config.RarityEffects = {
+	GlowFrom = "Rare", -- a soft light
+	SparklesFrom = "Legendary", -- sparkle particles
+	AuraFrom = "Mythic", -- a glowing aura
+	CosmicFrom = "Celestial", -- color-shifting fins/details + cosmic particles
+	-- Particle textures (built into Roblox). Swap for your own image IDs if you like.
+	SparkleTexture = "rbxasset://textures/particles/sparkles_main.dds",
+	AuraTexture = "rbxasset://textures/particles/smoke_main.dds",
+	-- To keep the game fast, effects and animations far from the camera are
+	-- switched off (studs).
+	EffectsDistance = 110,
+	AnimateDistance = 140,
+	Outlines = true, -- thin dark edges on the main blocks of fish, eggs and sharks
+}
 
 Config.PetDisplay = {
-	HoverHeight = 2.6, -- how high pets float above their pad (studs)
-	SizePerRarity = 0.12, -- each rarity tier makes the placeholder fish 12% bigger
+	HoverHeight = 1.2, -- gap between the pad and the lowest point of a floating fish (studs)
+	SizePerRarity = 0.1, -- each rarity tier makes a fish 10% bigger (Secret = 1.9x)
 	-- Hatching a pet of this rarity or better is announced to the whole server.
 	AnnounceFrom = "Legendary",
 	RevealSeconds = 3, -- how long the "You hatched ...!" card stays on screen

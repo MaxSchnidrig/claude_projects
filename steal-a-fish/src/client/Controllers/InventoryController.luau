@@ -33,6 +33,7 @@ type Entry = {
 	Pad: number,
 	Kind: string,
 	Rarity: string,
+	Zone: number,
 	Name: string,
 	Level: number,
 	BaseIncome: number,
@@ -78,6 +79,7 @@ local function collectEntries(plot: Model): { Entry }
 				Pad = pad,
 				Kind = "Pet",
 				Rarity = attr(child, "Rarity", "Common"),
+				Zone = attr(child, Constants.Attributes.Zone, 0),
 				Name = attr(child, Constants.Attributes.PetName, child.Name),
 				Level = attr(child, Constants.Attributes.Level, 1),
 				BaseIncome = attr(child, Constants.Attributes.BaseIncome, 0),
@@ -88,6 +90,7 @@ local function collectEntries(plot: Model): { Entry }
 				Pad = pad,
 				Kind = "Egg",
 				Rarity = attr(child, "Rarity", "Common"),
+				Zone = attr(child, Constants.Attributes.Zone, 0),
 				Name = `{attr(child, "Rarity", "Common")} Egg`,
 				Level = 0,
 				BaseIncome = 0,
@@ -111,6 +114,11 @@ end
 
 -- Defined further down; buildRow needs to call it.
 local refresh: () -> ()
+
+local function zoneName(zoneIndex: number): string
+	local zone = Config.Zones[zoneIndex]
+	return if zone then zone.Name else "?"
+end
 
 local function formatTime(seconds: number): string
 	seconds = math.max(0, math.ceil(seconds))
@@ -136,7 +144,9 @@ local function buildRow(entry: Entry, order: number, money: number)
 	Kit.label(row, entry.Name, UDim2.new(0.5, -20, 0, 30), UDim2.fromOffset(18, 6), color)
 	if entry.Kind == "Egg" then
 		local left = entry.HatchEndsAt - Workspace:GetServerTimeNow()
-		local text = if left > 0 then `🥚 Hatches in {formatTime(left)}` else "✨ READY! Hold E on it to hatch"
+		local text = if left > 0
+			then `🥚 {zoneName(entry.Zone)} • hatches in {formatTime(left)}`
+			else "✨ READY! Hold E on it to hatch"
 		Kit.label(row, text, UDim2.new(0.6, -20, 0, 24), UDim2.fromOffset(18, 38), Kit.Colors.SubText)
 		return
 	end
@@ -144,7 +154,7 @@ local function buildRow(entry: Entry, order: number, money: number)
 	local income = Config.PetIncome(entry.BaseIncome, entry.Level)
 	Kit.label(
 		row,
-		`{entry.Rarity} • Lv {entry.Level} • ${Format.short(income)}/s`,
+		`{entry.Rarity} • {zoneName(entry.Zone)} • Lv {entry.Level} • ${Format.short(income)}/s`,
 		UDim2.new(0.5, -20, 0, 24),
 		UDim2.fromOffset(18, 38),
 		Kit.Colors.SubText
