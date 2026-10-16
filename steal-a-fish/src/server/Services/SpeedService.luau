@@ -53,6 +53,7 @@ local Format = require(ReplicatedStorage.Shared.Format)
 local Net = require(ReplicatedStorage.Shared.Net)
 local Signal = require(ReplicatedStorage.Shared.Signal)
 local Types = require(ReplicatedStorage.Shared.Types)
+local Notify = require(script.Parent.Parent.Util.Notify)
 local DebugCommands = require(script.Parent.Parent.Util.DebugCommands)
 local Leaderstats = require(script.Parent.Parent.Util.Leaderstats)
 local PlayerSpeed = require(script.Parent.Parent.Util.PlayerSpeed)
@@ -82,8 +83,8 @@ local stopLimiter = RateLimiter.new(5, 1)
 
 local CHECK_INTERVAL = 0.15 -- seconds between "is anyone standing on a belt?" checks
 
-local function notify(player: Player, message: string)
-	Net.event(Net.Names.Notify):FireClient(player, message)
+local function notify(player: Player, message: string, kind: string?)
+	Notify.send(player, message, kind)
 end
 
 local function getRoot(player: Player): BasePart?
@@ -256,7 +257,7 @@ local function checkBelts(now: number)
 			if plot ~= ownPlot and isOnBelt(plot.Treadmill, root.Position) then
 				if now - (lastWrongTreadmillNotice[player] or 0) > 4 then
 					lastWrongTreadmillNotice[player] = now
-					notify(player, "That's not your treadmill! Use the one on your own plot.")
+					notify(player, "That's not your treadmill! Use the one on your own plot.", "warning")
 				end
 				break
 			end

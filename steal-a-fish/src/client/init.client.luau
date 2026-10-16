@@ -34,6 +34,8 @@ local CONTROLLER_MODULES: { Instance } = {
 	Controllers.TrainingController,
 	Controllers.PetController,
 	Controllers.UpgradesController,
+	Controllers.InventoryController,
+	Controllers.TutorialController,
 	Controllers.EffectsController,
 }
 

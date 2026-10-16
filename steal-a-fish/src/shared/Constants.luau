@@ -44,5 +44,11 @@ return {
 		TreadmillTier = "TreadmillTier",
 		-- On a pet prompt: the UserId of the pet's owner.
 		OwnerUserId = "OwnerUserId",
+		-- On a pet model: its name, base income and level (for the Pets window).
+		PetName = "PetName",
+		BaseIncome = "BaseIncome",
+		Level = "Level",
+		-- On the Player: true while the new-player tutorial should run.
+		ShowTutorial = "ShowTutorial",
 	},
 }

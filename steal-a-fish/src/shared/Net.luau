@@ -38,7 +38,7 @@ local Net = {}
 -- Every remote name in the game. Using these constants instead of typing
 -- strings by hand avoids typos. Later milestones add more names here.
 Net.Names = {
-	Notify = "Notify", -- server -> client: show a notification message
+	Notify = "Notify", -- server -> client: (message, kind) show a notification
 	Knockback = "Knockback", -- server -> client: push your own character (Vector3 velocity)
 	SpeedGained = "SpeedGained", -- server -> client: show a "+X Speed" popup (number)
 	StopTraining = "StopTraining", -- client -> server: "I pressed jump, let me off the treadmill"
@@ -46,6 +46,8 @@ Net.Names = {
 	HatchReveal = "HatchReveal", -- server -> owner: (petName, rarity, income) for the "You hatched!" card
 	MoneyCollected = "MoneyCollected", -- server -> owner: (amount) for a "+$X" popup
 	BuyUpgrade = "BuyUpgrade", -- client -> server: ("Pads" or "Treadmill") please buy the next level
+	PetAction = "PetAction", -- client -> server: (padIndex, "Upgrade" or "Sell") from the Pets window
+	TutorialFinished = "TutorialFinished", -- client -> server: the new-player tutorial is done
 }
 
 local function getFolder(): Folder

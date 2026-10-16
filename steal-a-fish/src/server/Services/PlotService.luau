@@ -36,9 +36,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Layout = require(ReplicatedStorage.Shared.Layout)
-local Net = require(ReplicatedStorage.Shared.Net)
 local Signal = require(ReplicatedStorage.Shared.Signal)
 local Types = require(ReplicatedStorage.Shared.Types)
+local Notify = require(script.Parent.Parent.Util.Notify)
 local Assets = require(script.Parent.Parent.Util.Assets)
 local Build = require(script.Parent.Parent.Util.Build)
 local TreadmillBuilder = require(script.Parent.Parent.Util.TreadmillBuilder)
@@ -336,7 +336,7 @@ local function assignPlot(player: Player)
 	if Config.Debug then
 		print(`[{Config.GameName}] {player.Name} got Plot {plot.Index}`)
 	end
-	Net.event(Net.Names.Notify):FireClient(player, `Your aquarium is Plot #{plot.Index}!`)
+	Notify.send(player, `Your aquarium is Plot #{plot.Index}!`)
 	PlotService.PlotAssigned:Fire(player, plot)
 end
 

@@ -28,6 +28,7 @@
 	Studio-only test commands:
 		!save     save your data right now
 		!wipe     reset your progress to a brand-new player (and save that)
+		!tutorial show the new-player tutorial again
 
 	Public interface:
 		DataService.GetData(player) -> SaveData?    -- the live record (nil until loaded)
@@ -42,7 +43,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Constants = require(ReplicatedStorage.Shared.Constants)
 local Net = require(ReplicatedStorage.Shared.Net)
+local Notify = require(script.Parent.Parent.Util.Notify)
 local DebugCommands = require(script.Parent.Parent.Util.DebugCommands)
 local PlayerLifecycle = require(script.Parent.Parent.Util.PlayerLifecycle)
 local EconomyService = require(script.Parent.EconomyService)
@@ -61,6 +64,7 @@ export type SaveData = {
 	PadsBought: number,
 	Pads: { PetService.SavedPadItem },
 	ProcessedPurchases: { [string]: boolean },
+	TutorialDone: boolean,
 	LastSave: number, -- os.time() of the last save (0 = never saved)
 	Lock: { Session: string, Time: number }?,
 }
@@ -90,8 +94,8 @@ local function log(message: string)
 	end
 end
 
-local function notify(player: Player, message: string)
-	Net.event(Net.Names.Notify):FireClient(player, message)
+local function notify(player: Player, message: string, kind: string?)
+	Notify.send(player, message, kind)
 end
 
 ---------------------------------------------------------------------------
@@ -107,6 +111,7 @@ local function defaultData(): SaveData
 		PadsBought = 0,
 		Pads = {},
 		ProcessedPurchases = {},
+		TutorialDone = false,
 		LastSave = 0,
 		Lock = nil,
 	}
@@ -133,6 +138,8 @@ local function reconcile(raw: unknown): SaveData
 	data.TreadmillTier = math.clamp(math.floor(cleanNumber(old.TreadmillTier, 1)), 1, #Config.Treadmill.Tiers)
 	data.PadsBought = math.floor(cleanNumber(old.PadsBought, 0))
 	data.LastSave = cleanNumber(old.LastSave, 0)
+	-- Players who saved before the tutorial existed don't need it.
+	data.TutorialDone = old.TutorialDone == true or (old.TutorialDone == nil and data.LastSave > 0)
 
 	if typeof(old.Pads) == "table" then
 		for _, entry in old.Pads do
@@ -251,6 +258,8 @@ local function apply(player: Player, data: SaveData)
 	end
 	UpgradeService.SetPadsBought(player, data.PadsBought)
 	PetService.ImportPads(player, data.Pads)
+	-- New players get the tutorial (the client runs it).
+	player:SetAttribute(Constants.Attributes.ShowTutorial, not data.TutorialDone)
 end
 
 -- Copy the player's current progress from the game into the record.
@@ -333,7 +342,7 @@ local function onPlayerAdded(player: Player)
 		profiles[player] = profile
 		apply(player, profile.Data)
 		profile.Applied = true
-		notify(player, "⚠ Saving is OFF in Studio (see Output for how to turn it on).")
+		notify(player, "⚠ Saving is OFF in Studio (see Output for how to turn it on).", "warning")
 		return
 	end
 
@@ -363,7 +372,7 @@ local function onPlayerAdded(player: Player)
 	profile.Applied = true
 	log(`Loaded {player.Name} (money {data.Money}, speed {data.SpeedStat}, {#data.Pads} pad items)`)
 	if data.LastSave > 0 then
-		notify(player, "💾 Welcome back! Your progress was loaded.")
+		notify(player, "💾 Welcome back! Your progress was loaded.", "success")
 	end
 end
 
@@ -440,6 +449,15 @@ local function registerDebugCommands()
 		local ok = DataService.SaveNow(player)
 		notify(player, if ok then "[Studio] 💾 Saved!" else "[Studio] Save failed (see Output)")
 	end)
+	DebugCommands.register("tutorial", function(player, _args)
+		local profile = profiles[player]
+		if profile then
+			profile.Data.TutorialDone = false
+		end
+		player:SetAttribute(Constants.Attributes.ShowTutorial, false)
+		task.wait(0.1)
+		player:SetAttribute(Constants.Attributes.ShowTutorial, true)
+	end)
 	DebugCommands.register("wipe", function(player, _args)
 		local profile = profiles[player]
 		if not profile then
@@ -470,6 +488,16 @@ function DataService.Start()
 		task.spawn(onPlayerAdded, player)
 	end
 	PlayerLifecycle.onBeforeLeave(onBeforeLeave)
+
+	-- The client says the tutorial is done. Harmless if faked: it only hides
+	-- the tutorial for that player.
+	Net.event(Net.Names.TutorialFinished).OnServerEvent:Connect(function(player: Player)
+		local profile = profiles[player]
+		if profile then
+			profile.Data.TutorialDone = true
+		end
+		player:SetAttribute(Constants.Attributes.ShowTutorial, false)
+	end)
 
 	-- Autosave everyone, spread out a little so requests don't all hit at once.
 	task.spawn(function()

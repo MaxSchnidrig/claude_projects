@@ -246,6 +246,39 @@ Config.Visuals = {
 }
 
 ---------------------------------------------------------------------------
+-- UI, SOUNDS AND TUTORIAL (UI & polish milestone)
+---------------------------------------------------------------------------
+Config.UI = {
+	-- Everything on screen is scaled to fit the screen size, between these
+	-- limits. 1 = designed size (a 1280x720 screen).
+	MinScale = 0.7,
+	MaxScale = 1.3,
+	TouchMinScale = 0.9, -- phones/tablets never go smaller than this (big enough to tap)
+	CaughtSplashSeconds = 1.2, -- how long the big "CAUGHT!" text stays
+}
+
+-- Sounds. These are short placeholder sounds that come with Roblox
+-- ("rbxasset://sounds/..."). To use your own: find a sound in the Toolbox
+-- (Creator Store > Audio), copy its ID and put "rbxassetid://<number>" here.
+export type SoundConfig = { Id: string, Volume: number }
+local sounds: { [string]: SoundConfig } = {
+	Pickup = { Id = "rbxasset://sounds/electronicpingshort.wav", Volume = 0.6 },
+	Caught = { Id = "rbxasset://sounds/impact_water.mp3", Volume = 0.8 },
+	Hatch = { Id = "rbxasset://sounds/swoosh.wav", Volume = 0.7 },
+	Purchase = { Id = "rbxasset://sounds/electronicpingshort.wav", Volume = 0.7 },
+	Coins = { Id = "rbxasset://sounds/clickfast.wav", Volume = 0.5 },
+	Click = { Id = "rbxasset://sounds/button.wav", Volume = 0.4 },
+	Warning = { Id = "rbxasset://sounds/button.wav", Volume = 0.3 },
+}
+Config.Sounds = sounds
+
+Config.Tutorial = {
+	ArrowColor = Color3.fromRGB(255, 230, 60),
+	ArrowDistance = 7, -- how far in front of the player the arrow floats
+	BeaconHeight = 60, -- height of the glowing column at the target
+}
+
+---------------------------------------------------------------------------
 -- PLOTS (Milestone 1)
 ---------------------------------------------------------------------------
 Config.Plots = {

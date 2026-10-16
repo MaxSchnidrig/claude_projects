@@ -52,6 +52,7 @@ local Net = require(ReplicatedStorage.Shared.Net)
 local Rarity = require(ReplicatedStorage.Shared.Rarity)
 local Signal = require(ReplicatedStorage.Shared.Signal)
 local Types = require(ReplicatedStorage.Shared.Types)
+local Notify = require(script.Parent.Parent.Util.Notify)
 local DebugCommands = require(script.Parent.Parent.Util.DebugCommands)
 local EggVisual = require(script.Parent.Parent.Util.EggVisual)
 local PetVisual = require(script.Parent.Parent.Util.PetVisual)
@@ -98,8 +99,8 @@ local function getItems(plot: Types.PlotInfo): { [number]: PadItem }
 	return items
 end
 
-local function notifyAll(message: string)
-	Net.event(Net.Names.Notify):FireAllClients(message)
+local function notifyAll(message: string, kind: string?)
+	Notify.all(message, kind)
 end
 
 -- A floating label with a title line and a smaller second line.
@@ -252,6 +253,11 @@ local function refreshPet(plot: Types.PlotInfo, padIndex: number)
 	end
 	local maxLevel = Config.Upgrades.PetLevel.MaxLevel
 
+	-- The client's Pets window reads these.
+	model:SetAttribute(Constants.Attributes.PetName, item.PetName)
+	model:SetAttribute(Constants.Attributes.BaseIncome, item.Income)
+	model:SetAttribute(Constants.Attributes.Level, item.Level)
+
 	local label = root:FindFirstChild("Label")
 	local subtitle = label and label:FindFirstChild("Subtitle")
 	if subtitle and subtitle:IsA("TextLabel") then
@@ -347,7 +353,7 @@ local function hatch(plot: Types.PlotInfo, padIndex: number, egg: PadItem)
 	if owner then
 		Net.event(Net.Names.HatchReveal):FireClient(owner, pet.Name, pet.Rarity, pet.Income)
 		if Rarity.rank(pet.Rarity) >= Rarity.rank(Config.PetDisplay.AnnounceFrom) then
-			notifyAll(`🎉 {owner.DisplayName} hatched a {pet.Rarity} {pet.Name}!`)
+			notifyAll(`🎉 {owner.DisplayName} hatched a {pet.Rarity} {pet.Name}!`, "epic")
 		end
 		if Config.Debug then
 			print(`[{Config.GameName}] {owner.Name} hatched {pet.Rarity} {pet.Name} from a {egg.Rarity} Egg`)
@@ -556,7 +562,7 @@ local function registerDebugCommands()
 				local character = player.Character
 				local position = if character then character:GetPivot().Position else Vector3.zero
 				if not PetService.AcceptEgg(player, info.Name, position) then
-					Net.event(Net.Names.Notify):FireClient(player, "[Studio] All your pads are full!")
+					Notify.send(player, "[Studio] All your pads are full!", "warning")
 				end
 				return
 			end

@@ -13,7 +13,6 @@
 ]]
 
 local CollectionService = game:GetService("CollectionService")
-local Debris = game:GetService("Debris")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -25,6 +24,8 @@ local Constants = require(ReplicatedStorage.Shared.Constants)
 local Format = require(ReplicatedStorage.Shared.Format)
 local Net = require(ReplicatedStorage.Shared.Net)
 local Rarity = require(ReplicatedStorage.Shared.Rarity)
+local Effects = require(script.Parent.Parent.Ui.Effects)
+local Sounds = require(script.Parent.Parent.Ui.Sounds)
 
 local PetController = {}
 PetController.Name = "PetController"
@@ -92,44 +93,12 @@ local function burst(position: unknown, rarity: unknown)
 		return
 	end
 	local camera = Workspace.CurrentCamera
-	if camera and (camera.CFrame.Position - position).Magnitude > 200 then
+	if camera and (camera.CFrame.Position - position).Magnitude > 120 then
 		return
 	end
-	local color = Rarity.color(rarity)
-
-	local anchor = Instance.new("Part")
-	anchor.Anchored = true
-	anchor.CanCollide = false
-	anchor.CanQuery = false
-	anchor.CanTouch = false
-	anchor.Transparency = 1
-	anchor.Size = Vector3.one
-	anchor.Position = position + Vector3.new(0, 2, 0)
-	anchor.Parent = Workspace
-
-	local emitter = Instance.new("ParticleEmitter")
-	emitter.Color = ColorSequence.new(color, Color3.new(1, 1, 1))
-	emitter.LightEmission = 1
-	emitter.Lifetime = NumberRange.new(0.6, 1.2)
-	emitter.Speed = NumberRange.new(10, 20)
-	emitter.SpreadAngle = Vector2.new(180, 180)
-	emitter.Size = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 0.8),
-		NumberSequenceKeypoint.new(1, 0),
-	})
-	emitter.Rate = 0
-	emitter.Parent = anchor
 	-- Rarer pets get a bigger burst.
-	emitter:Emit(20 + Rarity.rank(rarity) * 8)
-
-	local flash = Instance.new("PointLight")
-	flash.Color = color
-	flash.Range = 18
-	flash.Brightness = 6
-	flash.Parent = anchor
-	TweenService:Create(flash, TweenInfo.new(0.8), { Brightness = 0 }):Play()
-
-	Debris:AddItem(anchor, 2)
+	Effects.burst(position + Vector3.new(0, 2, 0), Rarity.color(rarity), 20 + Rarity.rank(rarity) * 8)
+	Sounds.play("Hatch")
 end
 
 local function showReveal(petName: unknown, rarity: unknown, income: unknown)

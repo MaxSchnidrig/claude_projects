@@ -41,6 +41,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Layout = require(ReplicatedStorage.Shared.Layout)
 local Net = require(ReplicatedStorage.Shared.Net)
 local Signal = require(ReplicatedStorage.Shared.Signal)
+local Notify = require(script.Parent.Parent.Util.Notify)
 local Assets = require(script.Parent.Parent.Util.Assets)
 local Build = require(script.Parent.Parent.Util.Build)
 local EggService = require(script.Parent.EggService)
@@ -132,8 +133,8 @@ local function randomPointInZone(zoneIndex: number): Vector3
 	return (cf * CFrame.new(x, 0, z)).Position
 end
 
-local function notify(player: Player, message: string)
-	Net.event(Net.Names.Notify):FireClient(player, message)
+local function notify(player: Player, message: string, kind: string?)
+	Notify.send(player, message, kind)
 end
 
 ---------------------------------------------------------------------------
@@ -331,7 +332,7 @@ end
 local function catch(bot: Bot, player: Player, now: number)
 	lastCaught[player] = now
 	EggService.DropEgg(player, "caught")
-	notify(player, "🦈 Caught by a shark! You lost your egg.")
+	notify(player, "🦈 Caught by a shark! You lost your egg.", "danger")
 
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")

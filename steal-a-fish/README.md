@@ -162,9 +162,15 @@ paste it into that setting as `"rbxassetid://<the number>"`. Adjust
 | 4 | Speed & treadmill (Speed stat, training, treadmill tiers 1–10 defined) | ✅ |
 | 5 | Hatching and pets (eggs hatch on their pad, pets earn money, collect pad) | ✅ |
 | 6 | Upgrades and economy: plot space (pads), treadmill tiers, pet levels, selling pets | ✅ |
-| 7 | **Saving** (money, Speed stat, treadmill tier, pads, eggs and pets) | 🔨 testing |
-| 8 | UI and polish | |
+| 7 | Saving (money, Speed stat, treadmill tier, pads, eggs and pets) | ✅ |
+| 8 | **UI and polish**: Pets window, colored notifications, sounds, effects, screen scaling, tutorial | 🔨 testing |
 | 9 | Monetization (Robux); Speed boosts plug into `SpeedService.SetGainMultiplier` | |
+
+## Sounds
+
+Sound effects are listed in `Config.Sounds`. They start as short placeholder sounds that come
+with Roblox. To use your own: Toolbox → Creator Store → **Audio**, pick a sound, right-click →
+**Copy Asset ID**, and set e.g. `Pickup = { Id = "rbxassetid://123456", Volume = 0.6 }`.
 
 ## Saving (DataStores)
 
@@ -192,6 +198,7 @@ Only work while play-testing in Studio. Type them in the chat:
 | `!money 5000` | set your money |
 | `!save` | save your progress right now |
 | `!wipe` | reset your progress to a brand-new player (and save that) |
+| `!tutorial` | show the new-player tutorial again |
 
 If chat commands don't do anything, open **View → Command Bar**, set its dropdown to
 **Server**, and run, for example:

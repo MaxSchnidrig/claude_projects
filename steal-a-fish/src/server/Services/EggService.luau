@@ -32,9 +32,9 @@ local RunService = game:GetService("RunService")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Constants = require(ReplicatedStorage.Shared.Constants)
 local Layout = require(ReplicatedStorage.Shared.Layout)
-local Net = require(ReplicatedStorage.Shared.Net)
 local Rarity = require(ReplicatedStorage.Shared.Rarity)
 local Signal = require(ReplicatedStorage.Shared.Signal)
+local Notify = require(script.Parent.Parent.Util.Notify)
 local Build = require(script.Parent.Parent.Util.Build)
 local EggVisual = require(script.Parent.Parent.Util.EggVisual)
 local PlayerSpeed = require(script.Parent.Parent.Util.PlayerSpeed)
@@ -79,8 +79,8 @@ local function restingY(surfaceY: number): number
 	return surfaceY + Config.Eggs.Size.Y * (Config.Eggs.VisibleFraction - 0.5)
 end
 
-local function notify(player: Player, message: string)
-	Net.event(Net.Names.Notify):FireClient(player, message)
+local function notify(player: Player, message: string, kind: string?)
+	Notify.send(player, message, kind)
 end
 
 local function getRoot(player: Player): BasePart?
@@ -251,7 +251,7 @@ tryPickUp = function(player: Player, egg: GroundEgg)
 		return
 	end
 	if carrying[player] then
-		notify(player, "You can only carry one egg at a time!")
+		notify(player, "You can only carry one egg at a time!", "warning")
 		return
 	end
 	if not PlotService.GetPlot(player) or not isAlive(player) then
@@ -269,7 +269,7 @@ tryPickUp = function(player: Player, egg: GroundEgg)
 	local rarity = egg.Rarity
 	removeGroundEgg(egg)
 	attachCarriedEgg(player, rarity, root)
-	notify(player, `You stole a {rarity} Egg! Run back to your plot!`)
+	notify(player, `You stole a {rarity} Egg! Run back to your plot!`, "success")
 	EggService.EggPickedUp:Fire(player, rarity)
 end
 
@@ -328,13 +328,13 @@ local function checkDeliveries()
 		if plot and root and PlotService.GetPlotAt(root.Position) == plot then
 			if PetService.AcceptEgg(player, carry.Rarity, root.Position) then
 				takeCarry(player)
-				notify(player, `{carry.Rarity} Egg placed on a pad!`)
+				notify(player, `{carry.Rarity} Egg placed on a pad!`, "success")
 				EggService.EggDelivered:Fire(player, carry.Rarity)
 			else
 				local now = os.clock()
 				if now - (lastPadFullNotice[player] or 0) > PAD_FULL_NOTICE_COOLDOWN then
 					lastPadFullNotice[player] = now
-					notify(player, "All your pads are full!")
+					notify(player, "All your pads are full!", "warning")
 				end
 			end
 		end
