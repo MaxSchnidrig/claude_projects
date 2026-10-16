@@ -52,7 +52,7 @@ local Net = require(ReplicatedStorage.Shared.Net)
 local Signal = require(ReplicatedStorage.Shared.Signal)
 local Notify = require(script.Parent.Parent.Util.Notify)
 local Build = require(script.Parent.Parent.Util.Build)
-local SharkModel = require(script.Parent.Parent.Util.Models.SharkModel)
+local SharkModel = require(ReplicatedStorage.Shared.Models.SharkModel)
 local EggService = require(script.Parent.EggService)
 local WorldService = require(script.Parent.WorldService)
 

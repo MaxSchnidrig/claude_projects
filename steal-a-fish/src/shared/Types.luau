@@ -52,6 +52,8 @@ export type PlotInfo = {
 	SignLabels: { TextLabel }, -- owner name text (front and back of the sign)
 	CollectPad: BasePart, -- step on it to collect the money your pets made
 	CollectLabel: TextLabel, -- shows how much money is waiting on the collect pad
+	UpgradeSign: BasePart, -- the board next to the treadmill ("Upgrade Treadmill" prompt)
+	UpgradeLabel: TextLabel,
 }
 
 return {}

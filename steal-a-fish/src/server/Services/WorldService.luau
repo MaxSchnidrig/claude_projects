@@ -4,9 +4,12 @@
 	============
 	Builds the static map from code when the server starts:
 	  - the sand ground under the plots and the big open front area
-	  - the danger zone floors (one colored strip per zone) with name labels
-	  - ONE tall checkered wall around the whole map (plots, front area and
-	    danger zones), so players can never leave or see the edge
+	  - the danger zone floors (one colored strip per zone), each with a
+	    "Recommended Speed" sign at its start (zone names are shown on the
+	    screen by the client's ZoneController instead of floating labels)
+	  - the SAFE ZONE line at the danger zone entrance
+	  - ONE tall blue checkered wall with wave foam on top around the whole
+	    map (plots, front area and danger zones), so players can never leave
 	  - an ocean outside the wall
 	  - the entrance arch, and an invisible barrier that only bots bump into
 
@@ -31,6 +34,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Format = require(ReplicatedStorage.Shared.Format)
 local Layout = require(ReplicatedStorage.Shared.Layout)
 local Build = require(script.Parent.Parent.Util.Build)
 
@@ -146,9 +150,9 @@ local function buildDangerZones(): Folder
 		})
 		floor:SetAttribute("ZoneIndex", index)
 
-		-- A glowing line where this zone starts, plus a floating name label.
+		-- A glowing line where this zone starts.
 		local near = Layout.zoneZRange(index)
-		local line = Build.part({
+		Build.part({
 			Name = `Zone{index}_StartLine`,
 			Size = Vector3.new(width, 0.2, 1),
 			CFrame = CFrame.new(0, Layout.GroundTop + 0.1, near - 0.5),
@@ -159,12 +163,85 @@ local function buildDangerZones(): Folder
 			CanQuery = false,
 			Parent = folder,
 		})
-		Build.billboard(line, `Zone {index}: {zone.Name}`, 14, 250)
+
+		-- "Recommended Speed" signs on both sides, facing players who walk in.
+		local shark = Config.Sharks[index]
+		local needed = if shark then shark.SpeedStatNeeded or 0 else 0
+		local text = if needed > 0 then `Recommended: ⚡ {Format.short(needed)}` else "No Speed needed!"
+		for _, side in { -1, 1 } do
+			local x = side * (width / 2 - 9)
+			-- Turned around so its Front face looks toward the safe zone (+Z).
+			local signCFrame = CFrame.new(x, Layout.GroundTop, near - 4) * CFrame.Angles(0, math.pi, 0)
+			Build.part({
+				Name = "SpeedSignPost",
+				Size = Vector3.new(1, 6, 1),
+				CFrame = signCFrame * CFrame.new(0, 3, 0),
+				Color = Color3.fromRGB(120, 90, 60),
+				Parent = folder,
+			})
+			local board = Build.part({
+				Name = `Zone{index}_SpeedSign`,
+				Size = Vector3.new(13, 5, 0.8),
+				CFrame = signCFrame * CFrame.new(0, 8, 0),
+				Color = Config.World.SpeedSignColor,
+				StudFaces = { Enum.NormalId.Top, Enum.NormalId.Back },
+				Parent = folder,
+			})
+			local frame = Build.part({
+				Name = "SpeedSignFrame",
+				Size = Vector3.new(14, 6, 0.6),
+				CFrame = signCFrame * CFrame.new(0, 8, 0.4),
+				Color = zone.Color:Lerp(Color3.new(1, 1, 1), 0.3),
+				Parent = folder,
+			})
+			frame.CanQuery = false
+			Build.surfaceText(board, Enum.NormalId.Front, `{zone.Name} {zone.Emoji}\n{text}`, Color3.fromRGB(255, 235, 90))
+		end
 	end
+
+	-- SAFE ZONE line across the entrance: a red stripe with blue ends and
+	-- "SAFE ZONE" written on the ground just inside the safe side.
+	local front = Layout.DangerZoneFront
+	local world = Config.World
+	Build.part({
+		Name = "SafeLine",
+		Size = Vector3.new(width, 0.25, 1.6),
+		CFrame = CFrame.new(0, Layout.GroundTop + 0.12, front + 0.8),
+		Color = world.SafeLineColor,
+		CanCollide = false,
+		CanTouch = false,
+		CanQuery = false,
+		Parent = folder,
+	})
+	for _, side in { -1, 1 } do
+		Build.part({
+			Name = "SafeLineEnd",
+			Size = Vector3.new(8, 0.3, 2.2),
+			CFrame = CFrame.new(side * (width / 2 - 12), Layout.GroundTop + 0.15, front + 4),
+			Color = Color3.fromRGB(70, 170, 255),
+			CanCollide = false,
+			CanTouch = false,
+			CanQuery = false,
+			Parent = folder,
+		})
+	end
+	local writing = Build.part({
+		Name = "SafeZoneText",
+		Size = Vector3.new(44, 0.2, 6),
+		CFrame = CFrame.new(0, Layout.GroundTop + 0.1, front + 4.5),
+		Transparency = 1,
+		Studs = false,
+		CanCollide = false,
+		CanTouch = false,
+		CanQuery = false,
+		Parent = folder,
+	})
+	local label = Build.surfaceText(writing, Enum.NormalId.Top, world.SafeLineText, Color3.new(1, 1, 1))
+	label.TextStrokeTransparency = 0
+	label.TextStrokeColor3 = Color3.fromRGB(20, 40, 90)
 
 	-- Entrance arch: two red neon posts and a sign across the top, set into
 	-- the map wall where the danger zone starts.
-	local front = Layout.DangerZoneFront
 	local archHeight = 24
 	for _, side in { -1, 1 } do
 		Build.part({
@@ -262,7 +339,7 @@ local function buildWallSegment(parent: Instance, name: string, startPoint: Vect
 		end
 	end
 
-	-- Trim along the top, sticking out a little on the inside.
+	-- Water trim along the top, sticking out a little on the inside...
 	Build.part({
 		Name = "WallTrim",
 		Size = Vector3.new(length, 2, thickness + 1),
@@ -271,6 +348,25 @@ local function buildWallSegment(parent: Instance, name: string, startPoint: Vect
 		StudFaces = { Enum.NormalId.Top, Enum.NormalId.Front },
 		Parent = wall,
 	})
+	-- ...with white foam on top shaped like rolling waves (steps that go up
+	-- and down along the wall).
+	local stepLength = world.WaveLength / 4
+	local heights = { 0.6, 1.3, 2, 1.3 }
+	local steps = math.floor(length / stepLength)
+	local foamTop = wall.Size.Y / 2 + 2
+	for step = 0, steps - 1 do
+		local h = heights[step % #heights + 1]
+		local w = if step == steps - 1 then length - step * stepLength else stepLength
+		Build.part({
+			Name = "WallFoam",
+			Size = Vector3.new(w, h, thickness + 1.2),
+			CFrame = cf * CFrame.new(-length / 2 + step * stepLength + w / 2, foamTop + h / 2, -0.5),
+			Color = world.WallFoamColor,
+			StudFaces = { Enum.NormalId.Top, Enum.NormalId.Front },
+			CanQuery = false,
+			Parent = wall,
+		})
+	end
 end
 
 -- Walk around Layout.mapOutline() and build a wall piece for every side.

@@ -3,8 +3,7 @@
 	UIController
 	============
 	The always-visible UI:
-	  - The stats panel at the top of the left column: ⚡ Speed, 💰 Money and
-	    income per second.
+	  - The Speed (👟) and Money (💵) numbers of the HUD (Ui/Hud).
 	  - Notifications near the top of the screen, colored by kind (info,
 	    success, warning, danger, epic, purchase), with a sound for some kinds.
 	  - A green "+$X" popup and coin sound when you collect money.
@@ -23,6 +22,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Constants = require(ReplicatedStorage.Shared.Constants)
 local Format = require(ReplicatedStorage.Shared.Format)
 local Net = require(ReplicatedStorage.Shared.Net)
+local Hud = require(script.Parent.Parent.Ui.Hud)
 local Kit = require(script.Parent.Parent.Ui.Kit)
 local Sounds = require(script.Parent.Parent.Ui.Sounds)
 
@@ -45,31 +45,13 @@ local KINDS: { [string]: { Color: Color3, Sound: string? } } = {
 local player = Players.LocalPlayer
 
 local notificationList: Frame
-local statsPanel: Frame
-local speedLabel: TextLabel
-local moneyLabel: TextLabel
-local incomeLabel: TextLabel
 local popupLayer: Frame
 
 ---------------------------------------------------------------------------
--- Stats panel
+-- Stats
 ---------------------------------------------------------------------------
 
-local function buildStatsPanel()
-	statsPanel = Instance.new("Frame")
-	statsPanel.Name = "StatsPanel"
-	statsPanel.LayoutOrder = 1
-	statsPanel.Size = UDim2.fromOffset(210, 112)
-	statsPanel.BackgroundColor3 = Kit.Colors.Panel
-	statsPanel.BackgroundTransparency = 0.15
-	statsPanel.Parent = Kit.leftColumn()
-	Kit.corner(statsPanel, 12)
-	Kit.stroke(statsPanel, Kit.Colors.Accent, 2)
-
-	speedLabel = Kit.label(statsPanel, "", UDim2.new(1, -20, 0, 34), UDim2.fromOffset(10, 4), Color3.fromRGB(255, 230, 60))
-	moneyLabel = Kit.label(statsPanel, "", UDim2.new(1, -20, 0, 34), UDim2.fromOffset(10, 40), Color3.fromRGB(120, 255, 140))
-	incomeLabel = Kit.label(statsPanel, "", UDim2.new(1, -20, 0, 26), UDim2.fromOffset(10, 76), Color3.fromRGB(200, 240, 210))
-
+local function buildPopupLayer()
 	local gui = Kit.screenGui("Popups", 12)
 	popupLayer = Instance.new("Frame")
 	popupLayer.Size = UDim2.fromScale(1, 1)
@@ -82,15 +64,15 @@ local function number(value: unknown): number
 end
 
 local function refreshStats()
-	speedLabel.Text = `⚡ {Format.short(number(player:GetAttribute(Constants.Attributes.SpeedStat)))} Speed`
-	moneyLabel.Text = `💰 ${Format.short(number(player:GetAttribute(Constants.Attributes.Money)))}`
-	incomeLabel.Text = `+${Format.short(number(player:GetAttribute(Constants.Attributes.Income)))}/s`
+	Hud.SpeedLabel.Text = Format.short(number(player:GetAttribute(Constants.Attributes.SpeedStat)))
+	Hud.MoneyLabel.Text = `${Format.short(number(player:GetAttribute(Constants.Attributes.Money)))}`
 end
 
 -- A green "+$X" that pops up next to the stats panel and floats away.
 local function moneyPopup(amount: number)
 	Sounds.play("Coins")
-	local anchor = statsPanel.AbsolutePosition + Vector2.new(statsPanel.AbsoluteSize.X + 12, statsPanel.AbsoluteSize.Y * 0.5)
+	local moneyLabel = Hud.MoneyLabel
+	local anchor = moneyLabel.AbsolutePosition + Vector2.new(moneyLabel.TextBounds.X + 16, moneyLabel.AbsoluteSize.Y * 0.5)
 
 	local label = Instance.new("TextLabel")
 	label.AnchorPoint = Vector2.new(0, 0.5)
@@ -134,7 +116,7 @@ local function buildNotifications()
 	notificationList = Instance.new("Frame")
 	notificationList.Name = "List"
 	notificationList.AnchorPoint = Vector2.new(0.5, 0)
-	notificationList.Position = UDim2.new(0.5, 0, 0, 70)
+	notificationList.Position = UDim2.new(0.5, 0, 0, 150) -- below the zone name banner
 	notificationList.Size = UDim2.fromOffset(520, 220)
 	notificationList.BackgroundTransparency = 1
 	notificationList.Parent = gui
@@ -216,11 +198,11 @@ end
 
 function UIController.Init()
 	buildNotifications()
-	buildStatsPanel()
+	buildPopupLayer()
 end
 
 function UIController.Start()
-	for _, name in { Constants.Attributes.SpeedStat, Constants.Attributes.Money, Constants.Attributes.Income } do
+	for _, name in { Constants.Attributes.SpeedStat, Constants.Attributes.Money } do
 		player:GetAttributeChangedSignal(name):Connect(refreshStats)
 	end
 	refreshStats()

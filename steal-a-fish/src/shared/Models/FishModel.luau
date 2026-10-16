@@ -16,6 +16,7 @@
 
 	Usage:
 		local model = FishModel.create(fishConfig, cframe)
+		local picture = FishModel.create(fishConfig, CFrame.new(), true)  -- for UI pictures (no effects, no tags)
 		-- model.PrimaryPart = invisible anchored "PetRoot" (LookVector = facing)
 		-- attributes: Rarity, Zone, Top (height of its top above the root),
 		--             Bottom (depth of its lowest point below the root)
@@ -681,7 +682,7 @@ function FishModel.scale(rarity: string): number
 	return 1 + (math.max(Rarity.rank(rarity), 1) - 1) * Config.PetDisplay.SizePerRarity
 end
 
-function FishModel.create(fish: Fish, cframe: CFrame): Model
+function FishModel.create(fish: Fish, cframe: CFrame, preview: boolean?): Model
 	local model = Instance.new("Model")
 	model.Name = fish.Name
 
@@ -705,14 +706,16 @@ function FishModel.create(fish: Fish, cframe: CFrame): Model
 		buildFace(b, anatomy)
 		buildPattern(b, anatomy, fish, Random.new(nameSeed(fish.Name)))
 		buildFeature(b, anatomy, fish, model)
-		Voxel.rarityEffects(anatomy.EffectPart, fish.Rarity, anatomy.Radius * scale)
-		if Voxel.isCosmic(fish.Rarity) then
+		if not preview then
+			Voxel.rarityEffects(anatomy.EffectPart, fish.Rarity, anatomy.Radius * scale)
+		end
+		if Voxel.isCosmic(fish.Rarity) and not preview then
 			for _, part in fins do
 				CollectionService:AddTag(part, Constants.Tags.RainbowPart)
 			end
 		end
 		table.clear(fins)
-		if b.Pivots > 0 then
+		if b.Pivots > 0 and not preview then
 			CollectionService:AddTag(model, Constants.Tags.Animated)
 		end
 	end
@@ -725,7 +728,9 @@ function FishModel.create(fish: Fish, cframe: CFrame): Model
 	model:SetAttribute("Bottom", -(relative.Y - boxSize.Y / 2))
 	model:SetAttribute("Rarity", fish.Rarity)
 	model:SetAttribute(Constants.Attributes.Zone, fish.Zone)
-	CollectionService:AddTag(model, Constants.Tags.PetModel)
+	if not preview then
+		CollectionService:AddTag(model, Constants.Tags.PetModel)
+	end
 	return model
 end
 

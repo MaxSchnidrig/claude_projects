@@ -48,6 +48,11 @@ Net.Names = {
 	BuyUpgrade = "BuyUpgrade", -- client -> server: ("Pads" or "Treadmill") please buy the next level
 	PetAction = "PetAction", -- client -> server: (padIndex, "Upgrade" or "Sell") from the Pets window
 	TutorialFinished = "TutorialFinished", -- client -> server: the new-player tutorial is done
+	EggSaved = "EggSaved", -- server -> owner: (rarity) you reached the safe zone with an egg (celebration)
+	IndexSync = "IndexSync", -- server -> owner: (data) found fish and claimed rewards, for the Index window
+	IndexClaim = "IndexClaim", -- client -> server: ("Fish", name) / ("Zone", zoneIndex) / ("All") / ("Sync")
+	DailyGiftClaim = "DailyGiftClaim", -- client -> server: claim the free daily gift
+	ShopBuy = "ShopBuy", -- client -> server: (itemKey) buy a Robux item (Monetization milestone)
 }
 
 local function getFolder(): Folder

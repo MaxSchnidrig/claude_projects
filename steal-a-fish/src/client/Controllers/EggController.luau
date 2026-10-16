@@ -6,8 +6,11 @@
 	everything again):
 	  - While you carry an egg, the "Steal" prompts on other eggs are hidden,
 	    since you can only carry one at a time.
-	  - "Place Egg" prompts on pads are shown only on YOUR free pads, and only
-	    while you hold an egg from your hotbar.
+	  - "Place Egg" prompts on pads are shown only on YOUR free, unlocked
+	    pads, and only while you hold an egg from your hotbar.
+	  - Owner-only prompts (tag "PetPrompt": Upgrade/Sell on fish, Hatch on
+	    READY eggs, Unlock Pad, Upgrade Treadmill) are hidden on other
+	    players' plots.
 	  - Carrying pose: for every player carrying an egg, the arms stay
 	    straight up. The server turns the shoulders up (CarryRig.setRaised);
 	    here, every frame AFTER the animations ran, we undo the walk/run
@@ -55,7 +58,8 @@ local function refreshPadPrompt(prompt: Instance)
 	local pad = prompt.Parent
 	local mine = prompt:GetAttribute(Constants.Attributes.OwnerUserId) == player.UserId
 	local free = pad ~= nil and pad:GetAttribute(Constants.Attributes.Occupied) ~= true
-	prompt.Enabled = mine and free and holdingEgg()
+	local unlocked = pad ~= nil and pad:GetAttribute("Locked") ~= true
+	prompt.Enabled = mine and free and unlocked and holdingEgg()
 end
 
 local function refreshAll()
@@ -77,7 +81,25 @@ local function watchPadPrompt(prompt: Instance)
 		pad:GetAttributeChangedSignal(Constants.Attributes.Occupied):Connect(function()
 			refreshPadPrompt(prompt)
 		end)
+		pad:GetAttributeChangedSignal("Locked"):Connect(function()
+			refreshPadPrompt(prompt)
+		end)
 	end
+end
+
+-- Owner-only prompts: shown only if they belong to you (and kept up to
+-- date when a plot gets a new owner).
+local function refreshOwnerPrompt(prompt: Instance)
+	if prompt:IsA("ProximityPrompt") then
+		prompt.Enabled = prompt:GetAttribute(Constants.Attributes.OwnerUserId) == player.UserId
+	end
+end
+
+local function watchOwnerPrompt(prompt: Instance)
+	refreshOwnerPrompt(prompt)
+	prompt:GetAttributeChangedSignal(Constants.Attributes.OwnerUserId):Connect(function()
+		refreshOwnerPrompt(prompt)
+	end)
 end
 
 -- Equipping/unequipping a Tool changes what's inside the character.
@@ -137,6 +159,10 @@ end
 function EggController.Start()
 	CollectionService:GetInstanceAddedSignal(Constants.Tags.EggPrompt):Connect(refreshEggPrompt)
 	CollectionService:GetInstanceAddedSignal(Constants.Tags.PadPrompt):Connect(watchPadPrompt)
+	CollectionService:GetInstanceAddedSignal(Constants.Tags.PetPrompt):Connect(watchOwnerPrompt)
+	for _, prompt in CollectionService:GetTagged(Constants.Tags.PetPrompt) do
+		watchOwnerPrompt(prompt)
+	end
 	for _, prompt in CollectionService:GetTagged(Constants.Tags.PadPrompt) do
 		watchPadPrompt(prompt)
 	end

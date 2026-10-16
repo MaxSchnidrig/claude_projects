@@ -31,7 +31,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Constants = require(ReplicatedStorage.Shared.Constants)
 local Rarity = require(ReplicatedStorage.Shared.Rarity)
-local Build = require(script.Parent.Parent.Build)
 
 export type Builder = {
 	Container: Instance, -- where new parts go (a Model, or the root part itself)
@@ -65,6 +64,24 @@ function Voxel.place(b: Builder, offset: CFrame): CFrame
 end
 
 -- Join `part` rigidly to `anchor`, keeping its current position.
+-- Classic studs on the top face: a tiling texture tinted with the part's
+-- color (same look as the map, see Config.Visuals).
+local function addStuds(part: BasePart)
+	local visuals = Config.Visuals
+	if not visuals.StudsEnabled then
+		return
+	end
+	local texture = Instance.new("Texture")
+	texture.Name = "Studs"
+	texture.Texture = visuals.StudTexture
+	texture.Face = Enum.NormalId.Top
+	texture.StudsPerTileU = visuals.StudsPerTile
+	texture.StudsPerTileV = visuals.StudsPerTile
+	texture.Transparency = visuals.StudTransparency
+	texture.Color3 = part.Color
+	texture.Parent = part
+end
+
 local function weld(anchor: BasePart, part: BasePart)
 	local joint = Instance.new("Weld")
 	joint.Part0 = anchor
@@ -117,7 +134,7 @@ function Voxel.block(b: Builder, name: string, size: Vector3, offset: CFrame, co
 		box.Parent = part
 	end
 	if o.Studs then
-		Build.addStuds(part, { Enum.NormalId.Top })
+		addStuds(part)
 	end
 	if o.Rainbow then
 		CollectionService:AddTag(part, Constants.Tags.RainbowPart)

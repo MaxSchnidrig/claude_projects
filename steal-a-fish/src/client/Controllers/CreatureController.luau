@@ -11,6 +11,8 @@
 	    (Axis, Amount, Speed, Phase).
 	  - Sharks (attribute "Swims") swish harder and faster the faster they
 	    move, so a chasing shark really thrashes its tail.
+	  - A chasing shark (attribute "Chasing") smoothly turns red and glows
+	    (red highlight and light), and fades back to normal afterwards.
 	  - Lights and particles tagged "LodEffect" are switched off when they
 	    are far from the camera (Config.RarityEffects.EffectsDistance), and
 	    animations stop beyond AnimateDistance, to keep the game smooth.
@@ -28,6 +30,11 @@ local CreatureController = {}
 CreatureController.Name = "CreatureController"
 
 local LOD_INTERVAL = 0.5
+local RED_FADE_SECONDS = 0.5 -- how long a shark takes to turn red (and back)
+local RED = Color3.fromRGB(235, 35, 35)
+local RED_AMOUNT = 0.7 -- how red the shark gets (1 = completely)
+-- Parts that keep their own color when a shark turns red.
+local KEEP_COLOR: { [string]: boolean } = { Eye = true, Pupil = true, Tooth = true, Mouth = true }
 
 type Wiggle = {
 	Joint: Motor6D,
@@ -45,6 +52,8 @@ type Creature = {
 	Clock: number, -- its own animation clock (runs faster while swimming fast)
 	Phase: number, -- so identical creatures don't move in sync
 	Dirty: boolean, -- joints need to be looked up (again)
+	Red: number, -- 0 = normal colors, 1 = fully red (chasing)
+	Colors: { [BasePart]: Color3 }, -- original colors, to fade back to
 	Connection: RBXScriptConnection?,
 }
 
@@ -82,6 +91,15 @@ local function scan(creature: Creature)
 		end
 	end
 	creature.Root = rootOf(creature.Instance)
+	if creature.Red <= 0 then
+		-- Remember the normal colors (only while not tinted).
+		table.clear(creature.Colors)
+		for _, item in creature.Instance:GetDescendants() do
+			if item:IsA("BasePart") and item.Transparency < 1 and not KEEP_COLOR[item.Name] then
+				creature.Colors[item] = item.Color
+			end
+		end
+	end
 	creature.Swims = creature.Instance:GetAttribute("Swims") == true
 	creature.Dirty = false
 end
@@ -98,6 +116,8 @@ local function add(instance: Instance)
 		Clock = 0,
 		Phase = rng:NextNumber(0, math.pi * 2),
 		Dirty = true,
+		Red = 0,
+		Colors = {},
 		Connection = nil,
 	}
 	-- Parts can arrive a little later over the network: look again then.
@@ -119,6 +139,31 @@ local function remove(instance: Instance)
 	end
 end
 
+-- Fade a shark toward red while it chases, and back afterwards.
+local function updateRed(creature: Creature, dt: number)
+	local target = if creature.Instance:GetAttribute("Chasing") == true then 1 else 0
+	if creature.Red == target then
+		return
+	end
+	local step = dt / RED_FADE_SECONDS
+	creature.Red = if target > creature.Red then math.min(target, creature.Red + step) else math.max(target, creature.Red - step)
+	local red = creature.Red
+	for part, color in creature.Colors do
+		part.Color = color:Lerp(RED, red * RED_AMOUNT)
+	end
+	local glow = creature.Instance:FindFirstChild("ChaseGlow")
+	if glow and glow:IsA("Highlight") then
+		glow.Enabled = red > 0.01
+		glow.FillTransparency = 1 - 0.4 * red
+		glow.OutlineTransparency = 1 - red
+	end
+	local light = creature.Instance:FindFirstChild("ChaseLight", true)
+	if light and light:IsA("PointLight") then
+		light.Enabled = red > 0.01
+		light.Brightness = 2.5 * red
+	end
+end
+
 local function animate(dt: number)
 	local camera = Workspace.CurrentCamera
 	if not camera then
@@ -130,6 +175,7 @@ local function animate(dt: number)
 		if creature.Dirty then
 			scan(creature)
 		end
+		updateRed(creature, dt)
 		local root = creature.Root
 		if not root or root.Parent == nil or (root.Position - cameraPosition).Magnitude > maxDistance then
 			continue

@@ -6,6 +6,8 @@
 	  - Picking up an egg: a sparkle burst in the egg's color and a sound.
 	  - Caught by a shark: a big "🦈 CAUGHT!" on screen, a splash burst, a
 	    sound and the knockback push.
+	  - Reaching the safe zone with an egg: confetti, a sparkle burst, a
+	    sound and a big green "SAFE!".
 
 	Knockback: the server sends a velocity. Your own computer controls your
 	character's physics, so the push has to be applied here. The velocity is
@@ -40,7 +42,7 @@ local function getRoot(): BasePart?
 end
 
 -- Big bouncy text in the middle of the screen.
-local function splash(text: string, color: Color3)
+local function splash(text: string, color: Color3, seconds: number?)
 	local label = Instance.new("TextLabel")
 	label.AnchorPoint = Vector2.new(0.5, 0.5)
 	label.Position = UDim2.fromScale(0.5, 0.35)
@@ -61,7 +63,7 @@ local function splash(text: string, color: Color3)
 	scale.Scale = target * 0.2
 	TweenService:Create(scale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = target }):Play()
 
-	task.delay(Config.UI.CaughtSplashSeconds, function()
+	task.delay(seconds or Config.UI.CaughtSplashSeconds, function()
 		local info = TweenInfo.new(0.3)
 		TweenService:Create(label, info, { TextTransparency = 1 }):Play()
 		local fade = TweenService:Create(stroke, info, { Transparency = 1 })
@@ -103,12 +105,24 @@ local function onCarryingChanged()
 	end
 end
 
+local function onEggSaved(rarity: unknown)
+	Sounds.play("Safe")
+	splash("✅ SAFE!", Color3.fromRGB(110, 255, 110), Config.UI.SafeSplashSeconds)
+	local root = getRoot()
+	if root then
+		Effects.confetti(root.Position + Vector3.new(0, 5, 0), 70)
+		local color = if typeof(rarity) == "string" then Rarity.color(rarity) else Color3.new(1, 1, 1)
+		Effects.burst(root.Position + Vector3.new(0, 3, 0), color, 30)
+	end
+end
+
 function EffectsController.Init()
 	splashGui = Kit.screenGui("Splash", 30)
 end
 
 function EffectsController.Start()
 	Net.event(Net.Names.Knockback).OnClientEvent:Connect(onCaught)
+	Net.event(Net.Names.EggSaved).OnClientEvent:Connect(onEggSaved)
 	player:GetAttributeChangedSignal(Constants.Attributes.CarryingEgg):Connect(onCarryingChanged)
 end
 

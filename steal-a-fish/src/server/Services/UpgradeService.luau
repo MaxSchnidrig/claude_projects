@@ -6,7 +6,10 @@
 	(right player, real upgrade, not maxed, enough money, not spamming) and
 	only then takes the money and applies the upgrade.
 
-	Upgrades (from the Upgrades window, client sends "BuyUpgrade"):
+	Upgrades are bought IN THE WORLD with prompts (PlotService fires
+	UpgradePromptTriggered): "Unlock Pad" on your next locked pad and
+	"Upgrade Treadmill" on the board next to your treadmill. The Fish panel
+	can also ask with the "BuyUpgrade" remote:
 	  - "Pads": plot space, unlocks the next pad on your plot.
 	      Price = Config.UpgradePrice(Upgrades.Pads.Base, .Growth, pads bought so far)
 	  - "Treadmill": the next tier in Config.Treadmill.Tiers, at that tier's Price.
@@ -14,8 +17,6 @@
 	Pets (prompts on your own pets, or the buttons in the Pets window):
 	  - Upgrade (E): +1 level, more income. Price = Config.PetUpgradePrice.
 	  - Sell (hold F): money = Config.PetSellValue. The pad becomes free.
-
-	Nothing here is saved yet (that's the Saving milestone).
 
 	Public interface:
 		UpgradeService.GetPadsBought(player) -> number
@@ -215,6 +216,24 @@ function UpgradeService.Start()
 		local plot = PlotService.GetPlot(player)
 		if plot and padIndex >= 1 and padIndex <= #plot.Pads then
 			handlePetAction(player, plot, padIndex, action :: string, false)
+		end
+	end)
+
+	-- Prompts in the world. Check owner and distance (prompts can be faked).
+	PlotService.UpgradePromptTriggered:Connect(function(player: Player, plot: Types.PlotInfo, kind: string)
+		if plot.Owner ~= player or not buyLimiter.allow(player) then
+			return
+		end
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local target: BasePart? = if kind == "Treadmill" then plot.UpgradeSign else plot.Pads[plot.UnlockedPads + 1]
+		if not (root and root:IsA("BasePart") and target) or (root.Position - target.Position).Magnitude > 16 then
+			return
+		end
+		if kind == "Pad" then
+			buyPad(player)
+		elseif kind == "Treadmill" then
+			buyTreadmill(player)
 		end
 	end)
 

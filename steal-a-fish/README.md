@@ -165,7 +165,8 @@ paste it into that setting as `"rbxassetid://<the number>"`. Adjust
 | 7 | Saving (money, Speed stat, treadmill tier, pads, eggs and pets) | ✅ |
 | 8 | UI and polish: Pets window, colored notifications, sounds, effects, screen scaling, tutorial | ✅ |
 | 8b | Gameplay changes: egg hotbar inventory, carry pose, hold-E hatching, caught = drop, one alerted shark | ✅ |
-| 8c | **80 fish + visual makeover**: 8 fish per zone, eggs remember their zone, blocky fish/eggs/sharks with effects and animation | 🔨 testing |
+| 8c | 80 fish + visual makeover: 8 fish per zone, eggs remember their zone, blocky fish/eggs/sharks with effects and animation | ✅ |
+| 8d | **Balance + design batch**: new HUD, Shop (Daily Gift), Index, Eggs and Fish panels, zone banners, speed signs, safe zone, red sharks, ocean wall, upgrades in the world | 🔨 testing |
 | 9 | Monetization (Robux); Speed boosts plug into `SpeedService.SetGainMultiplier` | |
 
 ## Sounds
@@ -206,6 +207,8 @@ Only work while play-testing in Studio. Type them in the chat:
 | `!showeggs` | show one egg of each rarity on your plot (`!showeggs 7`: all from zone 7) |
 | `!showsharks` | show all 10 sharks on your plot |
 | `!showclear` | remove the preview (it also disappears by itself after 3 minutes) |
+| `!gift` | make your Daily Gift ready again |
+| `!findall` | mark every fish as found in your Index (`!findall 2`: only zone 2's fish) |
 
 If chat commands don't do anything, open **View → Command Bar**, set its dropdown to
 **Server**, and run, for example:

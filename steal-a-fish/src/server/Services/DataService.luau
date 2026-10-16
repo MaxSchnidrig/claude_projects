@@ -54,6 +54,7 @@ local EggService = require(script.Parent.EggService)
 local Fish = require(ReplicatedStorage.Shared.Fish)
 local PetService = require(script.Parent.PetService)
 local PlotService = require(script.Parent.PlotService)
+local RewardService = require(script.Parent.RewardService)
 local SpeedService = require(script.Parent.SpeedService)
 local UpgradeService = require(script.Parent.UpgradeService)
 
@@ -70,6 +71,7 @@ export type SaveData = {
 	Pads: { PetService.SavedPadItem },
 	EggInventory: { EggService.InventoryEgg }, -- eggs in the hotbar: { Rarity, Zone }
 	ProcessedPurchases: { [string]: boolean },
+	Rewards: RewardService.SavedRewards, -- Index (found fish, claimed rewards) and the Daily Gift
 	TutorialDone: boolean,
 	LastSave: number, -- os.time() of the last save (0 = never saved)
 	Lock: { Session: string, Time: number }?,
@@ -118,6 +120,7 @@ local function defaultData(): SaveData
 		Pads = {},
 		EggInventory = {},
 		ProcessedPurchases = {},
+		Rewards = { Found = {}, Claimed = {}, ZonesClaimed = {}, LastDailyGift = 0 },
 		TutorialDone = false,
 		LastSave = 0,
 		Lock = nil,
@@ -176,6 +179,26 @@ local function reconcile(raw: unknown): SaveData
 				table.insert(data.EggInventory, { Rarity = egg, Zone = Fish.likelyZone(egg) })
 			end
 		end
+	end
+	if typeof(old.Rewards) == "table" then
+		local rewards = old.Rewards
+		for _, field in { "Found", "Claimed" } do
+			if typeof(rewards[field]) == "table" then
+				for _, name in rewards[field] do
+					if typeof(name) == "string" then
+						table.insert((data.Rewards :: any)[field], name)
+					end
+				end
+			end
+		end
+		if typeof(rewards.ZonesClaimed) == "table" then
+			for _, zoneIndex in rewards.ZonesClaimed do
+				if typeof(zoneIndex) == "number" then
+					table.insert(data.Rewards.ZonesClaimed, zoneIndex)
+				end
+			end
+		end
+		data.Rewards.LastDailyGift = cleanNumber(rewards.LastDailyGift, 0)
 	end
 	if typeof(old.ProcessedPurchases) == "table" then
 		for id, value in old.ProcessedPurchases do
@@ -281,6 +304,8 @@ local function apply(player: Player, data: SaveData)
 	UpgradeService.SetPadsBought(player, data.PadsBought)
 	PetService.ImportPads(player, data.Pads)
 	EggService.SetInventory(player, data.EggInventory)
+	-- After the pads: fish already on them count as found in the Index.
+	RewardService.Import(player, data.Rewards)
 	-- New players get the tutorial (the client runs it).
 	player:SetAttribute(Constants.Attributes.ShowTutorial, not data.TutorialDone)
 end
@@ -297,6 +322,7 @@ local function collect(player: Player, profile: Profile)
 	data.PadsBought = UpgradeService.GetPadsBought(player)
 	data.Pads = PetService.ExportPads(player)
 	data.EggInventory = EggService.GetInventory(player)
+	data.Rewards = RewardService.Export(player)
 end
 
 -- Write the record. release = true also removes the session lock (leaving).

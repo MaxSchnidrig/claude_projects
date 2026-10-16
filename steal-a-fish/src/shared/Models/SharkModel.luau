@@ -8,8 +8,9 @@
 	scars, glowing eyes, spikes) and deeper sharks are bigger and scarier.
 
 	It swims on the client (CreatureController): the tail swishes and the
-	body sways, faster while it moves fast. While chasing, the server turns
-	on its red glow (SharkModel.setChasing).
+	body sways, faster while it moves fast. While chasing (attribute
+	"Chasing", set by SharkModel.setChasing) the client smoothly turns it red
+	and makes it glow.
 
 	Custom model: "Shark<zone>" (for example "Shark7") or "Shark"
 	(Config.Bots.ModelName) in ReplicatedStorage.Assets.
@@ -151,16 +152,11 @@ function SharkModel.build(model: Model, root: BasePart, zoneIndex: number)
 	CollectionService:AddTag(model, Constants.Tags.Animated)
 end
 
--- Red glow on/off (the server calls this when a chase starts/ends).
+-- Chasing on/off (the server calls this when a chase starts/ends). The
+-- client (CreatureController) then smoothly turns the shark red and back,
+-- with the ChaseGlow highlight and ChaseLight.
 function SharkModel.setChasing(model: Model, chasing: boolean)
-	local glow = model:FindFirstChild("ChaseGlow")
-	if glow and glow:IsA("Highlight") then
-		glow.Enabled = chasing
-	end
-	local light = model:FindFirstChild("ChaseLight", true)
-	if light and light:IsA("PointLight") then
-		light.Enabled = chasing
-	end
+	model:SetAttribute("Chasing", chasing)
 end
 
 return SharkModel

@@ -33,6 +33,9 @@ export type ZoneConfig = {
 	-- an egg came from): "Shell", "Coral", "Seaweed", "Rust", "Glowworms",
 	-- "Frost", "Lava", "Tentacle", "Bones" or "Void".
 	EggDetail: string,
+	-- Shown after the zone name when you walk in ("Shallows 😄"). Happy at
+	-- the start, scarier the deeper you go.
+	Emoji: string,
 }
 
 export type RarityConfig = {
@@ -135,16 +138,18 @@ Config.Rarities = rarities
 --
 --   WalkSpeed = min(BaseWalkSpeed + Factor * SpeedStat ^ Exponent, MaxWalkSpeed)
 --
--- With Factor 0.08 and Exponent 0.5:   Speed stat 0 -> 16,   2.5K -> 20,
---   40K -> 32,   250K -> 56,   400K -> 66.6,   1M -> 80 (the cap).
+-- With Factor 0.18 and Exponent 0.4:   Speed stat 0 -> 16,   3K -> 20.5,
+--   100K -> 44.5,   1M -> 61,   4M -> 94.5,   12.5M -> 140 (the cap).
+-- The cap is high on purpose: even the best treadmills (Rainbow, Cosmic)
+-- still make you faster.
 -- Egg carry slow-downs (Eggs.ByRarity) are multiplied on top.
 ---------------------------------------------------------------------------
 Config.Speed = {
 	StartingStat = 0,
 	BaseWalkSpeed = 16, -- a brand-new player (Roblox's default)
-	Factor = 0.08,
-	Exponent = 0.5,
-	MaxWalkSpeed = 80, -- hard cap, so the game stays controllable
+	Factor = 0.18,
+	Exponent = 0.4,
+	MaxWalkSpeed = 140, -- hard cap, so the game stays controllable
 	-- "Outrunning" a shark means walking at least this much faster than it.
 	OutrunMargin = 0.5,
 }
@@ -208,31 +213,31 @@ local treadmillTiers: { TreadmillTier } = {
 		AccentColor = Color3.fromRGB(80, 255, 150), ScreenColor = Color3.fromRGB(120, 255, 170), Light = 1.5, Effect = "Sparkles", Rainbow = false,
 	},
 	{
-		Name = "Diamond", Price = 2_000_000, Gain = 800,
+		Name = "Diamond", Price = 6_000_000, Gain = 800,
 		FrameColor = Color3.fromRGB(170, 235, 255), FrameMaterial = Enum.Material.Glass,
 		BeltColor = Color3.fromRGB(20, 40, 60), ChevronColor = Color3.fromRGB(150, 240, 255), ChevronNeon = true,
 		AccentColor = Color3.fromRGB(120, 230, 255), ScreenColor = Color3.fromRGB(180, 245, 255), Light = 2, Effect = "Sparkles", Rainbow = false,
 	},
 	{
-		Name = "Neon", Price = 10_000_000, Gain = 2_000,
+		Name = "Neon", Price = 30_000_000, Gain = 2_000,
 		FrameColor = Color3.fromRGB(25, 25, 35), FrameMaterial = Enum.Material.SmoothPlastic,
 		BeltColor = Color3.fromRGB(10, 10, 15), ChevronColor = Color3.fromRGB(255, 60, 220), ChevronNeon = true,
 		AccentColor = Color3.fromRGB(0, 255, 255), ScreenColor = Color3.fromRGB(255, 60, 220), Light = 2.5, Effect = "Stars", Rainbow = false,
 	},
 	{
-		Name = "Magma", Price = 50_000_000, Gain = 5_000,
+		Name = "Magma", Price = 150_000_000, Gain = 5_000,
 		FrameColor = Color3.fromRGB(60, 30, 25), FrameMaterial = Enum.Material.Basalt,
 		BeltColor = Color3.fromRGB(30, 10, 5), ChevronColor = Color3.fromRGB(255, 120, 20), ChevronNeon = true,
 		AccentColor = Color3.fromRGB(255, 90, 0), ScreenColor = Color3.fromRGB(255, 140, 40), Light = 3, Effect = "Fire", Rainbow = false,
 	},
 	{
-		Name = "Rainbow", Price = 250_000_000, Gain = 12_000,
+		Name = "Rainbow", Price = 750_000_000, Gain = 12_000,
 		FrameColor = Color3.fromRGB(255, 255, 255), FrameMaterial = Enum.Material.SmoothPlastic,
 		BeltColor = Color3.fromRGB(25, 25, 30), ChevronColor = Color3.fromRGB(255, 255, 255), ChevronNeon = true,
 		AccentColor = Color3.fromRGB(255, 255, 255), ScreenColor = Color3.fromRGB(255, 255, 255), Light = 3, Effect = "Sparkles", Rainbow = true,
 	},
 	{
-		Name = "Cosmic", Price = 1_500_000_000, Gain = 30_000,
+		Name = "Cosmic", Price = 4_500_000_000, Gain = 30_000,
 		FrameColor = Color3.fromRGB(40, 20, 80), FrameMaterial = Enum.Material.Glass,
 		BeltColor = Color3.fromRGB(5, 0, 20), ChevronColor = Color3.fromRGB(190, 120, 255), ChevronNeon = true,
 		AccentColor = Color3.fromRGB(150, 80, 255), ScreenColor = Color3.fromRGB(220, 180, 255), Light = 4, Effect = "Stars", Rainbow = false,
@@ -281,6 +286,8 @@ Config.UI = {
 	MaxScale = 1.3,
 	TouchMinScale = 0.9, -- phones/tablets never go smaller than this (big enough to tap)
 	CaughtSplashSeconds = 1.2, -- how long the big "CAUGHT!" text stays
+	ZoneBannerSeconds = 3, -- how long a zone's name stays at the top of the screen
+	SafeSplashSeconds = 1.4, -- how long the big "SAFE!" text stays
 }
 
 -- Sounds. These are short placeholder sounds that come with Roblox
@@ -295,6 +302,8 @@ local sounds: { [string]: SoundConfig } = {
 	Coins = { Id = "rbxasset://sounds/clickfast.wav", Volume = 0.5 },
 	Click = { Id = "rbxasset://sounds/button.wav", Volume = 0.4 },
 	Warning = { Id = "rbxasset://sounds/button.wav", Volume = 0.3 },
+	Safe = { Id = "rbxasset://sounds/electronicpingshort.wav", Volume = 0.9 }, -- reached the safe zone with an egg
+	Claim = { Id = "rbxasset://sounds/electronicpingshort.wav", Volume = 0.8 }, -- index rewards, daily gift
 }
 Config.Sounds = sounds
 
@@ -360,9 +369,16 @@ Config.World = {
 	MapWallHeight = 40, -- players jump about 7 studs
 	MapWallThickness = 4,
 	WallTileSize = 10, -- size of one checkerboard square
-	WallColorA = Color3.fromRGB(240, 215, 160), -- sand
-	WallColorB = Color3.fromRGB(245, 145, 120), -- coral
-	WallTrimColor = Color3.fromRGB(40, 190, 185), -- sea-green trim along the top
+	WallColorA = Color3.fromRGB(60, 150, 225), -- ocean blue
+	WallColorB = Color3.fromRGB(35, 105, 195), -- deeper blue
+	WallTrimColor = Color3.fromRGB(110, 205, 240), -- light water along the top
+	WallFoamColor = Color3.fromRGB(240, 252, 255), -- the white wave foam on top
+	WaveLength = 8, -- studs between two wave crests on top of the wall
+
+	-- The line where the safe zone starts (at the danger zone entrance).
+	SafeLineColor = Color3.fromRGB(240, 60, 60),
+	SafeLineText = "SAFE ZONE",
+	SpeedSignColor = Color3.fromRGB(35, 45, 70), -- the "Recommended Speed" signs
 }
 
 ---------------------------------------------------------------------------
@@ -437,6 +453,7 @@ local zones: { ZoneConfig } = {
 		MaxEggs = 6,
 		EggWeights = { Common = 80, Uncommon = 18, Rare = 2 },
 		EggDetail = "Shell",
+		Emoji = "😄",
 	},
 	{
 		Name = "Coral Reef", -- zone 2
@@ -445,6 +462,7 @@ local zones: { ZoneConfig } = {
 		MaxEggs = 6,
 		EggWeights = { Common = 40, Uncommon = 40, Rare = 17, Epic = 3 },
 		EggDetail = "Coral",
+		Emoji = "🙂",
 	},
 	{
 		Name = "Kelp Forest", -- zone 3
@@ -453,6 +471,7 @@ local zones: { ZoneConfig } = {
 		MaxEggs = 5,
 		EggWeights = { Uncommon = 40, Rare = 40, Epic = 17, Legendary = 3 },
 		EggDetail = "Seaweed",
+		Emoji = "😐",
 	},
 	{
 		Name = "Shipwreck Bay", -- zone 4
@@ -461,6 +480,7 @@ local zones: { ZoneConfig } = {
 		MaxEggs = 5,
 		EggWeights = { Rare = 45, Epic = 40, Legendary = 13, Mythic = 2 },
 		EggDetail = "Rust",
+		Emoji = "😬",
 	},
 	{
 		Name = "Twilight Deep", -- zone 5
@@ -469,6 +489,7 @@ local zones: { ZoneConfig } = {
 		MaxEggs = 5,
 		EggWeights = { Epic = 50, Legendary = 38, Mythic = 11, Divine = 1 },
 		EggDetail = "Glowworms",
+		Emoji = "😟",
 	},
 	{
 		Name = "Midnight Trench", -- zone 6
@@ -477,6 +498,7 @@ local zones: { ZoneConfig } = {
 		MaxEggs = 4,
 		EggWeights = { Legendary = 50, Mythic = 38, Divine = 11, Celestial = 1 },
 		EggDetail = "Frost",
+		Emoji = "😨",
 	},
 	{
 		Name = "Hydrothermal Vents", -- zone 7
@@ -485,6 +507,7 @@ local zones: { ZoneConfig } = {
 		MaxEggs = 4,
 		EggWeights = { Mythic = 55, Divine = 35, Celestial = 10 },
 		EggDetail = "Lava",
+		Emoji = "😰",
 	},
 	{
 		Name = "The Abyss", -- zone 8
@@ -493,6 +516,7 @@ local zones: { ZoneConfig } = {
 		MaxEggs = 4,
 		EggWeights = { Divine = 55, Celestial = 35, Cosmic = 10 },
 		EggDetail = "Tentacle",
+		Emoji = "😱",
 	},
 	{
 		Name = "Leviathan's Lair", -- zone 9
@@ -501,6 +525,7 @@ local zones: { ZoneConfig } = {
 		MaxEggs = 3,
 		EggWeights = { Celestial = 60, Cosmic = 37, Secret = 3 },
 		EggDetail = "Bones",
+		Emoji = "💀",
 	},
 	{
 		Name = "The Void Below", -- zone 10
@@ -509,6 +534,7 @@ local zones: { ZoneConfig } = {
 		MaxEggs = 3,
 		EggWeights = { Celestial = 30, Cosmic = 60, Secret = 10 },
 		EggDetail = "Void",
+		Emoji = "☠️",
 	},
 }
 Config.Zones = zones
@@ -541,16 +567,16 @@ local sharks: { SharkConfig } = {
 	{ Speed = 38, Count = 1, Color = Color3.fromRGB(40, 45, 80), Belly = Color3.fromRGB(150, 160, 200),
 		Scale = 1.2, EyeColor = Color3.fromRGB(120, 220, 255), GlowEyes = true, Scars = 2, Spikes = false },
 	-- 7 Hydrothermal Vents: charcoal with lava eyes
-	{ Speed = 44, Count = 1, Color = Color3.fromRGB(70, 35, 30), Belly = Color3.fromRGB(150, 100, 80),
+	{ Speed = 46, Count = 1, Color = Color3.fromRGB(70, 35, 30), Belly = Color3.fromRGB(150, 100, 80),
 		Scale = 1.3, EyeColor = Color3.fromRGB(255, 120, 30), GlowEyes = true, Scars = 2, Spikes = true },
 	-- 8 The Abyss
-	{ Speed = 50, Count = 1, Color = Color3.fromRGB(28, 22, 45), Belly = Color3.fromRGB(90, 80, 120),
+	{ Speed = 58, Count = 1, Color = Color3.fromRGB(28, 22, 45), Belly = Color3.fromRGB(90, 80, 120),
 		Scale = 1.4, EyeColor = Color3.fromRGB(255, 40, 60), GlowEyes = true, Scars = 3, Spikes = true },
 	-- 9 Leviathan's Lair
-	{ Speed = 57, Count = 1, Color = Color3.fromRGB(20, 50, 50), Belly = Color3.fromRGB(80, 130, 120),
+	{ Speed = 74, Count = 1, Color = Color3.fromRGB(20, 50, 50), Belly = Color3.fromRGB(80, 130, 120),
 		Scale = 1.5, EyeColor = Color3.fromRGB(80, 255, 160), GlowEyes = true, Scars = 3, Spikes = true },
 	-- 10 The Void Below: biggest and darkest
-	{ Speed = 66, Count = 1, Color = Color3.fromRGB(12, 10, 20), Belly = Color3.fromRGB(60, 40, 90),
+	{ Speed = 94, Count = 1, Color = Color3.fromRGB(12, 10, 20), Belly = Color3.fromRGB(60, 40, 90),
 		Scale = 1.6, EyeColor = Color3.fromRGB(190, 90, 255), GlowEyes = true, Scars = 3, Spikes = true },
 }
 Config.Sharks = sharks
@@ -590,7 +616,8 @@ Config.Bots = {
 -- FISH (what eggs hatch into): 8 per zone, 80 in total.
 -- An egg remembers the zone it was stolen from. When it hatches, one of THAT
 -- zone's 8 fish comes out (see HATCHING below for the odds).
--- Income = money per second at level 1. It grows with rarity and depth.
+-- Income = money per second at level 1. It grows with rarity and depth
+-- (the same fish slot earns about 1.3x more in each deeper zone).
 --
 -- Looks (all built from blocks; a model in ReplicatedStorage.Assets with the
 -- fish's exact Name replaces the built-in one):
@@ -627,151 +654,151 @@ local fish: { FishConfig } = {
 		Body = Color3.fromRGB(255, 110, 90), Accent = Color3.fromRGB(255, 200, 180), Fin = Color3.fromRGB(230, 80, 70) },
 	{ Name = "Parrot Pete", Zone = 2, Rarity = "Uncommon", Income = 4.5, Shape = "Fish", Pattern = "Stripes", Feature = "None",
 		Body = Color3.fromRGB(60, 200, 140), Accent = Color3.fromRGB(60, 140, 240), Fin = Color3.fromRGB(40, 160, 120) },
-	{ Name = "Polka Puffer", Zone = 2, Rarity = "Uncommon", Income = 4.0, Shape = "Puffer", Pattern = "Spots", Feature = "None",
+	{ Name = "Polka Puffer", Zone = 2, Rarity = "Uncommon", Income = 3.5, Shape = "Puffer", Pattern = "Spots", Feature = "None",
 		Body = Color3.fromRGB(250, 250, 250), Accent = Color3.fromRGB(30, 30, 30), Fin = Color3.fromRGB(220, 220, 220) },
 	{ Name = "Lionfish Larry", Zone = 2, Rarity = "Rare", Income = 11, Shape = "Fish", Pattern = "Stripes", Feature = "Spikes",
 		Body = Color3.fromRGB(220, 60, 50), Accent = Color3.fromRGB(255, 240, 230), Fin = Color3.fromRGB(200, 50, 40) },
 	{ Name = "Bloop Jelly", Zone = 2, Rarity = "Rare", Income = 12, Shape = "Jelly", Pattern = "None", Feature = "None",
 		Body = Color3.fromRGB(255, 150, 210), Accent = Color3.fromRGB(255, 220, 240), Fin = Color3.fromRGB(255, 120, 200) },
-	{ Name = "Rainbow Wrasse", Zone = 2, Rarity = "Epic", Income = 25, Shape = "FishLong", Pattern = "Rainbow", Feature = "None",
+	{ Name = "Rainbow Wrasse", Zone = 2, Rarity = "Epic", Income = 24, Shape = "FishLong", Pattern = "Rainbow", Feature = "None",
 		Body = Color3.fromRGB(80, 170, 255), Accent = Color3.fromRGB(255, 80, 160), Fin = Color3.fromRGB(255, 200, 60) },
-	{ Name = "Queen Angelfish", Zone = 2, Rarity = "Legendary", Income = 73, Shape = "FishFlat", Pattern = "Stripes", Feature = "Crown",
+	{ Name = "Queen Angelfish", Zone = 2, Rarity = "Legendary", Income = 70, Shape = "FishFlat", Pattern = "Stripes", Feature = "Crown",
 		Body = Color3.fromRGB(40, 90, 220), Accent = Color3.fromRGB(255, 220, 40), Fin = Color3.fromRGB(255, 200, 40) },
 	-- Zone 3: Kelp Forest
-	{ Name = "Kelp Crawler", Zone = 3, Rarity = "Uncommon", Income = 5.0, Shape = "Crab", Pattern = "Spots", Feature = "Leaves",
+	{ Name = "Kelp Crawler", Zone = 3, Rarity = "Uncommon", Income = 4.5, Shape = "Crab", Pattern = "Spots", Feature = "Leaves",
 		Body = Color3.fromRGB(90, 150, 60), Accent = Color3.fromRGB(190, 220, 120), Fin = Color3.fromRGB(70, 120, 50) },
-	{ Name = "Mossy Eel", Zone = 3, Rarity = "Uncommon", Income = 5.5, Shape = "Eel", Pattern = "Spots", Feature = "None",
+	{ Name = "Mossy Eel", Zone = 3, Rarity = "Uncommon", Income = 5.0, Shape = "Eel", Pattern = "Spots", Feature = "None",
 		Body = Color3.fromRGB(120, 140, 60), Accent = Color3.fromRGB(190, 200, 110), Fin = Color3.fromRGB(90, 110, 40) },
-	{ Name = "Garibaldi Gus", Zone = 3, Rarity = "Rare", Income = 16, Shape = "Fish", Pattern = "None", Feature = "None",
+	{ Name = "Garibaldi Gus", Zone = 3, Rarity = "Rare", Income = 15, Shape = "Fish", Pattern = "None", Feature = "None",
 		Body = Color3.fromRGB(255, 120, 20), Accent = Color3.fromRGB(255, 200, 120), Fin = Color3.fromRGB(240, 100, 20) },
-	{ Name = "Leafy Larry", Zone = 3, Rarity = "Rare", Income = 14, Shape = "Seahorse", Pattern = "None", Feature = "Leaves",
+	{ Name = "Leafy Larry", Zone = 3, Rarity = "Rare", Income = 13, Shape = "Seahorse", Pattern = "None", Feature = "Leaves",
 		Body = Color3.fromRGB(130, 190, 80), Accent = Color3.fromRGB(200, 230, 130), Fin = Color3.fromRGB(90, 160, 60) },
-	{ Name = "Sneaky Octo", Zone = 3, Rarity = "Epic", Income = 38, Shape = "Squid", Pattern = "Spots", Feature = "None",
+	{ Name = "Sneaky Octo", Zone = 3, Rarity = "Epic", Income = 35, Shape = "Squid", Pattern = "Spots", Feature = "None",
 		Body = Color3.fromRGB(150, 80, 190), Accent = Color3.fromRGB(220, 170, 240), Fin = Color3.fromRGB(120, 60, 160) },
-	{ Name = "Kelpie Ray", Zone = 3, Rarity = "Epic", Income = 42, Shape = "Ray", Pattern = "Spots", Feature = "None",
+	{ Name = "Kelpie Ray", Zone = 3, Rarity = "Epic", Income = 39, Shape = "Ray", Pattern = "Spots", Feature = "None",
 		Body = Color3.fromRGB(50, 110, 70), Accent = Color3.fromRGB(140, 200, 150), Fin = Color3.fromRGB(40, 90, 60) },
-	{ Name = "Bob the Bass Drop", Zone = 3, Rarity = "Legendary", Income = 84, Shape = "FishBig", Pattern = "Stripes", Feature = "Headphones",
+	{ Name = "Bob the Bass Drop", Zone = 3, Rarity = "Legendary", Income = 78, Shape = "FishBig", Pattern = "Stripes", Feature = "Headphones",
 		Body = Color3.fromRGB(40, 180, 170), Accent = Color3.fromRGB(30, 30, 40), Fin = Color3.fromRGB(30, 140, 130) },
-	{ Name = "Grove Guardian Grouper", Zone = 3, Rarity = "Mythic", Income = 250, Shape = "FishBig", Pattern = "Belly", Feature = "Crown",
+	{ Name = "Grove Guardian Grouper", Zone = 3, Rarity = "Mythic", Income = 230, Shape = "FishBig", Pattern = "Belly", Feature = "Crown",
 		Body = Color3.fromRGB(60, 140, 70), Accent = Color3.fromRGB(240, 210, 90), Fin = Color3.fromRGB(40, 110, 60) },
 	-- Zone 4: Shipwreck Bay
-	{ Name = "Barnacle Bill", Zone = 4, Rarity = "Uncommon", Income = 6.5, Shape = "Fish", Pattern = "Spots", Feature = "None",
+	{ Name = "Barnacle Bill", Zone = 4, Rarity = "Uncommon", Income = 6.0, Shape = "Fish", Pattern = "Spots", Feature = "None",
 		Body = Color3.fromRGB(140, 130, 110), Accent = Color3.fromRGB(220, 210, 190), Fin = Color3.fromRGB(110, 100, 90) },
-	{ Name = "Anchor Eel", Zone = 4, Rarity = "Rare", Income = 20, Shape = "Eel", Pattern = "Stripes", Feature = "None",
+	{ Name = "Anchor Eel", Zone = 4, Rarity = "Rare", Income = 18, Shape = "Eel", Pattern = "Stripes", Feature = "None",
 		Body = Color3.fromRGB(150, 80, 50), Accent = Color3.fromRGB(90, 90, 100), Fin = Color3.fromRGB(120, 60, 40) },
-	{ Name = "Rusty Crab", Zone = 4, Rarity = "Rare", Income = 22, Shape = "Crab", Pattern = "Spots", Feature = "None",
+	{ Name = "Rusty Crab", Zone = 4, Rarity = "Rare", Income = 19, Shape = "Crab", Pattern = "Spots", Feature = "None",
 		Body = Color3.fromRGB(170, 80, 40), Accent = Color3.fromRGB(220, 140, 80), Fin = Color3.fromRGB(140, 60, 30) },
-	{ Name = "Pirate Puffer", Zone = 4, Rarity = "Epic", Income = 47, Shape = "Puffer", Pattern = "Spots", Feature = "PirateHat",
+	{ Name = "Pirate Puffer", Zone = 4, Rarity = "Epic", Income = 42, Shape = "Puffer", Pattern = "Spots", Feature = "PirateHat",
 		Body = Color3.fromRGB(230, 190, 120), Accent = Color3.fromRGB(40, 40, 40), Fin = Color3.fromRGB(200, 160, 90) },
-	{ Name = "Treasure Tuna", Zone = 4, Rarity = "Epic", Income = 52, Shape = "FishLong", Pattern = "Stripes", Feature = "None",
+	{ Name = "Treasure Tuna", Zone = 4, Rarity = "Epic", Income = 46, Shape = "FishLong", Pattern = "Stripes", Feature = "None",
 		Body = Color3.fromRGB(255, 200, 40), Accent = Color3.fromRGB(255, 240, 160), Fin = Color3.fromRGB(220, 160, 30) },
-	{ Name = "Captain Flounder", Zone = 4, Rarity = "Legendary", Income = 140, Shape = "Ray", Pattern = "Spots", Feature = "Eyepatch",
+	{ Name = "Captain Flounder", Zone = 4, Rarity = "Legendary", Income = 130, Shape = "Ray", Pattern = "Spots", Feature = "Eyepatch",
 		Body = Color3.fromRGB(170, 130, 90), Accent = Color3.fromRGB(240, 220, 190), Fin = Color3.fromRGB(140, 100, 70) },
-	{ Name = "Ghost Mackerel", Zone = 4, Rarity = "Legendary", Income = 110, Shape = "Fish", Pattern = "Stripes", Feature = "Ghost",
+	{ Name = "Ghost Mackerel", Zone = 4, Rarity = "Legendary", Income = 100, Shape = "Fish", Pattern = "Stripes", Feature = "Ghost",
 		Body = Color3.fromRGB(190, 255, 220), Accent = Color3.fromRGB(240, 255, 250), Fin = Color3.fromRGB(150, 230, 200) },
-	{ Name = "Davy Jones Jr.", Zone = 4, Rarity = "Mythic", Income = 330, Shape = "Squid", Pattern = "Spots", Feature = "PirateHat",
+	{ Name = "Davy Jones Jr.", Zone = 4, Rarity = "Mythic", Income = 300, Shape = "Squid", Pattern = "Spots", Feature = "PirateHat",
 		Body = Color3.fromRGB(40, 140, 130), Accent = Color3.fromRGB(120, 220, 200), Fin = Color3.fromRGB(30, 110, 100) },
 	-- Zone 5: Twilight Deep
-	{ Name = "Dusk Minnow", Zone = 5, Rarity = "Rare", Income = 24, Shape = "FishSmall", Pattern = "Belly", Feature = "None",
+	{ Name = "Dusk Minnow", Zone = 5, Rarity = "Rare", Income = 21, Shape = "FishSmall", Pattern = "Belly", Feature = "None",
 		Body = Color3.fromRGB(140, 90, 220), Accent = Color3.fromRGB(220, 190, 255), Fin = Color3.fromRGB(110, 70, 190) },
-	{ Name = "Glowworm Eel", Zone = 5, Rarity = "Rare", Income = 27, Shape = "Eel", Pattern = "GlowSpots", Feature = "None",
+	{ Name = "Glowworm Eel", Zone = 5, Rarity = "Rare", Income = 23, Shape = "Eel", Pattern = "GlowSpots", Feature = "None",
 		Body = Color3.fromRGB(40, 50, 120), Accent = Color3.fromRGB(120, 255, 220), Fin = Color3.fromRGB(30, 40, 100) },
-	{ Name = "Twilight Jelly", Zone = 5, Rarity = "Epic", Income = 73, Shape = "Jelly", Pattern = "GlowSpots", Feature = "None",
+	{ Name = "Twilight Jelly", Zone = 5, Rarity = "Epic", Income = 63, Shape = "Jelly", Pattern = "GlowSpots", Feature = "None",
 		Body = Color3.fromRGB(170, 110, 255), Accent = Color3.fromRGB(230, 200, 255), Fin = Color3.fromRGB(140, 90, 230) },
-	{ Name = "Hatchet Harry", Zone = 5, Rarity = "Epic", Income = 63, Shape = "FishFlat", Pattern = "None", Feature = "None",
+	{ Name = "Hatchet Harry", Zone = 5, Rarity = "Epic", Income = 54, Shape = "FishFlat", Pattern = "None", Feature = "None",
 		Body = Color3.fromRGB(190, 200, 215), Accent = Color3.fromRGB(110, 120, 140), Fin = Color3.fromRGB(160, 170, 190) },
-	{ Name = "Moonbeam Ray", Zone = 5, Rarity = "Legendary", Income = 170, Shape = "Ray", Pattern = "GlowSpots", Feature = "None",
+	{ Name = "Moonbeam Ray", Zone = 5, Rarity = "Legendary", Income = 150, Shape = "Ray", Pattern = "GlowSpots", Feature = "None",
 		Body = Color3.fromRGB(150, 170, 220), Accent = Color3.fromRGB(240, 245, 255), Fin = Color3.fromRGB(120, 140, 200) },
-	{ Name = "Sleepy Sunfish", Zone = 5, Rarity = "Legendary", Income = 190, Shape = "FishRound", Pattern = "None", Feature = "Nightcap",
+	{ Name = "Sleepy Sunfish", Zone = 5, Rarity = "Legendary", Income = 160, Shape = "FishRound", Pattern = "None", Feature = "Nightcap",
 		Body = Color3.fromRGB(150, 155, 170), Accent = Color3.fromRGB(220, 220, 230), Fin = Color3.fromRGB(120, 125, 140) },
-	{ Name = "Vampire Squid", Zone = 5, Rarity = "Mythic", Income = 380, Shape = "Squid", Pattern = "None", Feature = "Fangs",
+	{ Name = "Vampire Squid", Zone = 5, Rarity = "Mythic", Income = 330, Shape = "Squid", Pattern = "None", Feature = "Fangs",
 		Body = Color3.fromRGB(120, 20, 40), Accent = Color3.fromRGB(255, 80, 90), Fin = Color3.fromRGB(90, 10, 30) },
-	{ Name = "Starlight Seraph", Zone = 5, Rarity = "Divine", Income = 1100, Shape = "Jelly", Pattern = "Stars", Feature = "Halo",
+	{ Name = "Starlight Seraph", Zone = 5, Rarity = "Divine", Income = 930, Shape = "Jelly", Pattern = "Stars", Feature = "Halo",
 		Body = Color3.fromRGB(255, 245, 210), Accent = Color3.fromRGB(255, 215, 90), Fin = Color3.fromRGB(255, 230, 160) },
 	-- Zone 6: Midnight Trench
-	{ Name = "Gulper Gus", Zone = 6, Rarity = "Epic", Income = 81, Shape = "FishRound", Pattern = "Belly", Feature = "Fangs",
+	{ Name = "Gulper Gus", Zone = 6, Rarity = "Epic", Income = 67, Shape = "FishRound", Pattern = "Belly", Feature = "Fangs",
 		Body = Color3.fromRGB(40, 40, 60), Accent = Color3.fromRGB(200, 60, 80), Fin = Color3.fromRGB(30, 30, 45) },
-	{ Name = "Fangtooth Fred", Zone = 6, Rarity = "Epic", Income = 90, Shape = "Fish", Pattern = "None", Feature = "Fangs",
+	{ Name = "Fangtooth Fred", Zone = 6, Rarity = "Epic", Income = 74, Shape = "Fish", Pattern = "None", Feature = "Fangs",
 		Body = Color3.fromRGB(70, 60, 80), Accent = Color3.fromRGB(150, 140, 160), Fin = Color3.fromRGB(50, 40, 60) },
-	{ Name = "Midnight Eel", Zone = 6, Rarity = "Legendary", Income = 250, Shape = "Eel", Pattern = "Stripes", Feature = "None",
+	{ Name = "Midnight Eel", Zone = 6, Rarity = "Legendary", Income = 200, Shape = "Eel", Pattern = "Stripes", Feature = "None",
 		Body = Color3.fromRGB(30, 40, 90), Accent = Color3.fromRGB(90, 200, 255), Fin = Color3.fromRGB(20, 30, 70) },
-	{ Name = "Ink Blot Octo", Zone = 6, Rarity = "Legendary", Income = 210, Shape = "Squid", Pattern = "Spots", Feature = "None",
+	{ Name = "Ink Blot Octo", Zone = 6, Rarity = "Legendary", Income = 180, Shape = "Squid", Pattern = "Spots", Feature = "None",
 		Body = Color3.fromRGB(30, 30, 35), Accent = Color3.fromRGB(120, 120, 140), Fin = Color3.fromRGB(20, 20, 25) },
-	{ Name = "Frostfin Narwhal", Zone = 6, Rarity = "Mythic", Income = 590, Shape = "Whale", Pattern = "Spots", Feature = "Horn",
+	{ Name = "Frostfin Narwhal", Zone = 6, Rarity = "Mythic", Income = 490, Shape = "Whale", Pattern = "Spots", Feature = "Horn",
 		Body = Color3.fromRGB(170, 220, 255), Accent = Color3.fromRGB(240, 250, 255), Fin = Color3.fromRGB(130, 190, 240) },
-	{ Name = "Trench Dragon", Zone = 6, Rarity = "Mythic", Income = 640, Shape = "Eel", Pattern = "GlowSpots", Feature = "Spikes",
+	{ Name = "Trench Dragon", Zone = 6, Rarity = "Mythic", Income = 530, Shape = "Eel", Pattern = "GlowSpots", Feature = "Spikes",
 		Body = Color3.fromRGB(80, 40, 130), Accent = Color3.fromRGB(200, 120, 255), Fin = Color3.fromRGB(60, 30, 100) },
-	{ Name = "Lumen Lord", Zone = 6, Rarity = "Divine", Income = 1200, Shape = "FishBig", Pattern = "GlowSpots", Feature = "Halo",
+	{ Name = "Lumen Lord", Zone = 6, Rarity = "Divine", Income = 1000, Shape = "FishBig", Pattern = "GlowSpots", Feature = "Halo",
 		Body = Color3.fromRGB(240, 250, 255), Accent = Color3.fromRGB(140, 220, 255), Fin = Color3.fromRGB(200, 230, 255) },
-	{ Name = "Aurora Whale", Zone = 6, Rarity = "Celestial", Income = 3600, Shape = "Whale", Pattern = "Rainbow", Feature = "None",
+	{ Name = "Aurora Whale", Zone = 6, Rarity = "Celestial", Income = 3000, Shape = "Whale", Pattern = "Rainbow", Feature = "None",
 		Body = Color3.fromRGB(40, 170, 150), Accent = Color3.fromRGB(150, 255, 200), Fin = Color3.fromRGB(60, 120, 200) },
 	-- Zone 7: Hydrothermal Vents
-	{ Name = "Vent Shrimp", Zone = 7, Rarity = "Epic", Income = 110, Shape = "FishSmall", Pattern = "Stripes", Feature = "None",
+	{ Name = "Vent Shrimp", Zone = 7, Rarity = "Epic", Income = 87, Shape = "FishSmall", Pattern = "Stripes", Feature = "None",
 		Body = Color3.fromRGB(230, 60, 40), Accent = Color3.fromRGB(255, 170, 120), Fin = Color3.fromRGB(200, 40, 30) },
-	{ Name = "Lava Crab", Zone = 7, Rarity = "Legendary", Income = 300, Shape = "Crab", Pattern = "GlowSpots", Feature = "None",
+	{ Name = "Lava Crab", Zone = 7, Rarity = "Legendary", Income = 240, Shape = "Crab", Pattern = "GlowSpots", Feature = "None",
 		Body = Color3.fromRGB(240, 90, 30), Accent = Color3.fromRGB(255, 200, 60), Fin = Color3.fromRGB(200, 60, 20) },
-	{ Name = "Smoky Snapper", Zone = 7, Rarity = "Legendary", Income = 330, Shape = "Fish", Pattern = "Stripes", Feature = "None",
+	{ Name = "Smoky Snapper", Zone = 7, Rarity = "Legendary", Income = 270, Shape = "Fish", Pattern = "Stripes", Feature = "None",
 		Body = Color3.fromRGB(110, 110, 120), Accent = Color3.fromRGB(255, 130, 40), Fin = Color3.fromRGB(90, 90, 100) },
-	{ Name = "Magma Puffer", Zone = 7, Rarity = "Mythic", Income = 720, Shape = "Puffer", Pattern = "GlowSpots", Feature = "None",
+	{ Name = "Magma Puffer", Zone = 7, Rarity = "Mythic", Income = 570, Shape = "Puffer", Pattern = "GlowSpots", Feature = "None",
 		Body = Color3.fromRGB(220, 60, 20), Accent = Color3.fromRGB(255, 190, 40), Fin = Color3.fromRGB(180, 40, 10) },
-	{ Name = "Boiling Barracuda", Zone = 7, Rarity = "Mythic", Income = 790, Shape = "FishLong", Pattern = "Stripes", Feature = "Fangs",
+	{ Name = "Boiling Barracuda", Zone = 7, Rarity = "Mythic", Income = 630, Shape = "FishLong", Pattern = "Stripes", Feature = "Fangs",
 		Body = Color3.fromRGB(240, 130, 40), Accent = Color3.fromRGB(255, 230, 150), Fin = Color3.fromRGB(210, 100, 30) },
-	{ Name = "Inferno Angler", Zone = 7, Rarity = "Divine", Income = 2100, Shape = "Fish", Pattern = "GlowSpots", Feature = "Lure",
+	{ Name = "Inferno Angler", Zone = 7, Rarity = "Divine", Income = 1700, Shape = "Fish", Pattern = "GlowSpots", Feature = "Lure",
 		Body = Color3.fromRGB(200, 40, 30), Accent = Color3.fromRGB(255, 220, 80), Fin = Color3.fromRGB(160, 30, 20) },
-	{ Name = "Spicy Noodle Eel", Zone = 7, Rarity = "Divine", Income = 1700, Shape = "Eel", Pattern = "Stripes", Feature = "None",
+	{ Name = "Spicy Noodle Eel", Zone = 7, Rarity = "Divine", Income = 1300, Shape = "Eel", Pattern = "Stripes", Feature = "None",
 		Body = Color3.fromRGB(255, 190, 40), Accent = Color3.fromRGB(255, 80, 30), Fin = Color3.fromRGB(240, 150, 30) },
-	{ Name = "Phoenix Ray", Zone = 7, Rarity = "Celestial", Income = 4900, Shape = "Ray", Pattern = "Rainbow", Feature = "Crown",
+	{ Name = "Phoenix Ray", Zone = 7, Rarity = "Celestial", Income = 3900, Shape = "Ray", Pattern = "Rainbow", Feature = "Crown",
 		Body = Color3.fromRGB(255, 110, 30), Accent = Color3.fromRGB(255, 230, 80), Fin = Color3.fromRGB(240, 60, 30) },
 	-- Zone 8: The Abyss
-	{ Name = "Angler Annie", Zone = 8, Rarity = "Legendary", Income = 370, Shape = "Fish", Pattern = "Spots", Feature = "Lure",
+	{ Name = "Angler Annie", Zone = 8, Rarity = "Legendary", Income = 280, Shape = "Fish", Pattern = "Spots", Feature = "Lure",
 		Body = Color3.fromRGB(50, 80, 60), Accent = Color3.fromRGB(200, 255, 120), Fin = Color3.fromRGB(40, 60, 45) },
-	{ Name = "Blobby the Blobfish", Zone = 8, Rarity = "Legendary", Income = 410, Shape = "Puffer", Pattern = "None", Feature = "None",
+	{ Name = "Blobby the Blobfish", Zone = 8, Rarity = "Legendary", Income = 310, Shape = "Puffer", Pattern = "None", Feature = "None",
 		Body = Color3.fromRGB(255, 170, 190), Accent = Color3.fromRGB(255, 210, 220), Fin = Color3.fromRGB(240, 140, 170) },
-	{ Name = "Abyssal Gulper", Zone = 8, Rarity = "Mythic", Income = 1100, Shape = "Eel", Pattern = "GlowSpots", Feature = "Fangs",
+	{ Name = "Abyssal Gulper", Zone = 8, Rarity = "Mythic", Income = 860, Shape = "Eel", Pattern = "GlowSpots", Feature = "Fangs",
 		Body = Color3.fromRGB(25, 25, 35), Accent = Color3.fromRGB(255, 60, 120), Fin = Color3.fromRGB(15, 15, 25) },
-	{ Name = "Ghost Shark Pup", Zone = 8, Rarity = "Mythic", Income = 970, Shape = "FishLong", Pattern = "Belly", Feature = "SharkFin",
+	{ Name = "Ghost Shark Pup", Zone = 8, Rarity = "Mythic", Income = 750, Shape = "FishLong", Pattern = "Belly", Feature = "SharkFin",
 		Body = Color3.fromRGB(200, 210, 230), Accent = Color3.fromRGB(240, 245, 255), Fin = Color3.fromRGB(170, 180, 210) },
-	{ Name = "Deep Sea Dragonfish", Zone = 8, Rarity = "Divine", Income = 2600, Shape = "Eel", Pattern = "GlowSpots", Feature = "Fangs",
+	{ Name = "Deep Sea Dragonfish", Zone = 8, Rarity = "Divine", Income = 2000, Shape = "Eel", Pattern = "GlowSpots", Feature = "Fangs",
 		Body = Color3.fromRGB(20, 20, 30), Accent = Color3.fromRGB(120, 255, 255), Fin = Color3.fromRGB(10, 10, 20) },
-	{ Name = "Kraken Jr.", Zone = 8, Rarity = "Divine", Income = 2800, Shape = "Squid", Pattern = "Spots", Feature = "Crown",
+	{ Name = "Kraken Jr.", Zone = 8, Rarity = "Divine", Income = 2200, Shape = "Squid", Pattern = "Spots", Feature = "Crown",
 		Body = Color3.fromRGB(170, 30, 50), Accent = Color3.fromRGB(255, 140, 150), Fin = Color3.fromRGB(130, 20, 40) },
-	{ Name = "Void Lantern", Zone = 8, Rarity = "Celestial", Income = 5600, Shape = "Jelly", Pattern = "Stars", Feature = "Lure",
+	{ Name = "Void Lantern", Zone = 8, Rarity = "Celestial", Income = 4300, Shape = "Jelly", Pattern = "Stars", Feature = "Lure",
 		Body = Color3.fromRGB(60, 230, 255), Accent = Color3.fromRGB(200, 255, 255), Fin = Color3.fromRGB(40, 180, 230) },
-	{ Name = "Abyss King Angler", Zone = 8, Rarity = "Cosmic", Income = 18000, Shape = "FishBig", Pattern = "Stars", Feature = "Lure",
+	{ Name = "Abyss King Angler", Zone = 8, Rarity = "Cosmic", Income = 14000, Shape = "FishBig", Pattern = "Stars", Feature = "Lure",
 		Body = Color3.fromRGB(70, 30, 120), Accent = Color3.fromRGB(190, 120, 255), Fin = Color3.fromRGB(50, 20, 90) },
 	-- Zone 9: Leviathan's Lair
-	{ Name = "Bone Fish", Zone = 9, Rarity = "Mythic", Income = 1200, Shape = "Fish", Pattern = "Ribs", Feature = "None",
+	{ Name = "Bone Fish", Zone = 9, Rarity = "Mythic", Income = 920, Shape = "Fish", Pattern = "Ribs", Feature = "None",
 		Body = Color3.fromRGB(235, 230, 210), Accent = Color3.fromRGB(120, 110, 100), Fin = Color3.fromRGB(200, 195, 180) },
-	{ Name = "Serpent Hatchling", Zone = 9, Rarity = "Mythic", Income = 1400, Shape = "Eel", Pattern = "Spots", Feature = "Spikes",
+	{ Name = "Serpent Hatchling", Zone = 9, Rarity = "Mythic", Income = 1000, Shape = "Eel", Pattern = "Spots", Feature = "Spikes",
 		Body = Color3.fromRGB(60, 140, 90), Accent = Color3.fromRGB(200, 230, 120), Fin = Color3.fromRGB(40, 110, 70) },
-	{ Name = "Scaleback Leviathan", Zone = 9, Rarity = "Divine", Income = 3600, Shape = "Whale", Pattern = "Stripes", Feature = "Spikes",
+	{ Name = "Scaleback Leviathan", Zone = 9, Rarity = "Divine", Income = 2700, Shape = "Whale", Pattern = "Stripes", Feature = "Spikes",
 		Body = Color3.fromRGB(30, 90, 100), Accent = Color3.fromRGB(120, 220, 210), Fin = Color3.fromRGB(20, 70, 80) },
-	{ Name = "Titan Turtle", Zone = 9, Rarity = "Divine", Income = 3100, Shape = "Turtle", Pattern = "Spots", Feature = "Crown",
+	{ Name = "Titan Turtle", Zone = 9, Rarity = "Divine", Income = 2300, Shape = "Turtle", Pattern = "Spots", Feature = "Crown",
 		Body = Color3.fromRGB(110, 110, 120), Accent = Color3.fromRGB(70, 160, 140), Fin = Color3.fromRGB(90, 90, 100) },
-	{ Name = "Ancient Ammonite", Zone = 9, Rarity = "Celestial", Income = 8700, Shape = "Squid", Pattern = "Stripes", Feature = "Shell",
+	{ Name = "Ancient Ammonite", Zone = 9, Rarity = "Celestial", Income = 6400, Shape = "Squid", Pattern = "Stripes", Feature = "Shell",
 		Body = Color3.fromRGB(200, 150, 90), Accent = Color3.fromRGB(255, 230, 170), Fin = Color3.fromRGB(170, 120, 70) },
-	{ Name = "Tidecaller Ray", Zone = 9, Rarity = "Celestial", Income = 9500, Shape = "Ray", Pattern = "Stars", Feature = "Halo",
+	{ Name = "Tidecaller Ray", Zone = 9, Rarity = "Celestial", Income = 7000, Shape = "Ray", Pattern = "Stars", Feature = "Halo",
 		Body = Color3.fromRGB(30, 70, 200), Accent = Color3.fromRGB(120, 220, 255), Fin = Color3.fromRGB(20, 50, 170) },
-	{ Name = "Elder Kraken", Zone = 9, Rarity = "Cosmic", Income = 20000, Shape = "Squid", Pattern = "Stars", Feature = "Crown",
+	{ Name = "Elder Kraken", Zone = 9, Rarity = "Cosmic", Income = 15000, Shape = "Squid", Pattern = "Stars", Feature = "Crown",
 		Body = Color3.fromRGB(110, 40, 160), Accent = Color3.fromRGB(255, 120, 240), Fin = Color3.fromRGB(80, 20, 120) },
-	{ Name = "Leviathan Prime", Zone = 9, Rarity = "Secret", Income = 60000, Shape = "Eel", Pattern = "GlowSpots", Feature = "Horn",
+	{ Name = "Leviathan Prime", Zone = 9, Rarity = "Secret", Income = 44000, Shape = "Eel", Pattern = "GlowSpots", Feature = "Horn",
 		Body = Color3.fromRGB(20, 60, 70), Accent = Color3.fromRGB(80, 255, 200), Fin = Color3.fromRGB(10, 40, 50) },
 	-- Zone 10: The Void Below
-	{ Name = "Null Jelly", Zone = 10, Rarity = "Divine", Income = 4000, Shape = "Jelly", Pattern = "Stars", Feature = "None",
+	{ Name = "Null Jelly", Zone = 10, Rarity = "Divine", Income = 2900, Shape = "Jelly", Pattern = "Stars", Feature = "None",
 		Body = Color3.fromRGB(30, 30, 40), Accent = Color3.fromRGB(255, 255, 255), Fin = Color3.fromRGB(60, 60, 80) },
-	{ Name = "Static Guppy", Zone = 10, Rarity = "Divine", Income = 4500, Shape = "FishSmall", Pattern = "Glitch", Feature = "None",
+	{ Name = "Static Guppy", Zone = 10, Rarity = "Divine", Income = 3200, Shape = "FishSmall", Pattern = "Glitch", Feature = "None",
 		Body = Color3.fromRGB(150, 150, 150), Accent = Color3.fromRGB(255, 255, 255), Fin = Color3.fromRGB(90, 90, 90) },
-	{ Name = "Nebula Ray", Zone = 10, Rarity = "Celestial", Income = 12000, Shape = "Ray", Pattern = "Stars", Feature = "None",
+	{ Name = "Nebula Ray", Zone = 10, Rarity = "Celestial", Income = 8700, Shape = "Ray", Pattern = "Stars", Feature = "None",
 		Body = Color3.fromRGB(150, 60, 220), Accent = Color3.fromRGB(255, 120, 200), Fin = Color3.fromRGB(110, 40, 180) },
-	{ Name = "Starwhale", Zone = 10, Rarity = "Celestial", Income = 11000, Shape = "Whale", Pattern = "Stars", Feature = "Halo",
+	{ Name = "Starwhale", Zone = 10, Rarity = "Celestial", Income = 7600, Shape = "Whale", Pattern = "Stars", Feature = "Halo",
 		Body = Color3.fromRGB(20, 30, 90), Accent = Color3.fromRGB(255, 240, 140), Fin = Color3.fromRGB(30, 50, 140) },
-	{ Name = "Galaxy Puffer", Zone = 10, Rarity = "Cosmic", Income = 31000, Shape = "Puffer", Pattern = "Stars", Feature = "Spikes",
+	{ Name = "Galaxy Puffer", Zone = 10, Rarity = "Cosmic", Income = 22000, Shape = "Puffer", Pattern = "Stars", Feature = "Spikes",
 		Body = Color3.fromRGB(60, 20, 120), Accent = Color3.fromRGB(255, 140, 255), Fin = Color3.fromRGB(40, 10, 90) },
-	{ Name = "Quasar Eel", Zone = 10, Rarity = "Cosmic", Income = 34000, Shape = "Eel", Pattern = "Rainbow", Feature = "Halo",
+	{ Name = "Quasar Eel", Zone = 10, Rarity = "Cosmic", Income = 24000, Shape = "Eel", Pattern = "Rainbow", Feature = "Halo",
 		Body = Color3.fromRGB(80, 240, 255), Accent = Color3.fromRGB(255, 255, 255), Fin = Color3.fromRGB(40, 180, 230) },
-	{ Name = "The Void Itself", Zone = 10, Rarity = "Secret", Income = 69000, Shape = "Squid", Pattern = "Stars", Feature = "Crown",
+	{ Name = "The Void Itself", Zone = 10, Rarity = "Secret", Income = 49000, Shape = "Squid", Pattern = "Stars", Feature = "Crown",
 		Body = Color3.fromRGB(10, 10, 15), Accent = Color3.fromRGB(255, 255, 255), Fin = Color3.fromRGB(25, 25, 35) },
-	{ Name = "Glitch Fish", Zone = 10, Rarity = "Secret", Income = 80000, Shape = "Fish", Pattern = "Glitch", Feature = "Sunglasses",
+	{ Name = "Glitch Fish", Zone = 10, Rarity = "Secret", Income = 57000, Shape = "Fish", Pattern = "Glitch", Feature = "Sunglasses",
 		Body = Color3.fromRGB(255, 40, 200), Accent = Color3.fromRGB(40, 255, 120), Fin = Color3.fromRGB(80, 60, 255) },
 }
 Config.Fish = fish
@@ -915,6 +942,104 @@ end
 -- Money you get for selling a pet: SellValueSeconds of its current income.
 function Config.PetSellValue(baseIncome: number, level: number): number
 	return math.max(1, math.floor(Config.PetIncome(baseIncome, level) * Config.Economy.SellValueSeconds + 0.5))
+end
+
+---------------------------------------------------------------------------
+-- SHOP (the 🛒 Shop button)
+-- Only Robux items, plus the free Daily Gift. The Robux items are wired up
+-- in the Monetization milestone; until then they show "Coming soon".
+-- Id = the game pass / developer product ID from the Creator Dashboard
+-- (0 = not created yet). PriceRobux is only shown to players.
+---------------------------------------------------------------------------
+export type ShopItem = {
+	Key: string, -- internal name (used in code and saves)
+	Name: string,
+	Description: string,
+	Icon: string, -- an emoji
+	Tab: string, -- "Passes", "Boosts" or "Cash"
+	Kind: string, -- "Pass" (buy once) or "Product" (buy again and again)
+	PriceRobux: number,
+	Id: number,
+	Color: Color3, -- card color
+}
+local shopItems: { ShopItem } = {
+	{ Key = "DoubleMoney", Name = "2x Money", Description = "All your fish earn double, forever!", Icon = "💰", Tab = "Passes", Kind = "Pass", PriceRobux = 199, Id = 0, Color = Color3.fromRGB(70, 190, 90) },
+	{ Key = "DoubleSpeed", Name = "2x Speed", Description = "Twice the Speed from every treadmill!", Icon = "👟", Tab = "Passes", Kind = "Pass", PriceRobux = 249, Id = 0, Color = Color3.fromRGB(60, 150, 240) },
+	{ Key = "VIP", Name = "VIP", Description = "VIP tag, extra pad and a little more luck.", Icon = "👑", Tab = "Passes", Kind = "Pass", PriceRobux = 299, Id = 0, Color = Color3.fromRGB(240, 180, 40) },
+	{ Key = "Skins", Name = "Skins Pass", Description = "Unlock cool treadmill and pad skins.", Icon = "🎨", Tab = "Passes", Kind = "Pass", PriceRobux = 149, Id = 0, Color = Color3.fromRGB(200, 90, 230) },
+	{ Key = "MorePads", Name = "+2 Pads", Description = "Two extra pads on your plot.", Icon = "🟩", Tab = "Passes", Kind = "Pass", PriceRobux = 179, Id = 0, Color = Color3.fromRGB(80, 200, 150) },
+	{ Key = "AutoCollect", Name = "Auto Collect", Description = "Money goes straight to you.", Icon = "🧲", Tab = "Passes", Kind = "Pass", PriceRobux = 129, Id = 0, Color = Color3.fromRGB(240, 110, 80) },
+	{ Key = "FastHatch", Name = "Faster Hatching", Description = "Eggs hatch twice as fast.", Icon = "⏩", Tab = "Passes", Kind = "Pass", PriceRobux = 149, Id = 0, Color = Color3.fromRGB(90, 120, 240) },
+	{ Key = "Lucky", Name = "Lucky Pass", Description = "Better odds for rare fish.", Icon = "🍀", Tab = "Passes", Kind = "Pass", PriceRobux = 249, Id = 0, Color = Color3.fromRGB(60, 200, 90) },
+	{ Key = "Money15", Name = "2x Money (15 min)", Description = "Double money for 15 minutes. Stacks!", Icon = "💸", Tab = "Boosts", Kind = "Product", PriceRobux = 39, Id = 0, Color = Color3.fromRGB(70, 190, 90) },
+	{ Key = "Luck15", Name = "2x Luck (15 min)", Description = "Double luck for 15 minutes. Stacks!", Icon = "🍀", Tab = "Boosts", Kind = "Product", PriceRobux = 39, Id = 0, Color = Color3.fromRGB(60, 200, 90) },
+	{ Key = "InstantHatch", Name = "Instant Hatch", Description = "All eggs on your pads are READY now.", Icon = "🥚", Tab = "Boosts", Kind = "Product", PriceRobux = 29, Id = 0, Color = Color3.fromRGB(240, 90, 90) },
+	{ Key = "ServerLuck", Name = "Server Luck", Description = "Luck boost for EVERYONE in the server!", Icon = "🌟", Tab = "Boosts", Kind = "Product", PriceRobux = 99, Id = 0, Color = Color3.fromRGB(240, 200, 60) },
+	{ Key = "BotFreeze", Name = "Shark Freeze", Description = "Freeze every shark for 30 seconds.", Icon = "🧊", Tab = "Boosts", Kind = "Product", PriceRobux = 49, Id = 0, Color = Color3.fromRGB(110, 200, 250) },
+	{ Key = "CashSmall", Name = "Pile of Cash", Description = "A pile of money (grows with your progress).", Icon = "💵", Tab = "Cash", Kind = "Product", PriceRobux = 25, Id = 0, Color = Color3.fromRGB(70, 190, 90) },
+	{ Key = "CashMedium", Name = "Bag of Cash", Description = "A bag of money (grows with your progress).", Icon = "💰", Tab = "Cash", Kind = "Product", PriceRobux = 79, Id = 0, Color = Color3.fromRGB(60, 170, 80) },
+	{ Key = "CashLarge", Name = "Vault of Cash", Description = "A vault of money (grows with your progress).", Icon = "🏦", Tab = "Cash", Kind = "Product", PriceRobux = 199, Id = 0, Color = Color3.fromRGB(50, 150, 70) },
+}
+Config.Shop = {
+	Tabs = { "Daily", "Passes", "Boosts", "Cash" },
+	Items = shopItems,
+}
+
+---------------------------------------------------------------------------
+-- DAILY GIFT (free, in the Shop): claim once every Cooldown seconds.
+-- One random reward. Cash and Speed grow with your progress: Cash = this many
+-- seconds of your fish income, Speed = this many seconds on your treadmill.
+---------------------------------------------------------------------------
+export type DailyReward = { Kind: string, Weight: number, Seconds: number?, Minimum: number?, Rarity: string? }
+local dailyRewards: { DailyReward } = {
+	{ Kind = "Cash", Weight = 45, Seconds = 300, Minimum = 500 },
+	{ Kind = "Speed", Weight = 40, Seconds = 300, Minimum = 300 },
+	{ Kind = "Egg", Weight = 15, Rarity = "Rare" }, -- goes into your egg hotbar (cash instead if it's full)
+}
+Config.DailyGift = {
+	Cooldown = 24 * 60 * 60,
+	Rewards = dailyRewards,
+}
+
+---------------------------------------------------------------------------
+-- INDEX (the 📖 Index button): every fish you've ever hatched is "found".
+-- Each newly found fish has a small reward to claim, and finding all 8 fish
+-- of a zone unlocks a bigger zone reward.
+---------------------------------------------------------------------------
+Config.Index = {
+	FishCashSeconds = 60, -- cash reward = this many seconds of the fish's income
+	FishSpeedBase = 60, -- Speed reward for a zone-1 fish (grows deeper and rarer)
+	ZoneCashSeconds = 300, -- zone reward = this many seconds of ALL 8 fish's income together
+	ZoneSpeedBase = 1000, -- Speed reward for completing zone 1 (grows deeper)
+	SpeedGrowthPerZone = 2.2, -- each deeper zone's Speed rewards are this much bigger
+}
+
+-- What finding a fish gives: (cash, speed).
+function Config.IndexFishReward(fish: FishConfig): (number, number)
+	local index = Config.Index
+	local rank = 1
+	for i, info in Config.Rarities do
+		if info.Name == fish.Rarity then
+			rank = i
+		end
+	end
+	local cash = math.floor(fish.Income * index.FishCashSeconds + 0.5)
+	local speed = math.floor(index.FishSpeedBase * index.SpeedGrowthPerZone ^ (fish.Zone - 1) * (1 + (rank - 1) * 0.25) + 0.5)
+	return cash, speed
+end
+
+-- What completing a zone gives: (cash, speed).
+function Config.IndexZoneReward(zoneIndex: number): (number, number)
+	local index = Config.Index
+	local total = 0
+	for _, fish in Config.Fish do
+		if fish.Zone == zoneIndex then
+			total += fish.Income
+		end
+	end
+	local cash = math.floor(total * index.ZoneCashSeconds + 0.5)
+	local speed = math.floor(index.ZoneSpeedBase * index.SpeedGrowthPerZone ^ (zoneIndex - 1) + 0.5)
+	return cash, speed
 end
 
 ---------------------------------------------------------------------------

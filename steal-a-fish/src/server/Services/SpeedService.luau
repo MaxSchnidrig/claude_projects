@@ -308,31 +308,65 @@ local function formatMinutes(minutes: number): string
 	return `~{Format.decimal(minutes / 60, 1)} h`
 end
 
+-- Minutes of training on a treadmill tier to go from 0 to `stat`.
+local function minutesOn(tierIndex: number, stat: number): string
+	local tier = Config.Treadmill.Tiers[tierIndex]
+	if not tier then
+		return "-"
+	end
+	return formatMinutes(stat / (tier.Gain / Config.Treadmill.GainInterval) / 60)
+end
+
+-- Lowest and highest fish income in a zone.
+local function incomeRange(zoneIndex: number): string
+	local low, high = math.huge, 0
+	for _, fish in Config.Fish do
+		if fish.Zone == zoneIndex then
+			low = math.min(low, fish.Income)
+			high = math.max(high, fish.Income)
+		end
+	end
+	if high == 0 then
+		return "-"
+	end
+	return `${Format.short(low)}-{Format.short(high)}/s`
+end
+
 local function printBalanceTable()
+	local tiers = Config.Treadmill.Tiers
 	local lines = {
-		`[{Config.GameName}] SPEED BALANCE (outrun = walk {Config.Speed.OutrunMargin} faster than the shark)`,
-		"  Zone  Name                 Shark  Speed stat needed  Time on Basic treadmill",
+		`[{Config.GameName}] BALANCE TABLE (outrun = walk {Config.Speed.OutrunMargin} faster than the shark; walk speed cap {Config.Speed.MaxWalkSpeed})`,
+		"  Training time from 0 Speed on each treadmill: Basic / Gold / Diamond / Magma / Rainbow / Cosmic",
+		"  Zone Name                 Shark Speed needed  Fish income      Training time",
 	}
+	local columns = { 1, 4, 6, 8, 9, 10 }
 	for index, zone in Config.Zones do
 		local shark = Config.Sharks[index]
 		if shark then
 			local needed = shark.SpeedStatNeeded or 0
-			local neededText = if needed == math.huge then "impossible (cap)" else Format.short(needed)
+			local neededText = if needed == math.huge then "impossible" else Format.short(needed)
+			local times = {}
+			for _, tierIndex in columns do
+				table.insert(times, minutesOn(tierIndex, needed))
+			end
 			table.insert(
 				lines,
 				string.format(
-					"  %-5d %-20s %-6s %-18s %s",
+					"  %-4d %-20s %-5s %-13s %-16s %s",
 					index,
 					zone.Name,
 					tostring(shark.Speed),
 					neededText,
-					formatMinutes(shark.MinutesAtTier1 or 0)
+					incomeRange(index),
+					table.concat(times, " / ")
 				)
 			)
 		end
 	end
+	local capStat = Config.StatNeededForWalkSpeed(Config.Speed.MaxWalkSpeed)
+	table.insert(lines, `  Max walk speed {Config.Speed.MaxWalkSpeed} at Speed {Format.short(capStat)}`)
 	table.insert(lines, "  Treadmill tiers:")
-	for index, tier in Config.Treadmill.Tiers do
+	for index, tier in tiers do
 		table.insert(
 			lines,
 			string.format("    %2d %-8s price %-8s +%s Speed/sec", index, tier.Name, Format.short(tier.Price), Format.short(tier.Gain))

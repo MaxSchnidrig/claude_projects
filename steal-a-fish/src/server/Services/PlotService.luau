@@ -14,7 +14,12 @@
 	  - CollectPad (green, middle): step on it to collect your pets' money
 	  - Pads along the left and right side (Config.Plots.PadsPerSide each).
 	    Each pad holds ONE egg or ONE pet (PetService decides what's on it).
-	    All pads are built, but only the unlocked ones are shown.
+	    Locked pads are see-through and show their price ("🔒 $1.2K"); the
+	    NEXT locked pad has an "Unlock Pad" prompt (only its owner sees it).
+	  - An upgrade board next to the treadmill with an "Upgrade Treadmill"
+	    prompt showing the next tier and its price.
+	  Both prompts fire PlotService.UpgradePromptTriggered; UpgradeService
+	  checks and takes the money.
 
 	Plots are SAFE ZONES: bots stay in the danger zone (see WorldService), and
 	other services can ask PlotService.IsInsideAnyPlot(position).
@@ -29,8 +34,10 @@
 		PlotService.TreadmillChanged:Connect(function(plot) end)
 		PlotService.PlotAssigned:Connect(function(player, plot) end)
 		PlotService.PlotReleased:Connect(function(player, plot) end)
+		PlotService.UpgradePromptTriggered:Connect(function(player, plot, "Pad" | "Treadmill") end)
 ]]
 
+local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -41,6 +48,8 @@ local Types = require(ReplicatedStorage.Shared.Types)
 local Notify = require(script.Parent.Parent.Util.Notify)
 local Assets = require(script.Parent.Parent.Util.Assets)
 local Build = require(script.Parent.Parent.Util.Build)
+local Constants = require(ReplicatedStorage.Shared.Constants)
+local Format = require(ReplicatedStorage.Shared.Format)
 local TreadmillBuilder = require(script.Parent.Parent.Util.TreadmillBuilder)
 local PlayerLifecycle = require(script.Parent.Parent.Util.PlayerLifecycle)
 local WorldService = require(script.Parent.WorldService)
@@ -55,6 +64,10 @@ PlotService.PlotAssigned = Signal.new()
 PlotService.PlotReleased = Signal.new()
 -- Fired with (plot) after a plot's treadmill was rebuilt as another tier.
 PlotService.TreadmillChanged = Signal.new()
+-- Fired with (player, plot, "Pad" or "Treadmill") when an upgrade prompt is used.
+PlotService.UpgradePromptTriggered = Signal.new()
+
+local LOCKED_PAD_COLOR = Color3.fromRGB(90, 90, 100)
 
 local plots: { PlotInfo } = {}
 local plotByPlayer: { [Player]: PlotInfo } = {}
@@ -177,6 +190,33 @@ local function buildPlot(index: number, parent: Instance): PlotInfo
 	local treadmillOrigin = cf * CFrame.new(size.X / 2 - 9, 0, -size.Z / 2 + 11)
 	local treadmill = buildTreadmill(treadmillOrigin, model, 1)
 
+	-- Upgrade board next to the treadmill, facing the middle of the plot.
+	local boardCFrame = cf * CFrame.new(13, 0, -27) * CFrame.Angles(0, math.pi / 2, 0)
+	Build.part({
+		Name = "UpgradePost",
+		Size = Vector3.new(1, 3, 1),
+		CFrame = boardCFrame * CFrame.new(0, 1.5, 0),
+		Color = railColor,
+		Parent = model,
+	})
+	local upgradeSign = Build.part({
+		Name = "UpgradeSign",
+		Size = Vector3.new(7, 4, 0.8),
+		CFrame = boardCFrame * CFrame.new(0, 5, 0),
+		Color = Color3.fromRGB(35, 45, 70),
+		StudFaces = { Enum.NormalId.Top, Enum.NormalId.Back },
+		Parent = model,
+	})
+	local upgradeLabel = Build.surfaceText(upgradeSign, Enum.NormalId.Front, "", Color3.fromRGB(255, 235, 90))
+	local upgradePrompt = Instance.new("ProximityPrompt")
+	upgradePrompt.Name = "UpgradePrompt"
+	upgradePrompt.ActionText = "Upgrade Treadmill"
+	upgradePrompt.HoldDuration = 0.3
+	upgradePrompt.MaxActivationDistance = 10
+	upgradePrompt.RequiresLineOfSight = false
+	upgradePrompt:SetAttribute(Constants.Attributes.OwnerUserId, 0)
+	upgradePrompt.Parent = upgradeSign
+
 	-- Collect pad in the middle, behind the spawn: step on it to take the
 	-- money your pets made (Config.Economy.CollectMode = "Pad").
 	local collectPad = Build.part({
@@ -227,7 +267,24 @@ local function buildPlot(index: number, parent: Instance): PlotInfo
 		SignLabels = signLabels,
 		CollectPad = collectPad,
 		CollectLabel = collectLabel,
+		UpgradeSign = upgradeSign,
+		UpgradeLabel = upgradeLabel,
 	}
+end
+
+-- The upgrade board shows the next treadmill tier and its price.
+local function refreshTreadmillSign(plot: PlotInfo)
+	local tiers = Config.Treadmill.Tiers
+	local nextTier = tiers[plot.TreadmillTier + 1]
+	local prompt = plot.UpgradeSign:FindFirstChild("UpgradePrompt")
+	if nextTier then
+		plot.UpgradeLabel.Text = `⬆ NEXT TREADMILL\n{nextTier.Name}  +{Format.short(nextTier.Gain)}/s\n${Format.short(nextTier.Price)}`
+	else
+		plot.UpgradeLabel.Text = "🏆 BEST TREADMILL!\nYou have them all"
+	end
+	if prompt and prompt:IsA("ProximityPrompt") then
+		prompt.ObjectText = if nextTier then `{nextTier.Name}  ${Format.short(nextTier.Price)}` else "Max tier"
+	end
 end
 
 ---------------------------------------------------------------------------
@@ -263,17 +320,54 @@ function PlotService.SetTreadmillTier(plot: PlotInfo, tier: number)
 	end
 	plot.Treadmill = buildTreadmill(plot.TreadmillOrigin, plot.Model, tier)
 	plot.TreadmillTier = tier
+	refreshTreadmillSign(plot)
 	PlotService.TreadmillChanged:Fire(plot)
 end
 
--- Show the first `count` pads and hide the rest.
+-- Price of locked pad number `padIndex` (pads are unlocked in order).
+function PlotService.PadPrice(padIndex: number): number
+	local bought = padIndex - Config.Plots.StartingPads - 1
+	return Config.UpgradePrice(Config.Upgrades.Pads.Base, Config.Upgrades.Pads.Growth, math.max(bought, 0))
+end
+
+-- The first `count` pads are unlocked. Locked pads are see-through with
+-- their price; the next one gets an "Unlock Pad" prompt for the owner.
 function PlotService.SetUnlockedPads(plot: PlotInfo, count: number)
 	count = math.clamp(count, 0, #plot.Pads)
 	plot.UnlockedPads = count
-	local folder = plot.Model:FindFirstChild("Pads")
 	for padIndex, pad in plot.Pads do
-		-- Hidden pads are simply taken out of the world (parent = nil).
-		pad.Parent = if padIndex <= count then folder else nil
+		local locked = padIndex > count
+		pad:SetAttribute("Locked", locked)
+		pad.Color = if locked then LOCKED_PAD_COLOR else Config.Plots.PadColor
+		pad.Transparency = if locked then 0.55 else 0
+		local oldLabel = pad:FindFirstChild("Label")
+		if oldLabel then
+			oldLabel:Destroy()
+		end
+		local oldPrompt = pad:FindFirstChild("UnlockPrompt")
+		if oldPrompt then
+			oldPrompt:Destroy()
+		end
+		if locked then
+			local label = Build.billboard(pad, `🔒 ${Format.short(PlotService.PadPrice(padIndex))}`, 2.5, 50)
+			label.TextColor3 = Color3.fromRGB(255, 220, 90)
+			if padIndex == count + 1 and plot.Owner then
+				local prompt = Instance.new("ProximityPrompt")
+				prompt.Name = "UnlockPrompt"
+				prompt.ActionText = "Unlock Pad"
+				prompt.ObjectText = `${Format.short(PlotService.PadPrice(padIndex))}`
+				prompt.HoldDuration = 0.3
+				prompt.MaxActivationDistance = 8
+				prompt.RequiresLineOfSight = false
+				-- Same tag as pet prompts: only the owner sees it.
+				prompt:SetAttribute(Constants.Attributes.OwnerUserId, plot.Owner.UserId)
+				prompt.Parent = pad
+				CollectionService:AddTag(prompt, Constants.Tags.PetPrompt)
+				prompt.Triggered:Connect(function(player: Player)
+					PlotService.UpgradePromptTriggered:Fire(player, plot, "Pad")
+				end)
+			end
+		end
 	end
 end
 
@@ -321,6 +415,8 @@ local function assignPlot(player: Player)
 	plot.Owner = player
 	plotByPlayer[player] = plot
 	plot.Model:SetAttribute("OwnerUserId", player.UserId)
+	local upgradePrompt = plot.UpgradeSign:FindFirstChild("UpgradePrompt") :: ProximityPrompt
+	upgradePrompt:SetAttribute(Constants.Attributes.OwnerUserId, player.UserId)
 	PlotService.SetUnlockedPads(plot, Config.Plots.StartingPads)
 	refreshLooks(plot)
 
@@ -348,6 +444,8 @@ local function releasePlot(player: Player)
 	plotByPlayer[player] = nil
 	plot.Owner = nil
 	plot.Model:SetAttribute("OwnerUserId", 0)
+	local upgradePrompt = plot.UpgradeSign:FindFirstChild("UpgradePrompt") :: ProximityPrompt
+	upgradePrompt:SetAttribute(Constants.Attributes.OwnerUserId, 0)
 	PlotService.SetUnlockedPads(plot, Config.Plots.StartingPads)
 	PlotService.SetTreadmillTier(plot, 1)
 	refreshLooks(plot)
@@ -398,6 +496,12 @@ function PlotService.Start()
 	for index = 1, Config.Plots.Count do
 		local plot = buildPlot(index, folder)
 		table.insert(plots, plot)
+		refreshTreadmillSign(plot)
+		local upgradePrompt = plot.UpgradeSign:FindFirstChild("UpgradePrompt") :: ProximityPrompt
+		CollectionService:AddTag(upgradePrompt, Constants.Tags.PetPrompt)
+		upgradePrompt.Triggered:Connect(function(player: Player)
+			PlotService.UpgradePromptTriggered:Fire(player, plot, "Treadmill")
+		end)
 		PlotService.SetUnlockedPads(plot, Config.Plots.StartingPads)
 		refreshLooks(plot)
 	end
