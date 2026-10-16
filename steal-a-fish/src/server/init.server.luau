@@ -30,7 +30,6 @@ local Services = script.Services
 
 local SERVICES: { Types.Service } = {
 	require(Services.WorldService),
-	require(Services.DataService),
 	require(Services.EconomyService),
 	require(Services.PlotService),
 	require(Services.SpeedService),
@@ -38,6 +37,8 @@ local SERVICES: { Types.Service } = {
 	require(Services.PetService),
 	require(Services.EggService),
 	require(Services.BotService),
+	-- Last: it loads saved data INTO the services above.
+	require(Services.DataService),
 }
 
 -- Run one step of one service. If it errors, print a clear message with the

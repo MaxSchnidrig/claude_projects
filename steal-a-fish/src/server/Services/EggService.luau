@@ -39,6 +39,7 @@ local Build = require(script.Parent.Parent.Util.Build)
 local EggVisual = require(script.Parent.Parent.Util.EggVisual)
 local PlayerSpeed = require(script.Parent.Parent.Util.PlayerSpeed)
 local RateLimiter = require(script.Parent.Parent.Util.RateLimiter)
+local PlayerLifecycle = require(script.Parent.Parent.Util.PlayerLifecycle)
 local PetService = require(script.Parent.PetService)
 local PlotService = require(script.Parent.PlotService)
 local WorldService = require(script.Parent.WorldService)
@@ -382,7 +383,7 @@ function EggService.Start()
 	for _, player in Players:GetPlayers() do
 		watchPlayer(player)
 	end
-	Players.PlayerRemoving:Connect(function(player)
+	PlayerLifecycle.onLeave(function(player)
 		takeCarry(player) -- a leaving player's egg is simply removed
 		lastPadFullNotice[player] = nil
 	end)

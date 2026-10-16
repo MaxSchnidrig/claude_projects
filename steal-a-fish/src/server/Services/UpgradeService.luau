@@ -31,6 +31,7 @@ local Format = require(ReplicatedStorage.Shared.Format)
 local Net = require(ReplicatedStorage.Shared.Net)
 local Types = require(ReplicatedStorage.Shared.Types)
 local RateLimiter = require(script.Parent.Parent.Util.RateLimiter)
+local PlayerLifecycle = require(script.Parent.Parent.Util.PlayerLifecycle)
 local EconomyService = require(script.Parent.EconomyService)
 local PetService = require(script.Parent.PetService)
 local PlotService = require(script.Parent.PlotService)
@@ -204,7 +205,7 @@ function UpgradeService.Start()
 		applyPads(player)
 	end
 	Players.PlayerAdded:Connect(applyPads)
-	Players.PlayerRemoving:Connect(function(player)
+	PlayerLifecycle.onLeave(function(player)
 		padsBought[player] = nil
 	end)
 end

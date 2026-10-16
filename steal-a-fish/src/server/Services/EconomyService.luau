@@ -14,7 +14,7 @@
 	  - Money is shown on the leaderboard and in the HUD (player attributes
 	    "Money" and "Income").
 
-	Money is NOT saved yet (that's the Saving milestone).
+	Money is saved by DataService (wallet + whatever waits on the collect pad).
 
 	Studio-only test command:
 		!money 5000     set your money
@@ -25,6 +25,8 @@
 		EconomyService.TrySpend(player, amount) -> boolean   -- false if they can't afford it
 		EconomyService.GetIncomePerSecond(player) -> number   -- after boosts
 		EconomyService.SetIncomeMultiplier(player, key, value?)  -- e.g. "MoneyPass" = 2
+		EconomyService.SetMoney(player, amount)            -- loading saved data
+		EconomyService.GetMoneyForSave(player) -> number   -- wallet + money waiting on the pad
 ]]
 
 local Players = game:GetService("Players")
@@ -37,6 +39,7 @@ local Format = require(ReplicatedStorage.Shared.Format)
 local Net = require(ReplicatedStorage.Shared.Net)
 local DebugCommands = require(script.Parent.Parent.Util.DebugCommands)
 local Leaderstats = require(script.Parent.Parent.Util.Leaderstats)
+local PlayerLifecycle = require(script.Parent.Parent.Util.PlayerLifecycle)
 local PetService = require(script.Parent.PetService)
 local PlotService = require(script.Parent.PlotService)
 
@@ -69,6 +72,21 @@ function EconomyService.AddMoney(player: Player, amount: number)
 	end
 	money[player] = math.max(0, (money[player] or 0) + amount)
 	refresh(player)
+end
+
+-- Set money directly (used when loading saved data).
+function EconomyService.SetMoney(player: Player, amount: number)
+	if amount ~= amount or amount == math.huge then
+		amount = 0
+	end
+	money[player] = math.max(0, amount)
+	refresh(player)
+end
+
+-- Money in the wallet PLUS money still waiting on the collect pad. Saving
+-- stores this total, so nothing waiting on the pad is lost when you leave.
+function EconomyService.GetMoneyForSave(player: Player): number
+	return (money[player] or 0) + math.floor(waiting[player] or 0)
 end
 
 function EconomyService.TrySpend(player: Player, amount: number): boolean
@@ -110,6 +128,12 @@ local function updateCollectLabel(player: Player)
 	if plot then
 		plot.CollectLabel.Text = `💰 {moneyText(math.floor(waiting[player] or 0))}`
 	end
+end
+
+-- Remove everything waiting on the collect pad (used by the Studio !wipe command).
+function EconomyService.ClearWaiting(player: Player)
+	waiting[player] = 0
+	updateCollectLabel(player)
 end
 
 ---------------------------------------------------------------------------
@@ -176,7 +200,7 @@ function EconomyService.Start()
 	for _, player in Players:GetPlayers() do
 		watchPlayer(player)
 	end
-	Players.PlayerRemoving:Connect(function(player)
+	PlayerLifecycle.onLeave(function(player)
 		money[player] = nil
 		waiting[player] = nil
 		incomeMultipliers[player] = nil

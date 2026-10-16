@@ -161,10 +161,22 @@ paste it into that setting as `"rbxassetid://<the number>"`. Adjust
 | 3 | Chaser bots (sharks) | ✅ |
 | 4 | Speed & treadmill (Speed stat, training, treadmill tiers 1–10 defined) | ✅ |
 | 5 | Hatching and pets (eggs hatch on their pad, pets earn money, collect pad) | ✅ |
-| 6 | **Upgrades and economy**: plot space (pads), treadmill tiers, pet levels, selling pets | 🔨 testing |
-| 7 | Saving (money, Speed stat, owned treadmill tier, upgrades, pets) | |
+| 6 | Upgrades and economy: plot space (pads), treadmill tiers, pet levels, selling pets | ✅ |
+| 7 | **Saving** (money, Speed stat, treadmill tier, pads, eggs and pets) | 🔨 testing |
 | 8 | UI and polish | |
 | 9 | Monetization (Robux); Speed boosts plug into `SpeedService.SetGainMultiplier` | |
+
+## Saving (DataStores)
+
+Progress is saved automatically: every 60 seconds, when you leave, and when the server shuts
+down. Studio uses its own separate save slot (`Config.Data.StudioStoreName`), so testing never
+touches real players' data.
+
+**To make saving work in Studio (one time):**
+1. **File → Publish to Roblox** (create a new game if asked). DataStores only work in a published place.
+2. **Home → Game Settings → Security** → turn on **Enable Studio Access to API Services** → **Save**.
+
+Without these steps the game still runs, but Output says `SAVING IS OFF` and nothing is saved.
 
 ## Studio test commands
 
@@ -178,6 +190,8 @@ Only work while play-testing in Studio. Type them in the chat:
 | `!egg mythic` | put a Mythic egg on your nearest free pad |
 | `!hatch` | hatch all your eggs right now |
 | `!money 5000` | set your money |
+| `!save` | save your progress right now |
+| `!wipe` | reset your progress to a brand-new player (and save that) |
 
 If chat commands don't do anything, open **View → Command Bar**, set its dropdown to
 **Server**, and run, for example:

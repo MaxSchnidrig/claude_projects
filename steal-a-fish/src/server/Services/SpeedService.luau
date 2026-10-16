@@ -57,6 +57,7 @@ local DebugCommands = require(script.Parent.Parent.Util.DebugCommands)
 local Leaderstats = require(script.Parent.Parent.Util.Leaderstats)
 local PlayerSpeed = require(script.Parent.Parent.Util.PlayerSpeed)
 local RateLimiter = require(script.Parent.Parent.Util.RateLimiter)
+local PlayerLifecycle = require(script.Parent.Parent.Util.PlayerLifecycle)
 local PlotService = require(script.Parent.PlotService)
 
 type Session = {
@@ -401,7 +402,7 @@ function SpeedService.Start()
 	for _, player in Players:GetPlayers() do
 		watchPlayer(player)
 	end
-	Players.PlayerRemoving:Connect(function(player)
+	PlayerLifecycle.onLeave(function(player)
 		stopTraining(player, false)
 		stats[player] = nil
 		tiers[player] = nil

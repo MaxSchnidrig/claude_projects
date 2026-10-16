@@ -553,6 +553,29 @@ Config.Economy = {
 }
 
 ---------------------------------------------------------------------------
+-- SAVING (DataService)
+-- Saved: money (incl. money waiting on the collect pad), Speed stat,
+-- treadmill tier, pads bought, and every egg/pet on your pads.
+---------------------------------------------------------------------------
+Config.Data = {
+	-- DataStore names. Studio uses a SEPARATE store, so testing in Studio
+	-- never touches real players' progress. Changing a name = everyone
+	-- starts fresh (old data stays in the old store).
+	StoreName = "PlayerData_v1",
+	StudioStoreName = "PlayerData_Studio_v1",
+	AutoSaveInterval = 60, -- seconds between automatic saves of every player
+	MaxRetries = 4, -- how often a failed DataStore call is retried
+	RetryDelay = 2, -- seconds before the first retry (doubles each time)
+	-- Session lock: while you play on one server, your data is "locked" to it,
+	-- so two servers can never overwrite each other's progress.
+	LockRetries = 5, -- tries to open data that is still locked by another server
+	LockRetryDelay = 6, -- seconds between those tries
+	-- A lock older than this belongs to a crashed server and may be taken over.
+	-- Must be bigger than AutoSaveInterval (every save refreshes the lock).
+	LockStaleSeconds = 300,
+}
+
+---------------------------------------------------------------------------
 -- UPGRADES
 -- Bought with money:
 --   - Plot space: +1 pad per purchase, up to Plots.PadsPerSide * 2.

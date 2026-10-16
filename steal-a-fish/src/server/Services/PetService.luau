@@ -19,7 +19,8 @@
 	  - Everyone sees a burst effect; the owner gets a "You hatched ...!" card;
 	    rare hatches are announced to the whole server.
 
-	Pets are NOT saved yet (that's the Saving milestone).
+	Eggs and pets are saved by DataService (ExportPads / ImportPads). An egg's
+	hatch timer pauses while its owner is offline.
 
 	Studio-only test commands:
 		!hatch          hatch all your eggs right now
@@ -32,13 +33,13 @@
 		PetService.GetIncomePerSecond(player) -> number   -- all pets, before boosts
 		PetService.FinishHatching(player)                 -- hatch every egg now (Instant Hatch product later)
 		PetService.SetHatchTimeMultiplier(player, value)  -- e.g. 0.5 for a Faster Hatching pass
+		PetService.ExportPads(player) / ImportPads(player, list)  -- saving (DataService)
 		PetService.SetPetLevel(plot, padIndex, level)     -- after a paid upgrade
 		PetService.RemovePet(plot, padIndex)               -- after selling; frees the pad
 		PetService.PetHatched:Connect(function(player, petName, rarity) end)
 		PetService.PetPromptTriggered:Connect(function(player, plot, padIndex, action) end)
 ]]
 
-local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -54,6 +55,7 @@ local Types = require(ReplicatedStorage.Shared.Types)
 local DebugCommands = require(script.Parent.Parent.Util.DebugCommands)
 local EggVisual = require(script.Parent.Parent.Util.EggVisual)
 local PetVisual = require(script.Parent.Parent.Util.PetVisual)
+local PlayerLifecycle = require(script.Parent.Parent.Util.PlayerLifecycle)
 local PlotService = require(script.Parent.PlotService)
 
 -- What sits on one pad.
@@ -158,13 +160,14 @@ local function hatchSeconds(player: Player, rarity: string): number
 	return base * Config.Eggs.HatchTimeMultiplier * (hatchTimeMultipliers[player] or 1)
 end
 
-local function placeEgg(player: Player, plot: Types.PlotInfo, padIndex: number, rarity: string)
+-- secondsLeft: how long until it hatches (nil = the full hatch time).
+local function placeEgg(player: Player, plot: Types.PlotInfo, padIndex: number, rarity: string, secondsLeft: number?)
 	local pad = plot.Pads[padIndex]
 	local part = EggVisual.create(rarity, true)
 	part.CFrame = eggCFrameOnPad(pad)
 	part:SetAttribute("PadIndex", padIndex)
 
-	local endsAt = serverNow() + hatchSeconds(player, rarity)
+	local endsAt = serverNow() + (secondsLeft or hatchSeconds(player, rarity))
 	part:SetAttribute(Constants.Attributes.HatchEndsAt, endsAt)
 	-- The client fills in the countdown ("0:35") on the Subtitle line.
 	makeLabel(part, `{rarity} Egg`, Rarity.color(rarity), "", 2.8)
@@ -427,6 +430,107 @@ function PetService.GetIncomePerSecond(player: Player): number
 end
 
 ---------------------------------------------------------------------------
+-- Saving and loading (used by DataService)
+---------------------------------------------------------------------------
+
+-- One pad's contents in a form that can be saved in a DataStore.
+export type SavedPadItem = {
+	Pad: number,
+	Kind: string, -- "Egg" or "Pet"
+	Rarity: string?, -- eggs
+	SecondsLeft: number?, -- eggs: hatch time left (the timer pauses while you're offline)
+	Name: string?, -- pets
+	Level: number?, -- pets
+}
+
+function PetService.ExportPads(player: Player): { SavedPadItem }
+	local result: { SavedPadItem } = {}
+	local plot = PlotService.GetPlot(player)
+	if not plot then
+		return result
+	end
+	local now = serverNow()
+	for padIndex, item in getItems(plot) do
+		if item.Kind == "Egg" then
+			table.insert(result, {
+				Pad = padIndex,
+				Kind = "Egg",
+				Rarity = item.Rarity,
+				SecondsLeft = math.max(0, (item.HatchEndsAt or now) - now),
+			})
+		elseif item.PetName then
+			table.insert(result, { Pad = padIndex, Kind = "Pet", Name = item.PetName, Level = item.Level })
+		end
+	end
+	return result
+end
+
+local function findPet(name: string): Config.PetConfig?
+	for _, pet in Config.Pets do
+		if pet.Name == name then
+			return pet
+		end
+	end
+	return nil
+end
+
+local function isKnownRarity(name: string): boolean
+	return Rarity.rank(name) > 0
+end
+
+-- Put saved eggs and pets back on the player's plot. Items whose pad isn't
+-- unlocked or is taken go to the first free pad. Unknown pets (for example
+-- renamed in Config) are skipped with a warning.
+function PetService.ImportPads(player: Player, saved: { SavedPadItem })
+	local plot = PlotService.GetPlot(player)
+	if not plot then
+		return
+	end
+	local items = getItems(plot)
+	local function freePad(preferred: number): number?
+		if preferred >= 1 and preferred <= plot.UnlockedPads and not items[preferred] then
+			return preferred
+		end
+		for padIndex = 1, plot.UnlockedPads do
+			if not items[padIndex] then
+				return padIndex
+			end
+		end
+		return nil
+	end
+
+	for _, entry in saved do
+		local padIndex = freePad(entry.Pad)
+		if not padIndex then
+			warn(`[{Config.GameName}] No free pad for a saved {entry.Kind} of {player.Name}; skipped.`)
+			continue
+		end
+		if entry.Kind == "Egg" and entry.Rarity and isKnownRarity(entry.Rarity) then
+			placeEgg(player, plot, padIndex, entry.Rarity, entry.SecondsLeft or 0)
+		elseif entry.Kind == "Pet" and entry.Name then
+			local pet = findPet(entry.Name)
+			if pet then
+				placePet(plot, padIndex, pet, math.clamp(entry.Level or 1, 1, Config.Upgrades.PetLevel.MaxLevel))
+			else
+				warn(`[{Config.GameName}] Saved pet "{entry.Name}" is not in Config.Pets; skipped.`)
+			end
+		end
+	end
+end
+
+-- Remove every egg and pet from the player's pads (Studio !wipe command).
+function PetService.ClearPlayerPads(player: Player)
+	local plot = PlotService.GetPlot(player)
+	if not plot then
+		return
+	end
+	for padIndex, item in getItems(plot) do
+		item.Instance:Destroy()
+		getItems(plot)[padIndex] = nil
+	end
+end
+
+---------------------------------------------------------------------------
 -- Lifecycle
 ---------------------------------------------------------------------------
 
@@ -467,7 +571,7 @@ function PetService.Start()
 	PlotService.PlotReleased:Connect(function(_player: Player, plot: Types.PlotInfo)
 		clearPads(plot.Index)
 	end)
-	Players.PlayerRemoving:Connect(function(player)
+	PlayerLifecycle.onLeave(function(player)
 		hatchTimeMultipliers[player] = nil
 	end)
 	registerDebugCommands()

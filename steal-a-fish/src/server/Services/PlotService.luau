@@ -42,6 +42,7 @@ local Types = require(ReplicatedStorage.Shared.Types)
 local Assets = require(script.Parent.Parent.Util.Assets)
 local Build = require(script.Parent.Parent.Util.Build)
 local TreadmillBuilder = require(script.Parent.Parent.Util.TreadmillBuilder)
+local PlayerLifecycle = require(script.Parent.Parent.Util.PlayerLifecycle)
 local WorldService = require(script.Parent.WorldService)
 
 type PlotInfo = Types.PlotInfo
@@ -402,7 +403,7 @@ function PlotService.Start()
 	end
 
 	Players.PlayerAdded:Connect(assignPlot)
-	Players.PlayerRemoving:Connect(releasePlot)
+	PlayerLifecycle.onLeave(releasePlot)
 	-- In Studio, you may have joined before this code ran.
 	for _, player in Players:GetPlayers() do
 		task.spawn(assignPlot, player)
