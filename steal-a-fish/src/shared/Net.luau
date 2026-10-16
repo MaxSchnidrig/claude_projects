@@ -6,9 +6,16 @@
 	"phone lines" between the server and the clients.
 
 	How it works:
-	  - On the SERVER, Net.event("Name") creates the remote if it doesn't exist yet.
-	  - On the CLIENT, Net.event("Name") waits until the server has created it.
+	  - The SERVER creates every remote listed in Net.Names when it starts
+	    (Net.createAll(), called by the server bootstrap). So the client never
+	    has to wait for a remote that doesn't exist yet.
+	  - On the SERVER, Net.event("Name") returns the remote (creating it if needed).
+	  - On the CLIENT, Net.event("Name") waits for it, but at most
+	    CLIENT_WAIT_SECONDS. If it's still missing, it raises a clear error
+	    instead of hanging forever.
 	All remotes live in a folder: ReplicatedStorage.Remotes
+
+	When you add a new remote: add its name to Net.Names below. That's all.
 
 	Security reminder: anything a client sends through a remote can be faked by
 	an exploiter. The server must validate every request (see RateLimiter and
@@ -16,13 +23,14 @@
 
 	Usage:
 		local Net = require(ReplicatedStorage.Shared.Net)
-		local pickup = Net.event(Net.Names.PickupEgg)
+		local notify = Net.event(Net.Names.Notify)
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local FOLDER_NAME = "Remotes"
+local CLIENT_WAIT_SECONDS = 15
 local IS_SERVER = RunService:IsServer()
 
 local Net = {}
@@ -50,7 +58,20 @@ local function getFolder(): Folder
 		folder.Parent = ReplicatedStorage
 		return folder
 	end
-	return ReplicatedStorage:WaitForChild(FOLDER_NAME) :: Folder
+	local folder = ReplicatedStorage:WaitForChild(FOLDER_NAME, CLIENT_WAIT_SECONDS)
+	if not (folder and folder:IsA("Folder")) then
+		error(`[Net] ReplicatedStorage.{FOLDER_NAME} was not found. Did the server start correctly?`)
+	end
+	return folder
+end
+
+-- Client side: wait (with a time limit) for a remote the server created.
+local function waitForRemote(name: string, className: string): Instance
+	local remote = getFolder():WaitForChild(name, CLIENT_WAIT_SECONDS)
+	if not (remote and remote:IsA(className)) then
+		error(`[Net] Remote "{name}" ({className}) was not found after {CLIENT_WAIT_SECONDS}s. Is it listed in Net.Names?`)
+	end
+	return remote
 end
 
 -- Get (or on the server, create) a RemoteEvent by name.
@@ -66,7 +87,7 @@ function Net.event(name: string): RemoteEvent
 		remote.Parent = folder
 		return remote
 	end
-	return folder:WaitForChild(name) :: RemoteEvent
+	return waitForRemote(name, "RemoteEvent") :: RemoteEvent
 end
 
 -- Get (or on the server, create) a RemoteFunction by name.
@@ -82,7 +103,16 @@ function Net.func(name: string): RemoteFunction
 		remote.Parent = folder
 		return remote
 	end
-	return folder:WaitForChild(name) :: RemoteFunction
+	return waitForRemote(name, "RemoteFunction") :: RemoteFunction
+end
+
+-- Server only: create every RemoteEvent in Net.Names right away.
+function Net.createAll()
+	assert(IS_SERVER, "Net.createAll() must be called on the server")
+	local names: { [string]: string } = Net.Names
+	for _, name in names do
+		Net.event(name)
+	end
 end
 
 return Net

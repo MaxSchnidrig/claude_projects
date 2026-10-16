@@ -20,6 +20,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Types = require(ReplicatedStorage.Shared.Types)
 
+local Net = require(ReplicatedStorage.Shared.Net)
+
+-- Create every RemoteEvent before anything else, so clients never wait for
+-- a remote that the server only creates later.
+Net.createAll()
+
 local Services = script.Services
 
 local SERVICES: { Types.Service } = {
@@ -72,7 +78,6 @@ end
 
 -- Say hello to every player, so we can see the server -> client link works.
 local Players = game:GetService("Players")
-local Net = require(ReplicatedStorage.Shared.Net)
 local notify = Net.event(Net.Names.Notify)
 
 local function welcome(player: Player)
