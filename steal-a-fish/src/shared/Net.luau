@@ -45,6 +45,7 @@ Net.Names = {
 	PetHatched = "PetHatched", -- server -> ALL clients: (position, rarity) for the hatch burst effect
 	HatchReveal = "HatchReveal", -- server -> owner: (petName, rarity, income) for the "You hatched!" card
 	MoneyCollected = "MoneyCollected", -- server -> owner: (amount) for a "+$X" popup
+	BuyUpgrade = "BuyUpgrade", -- client -> server: ("Pads" or "Treadmill") please buy the next level
 }
 
 local function getFolder(): Folder

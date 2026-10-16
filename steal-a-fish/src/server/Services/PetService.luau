@@ -32,7 +32,10 @@
 		PetService.GetIncomePerSecond(player) -> number   -- all pets, before boosts
 		PetService.FinishHatching(player)                 -- hatch every egg now (Instant Hatch product later)
 		PetService.SetHatchTimeMultiplier(player, value)  -- e.g. 0.5 for a Faster Hatching pass
+		PetService.SetPetLevel(plot, padIndex, level)     -- after a paid upgrade
+		PetService.RemovePet(plot, padIndex)               -- after selling; frees the pad
 		PetService.PetHatched:Connect(function(player, petName, rarity) end)
+		PetService.PetPromptTriggered:Connect(function(player, plot, padIndex, action) end)
 ]]
 
 local Players = game:GetService("Players")
@@ -69,6 +72,9 @@ PetService.Name = "PetService"
 
 -- Fired with (player, petName, rarity) after an egg hatches.
 PetService.PetHatched = Signal.new()
+-- Fired with (player, plot, padIndex, "Upgrade" or "Sell") when someone uses
+-- a pet's prompt. UpgradeService checks and handles it.
+PetService.PetPromptTriggered = Signal.new()
 
 local HATCH_CHECK_INTERVAL = 0.2
 
@@ -230,12 +236,67 @@ local function rollPet(eggRarity: string): Config.PetConfig
 	return candidates[rng:NextInteger(1, #candidates)]
 end
 
+-- Text for a pet's label and its Upgrade/Sell prompts.
+local function refreshPet(plot: Types.PlotInfo, padIndex: number)
+	local item = getItems(plot)[padIndex]
+	if not (item and item.Kind == "Pet") then
+		return
+	end
+	local model = item.Instance
+	local root = if model:IsA("Model") then model.PrimaryPart else nil
+	if not root then
+		return
+	end
+	local maxLevel = Config.Upgrades.PetLevel.MaxLevel
+
+	local label = root:FindFirstChild("Label")
+	local subtitle = label and label:FindFirstChild("Subtitle")
+	if subtitle and subtitle:IsA("TextLabel") then
+		subtitle.Text = `${Format.short(Config.PetIncome(item.Income, item.Level))}/s  •  Lv {item.Level}`
+	end
+
+	local upgrade = root:FindFirstChild("UpgradePrompt")
+	if upgrade and upgrade:IsA("ProximityPrompt") then
+		if item.Level >= maxLevel then
+			upgrade.ActionText = "Max level"
+		else
+			upgrade.ActionText = `Upgrade  ${Format.short(Config.PetUpgradePrice(item.Income, item.Level))}`
+		end
+		upgrade.ObjectText = `{item.PetName or "Pet"}  Lv {item.Level}`
+	end
+	local sell = root:FindFirstChild("SellPrompt")
+	if sell and sell:IsA("ProximityPrompt") then
+		sell.ActionText = `Sell  ${Format.short(Config.PetSellValue(item.Income, item.Level))}`
+		sell.ObjectText = item.PetName or "Pet"
+	end
+end
+
+-- One prompt on a pet. Only the owner sees it (the client hides the rest),
+-- and the server checks the owner again when it's used.
+local function addPetPrompt(root: BasePart, plot: Types.PlotInfo, padIndex: number, action: string, key: Enum.KeyCode, hold: number)
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = `{action}Prompt`
+	prompt.KeyboardKeyCode = key
+	prompt.HoldDuration = hold
+	prompt.MaxActivationDistance = 10
+	prompt.RequiresLineOfSight = false
+	prompt:SetAttribute(Constants.Attributes.OwnerUserId, if plot.Owner then plot.Owner.UserId else 0)
+	prompt.Parent = root
+	CollectionService:AddTag(prompt, Constants.Tags.PetPrompt)
+	prompt.Triggered:Connect(function(player: Player)
+		PetService.PetPromptTriggered:Fire(player, plot, padIndex, action)
+	end)
+end
+
 local function placePet(plot: Types.PlotInfo, padIndex: number, pet: Config.PetConfig, level: number): Model
 	local pad = plot.Pads[padIndex]
 	local model = PetVisual.create(pet.Name, pet.Rarity, pet.Color, petCFrameOnPad(pad))
 	model:SetAttribute("PadIndex", padIndex)
 	local root = model.PrimaryPart :: BasePart
-	makeLabel(root, pet.Name, Rarity.color(pet.Rarity), `${Format.short(pet.Income)}/s`, 3.2)
+	makeLabel(root, pet.Name, Rarity.color(pet.Rarity), "", 3.2)
+	addPetPrompt(root, plot, padIndex, "Upgrade", Enum.KeyCode.E, 0)
+	-- Selling needs a 1-second hold, so it doesn't happen by accident.
+	addPetPrompt(root, plot, padIndex, "Sell", Enum.KeyCode.F, 1)
 	model.Parent = plot.Model
 
 	getItems(plot)[padIndex] = {
@@ -247,7 +308,27 @@ local function placePet(plot: Types.PlotInfo, padIndex: number, pet: Config.PetC
 		Instance = model,
 		HatchEndsAt = nil,
 	}
+	refreshPet(plot, padIndex)
 	return model
+end
+
+-- Change a pet's level (UpgradeService calls this after taking the money).
+function PetService.SetPetLevel(plot: Types.PlotInfo, padIndex: number, level: number)
+	local item = getItems(plot)[padIndex]
+	if item and item.Kind == "Pet" then
+		item.Level = math.clamp(level, 1, Config.Upgrades.PetLevel.MaxLevel)
+		refreshPet(plot, padIndex)
+	end
+end
+
+-- Take a pet off its pad (sold). The pad becomes free again.
+function PetService.RemovePet(plot: Types.PlotInfo, padIndex: number)
+	local items = getItems(plot)
+	local item = items[padIndex]
+	if item and item.Kind == "Pet" then
+		item.Instance:Destroy()
+		items[padIndex] = nil
+	end
 end
 
 local function hatch(plot: Types.PlotInfo, padIndex: number, egg: PadItem)
@@ -328,8 +409,7 @@ end
 
 -- Income of one pet item, including its level bonus.
 local function petIncome(item: PadItem): number
-	local bonus = Config.Upgrades.PetLevel.IncomeBonusPerLevel
-	return item.Income * (1 + (item.Level - 1) * bonus)
+	return Config.PetIncome(item.Income, item.Level)
 end
 
 function PetService.GetIncomePerSecond(player: Player): number

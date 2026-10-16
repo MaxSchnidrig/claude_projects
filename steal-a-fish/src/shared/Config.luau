@@ -553,24 +553,42 @@ Config.Economy = {
 }
 
 ---------------------------------------------------------------------------
--- UPGRADES (Milestone 5)
--- Price of buying the NEXT level = Base * Growth ^ currentLevel  (rounded)
--- See Config.UpgradePrice below.
+-- UPGRADES
+-- Bought with money:
+--   - Plot space: +1 pad per purchase, up to Plots.PadsPerSide * 2.
+--     Price of the next pad = Base * Growth ^ (pads bought so far)
+--   - Treadmill: the next tier in Config.Treadmill.Tiers (each has its Price).
+--   - Pet level: press E on one of your pets. Sell with F (hold).
 ---------------------------------------------------------------------------
 Config.Upgrades = {
-	Pads = { Base = 150, Growth = 1.9 }, -- plot space: +1 pad per level (up to PadsPerSide * 2)
-	-- Treadmill upgrades are the tiers in Config.Treadmill.Tiers (each has its own Price).
+	Pads = { Base = 500, Growth = 2.5 }, -- 500, 1.25K, 3.1K, 7.8K for pads 7..10
 	PetLevel = {
 		MaxLevel = 10,
-		PriceIncomeSeconds = 30, -- level 1->2 costs 30 seconds of the pet's income
+		PriceIncomeSeconds = 30, -- level 1->2 costs 30 seconds of the pet's base income
 		Growth = 1.5, -- each further level costs 1.5x more
 		IncomeBonusPerLevel = 0.25, -- +25% of base income per level above 1
 	},
 }
 
--- The price formula used by every upgrade. Kept here so it's easy to tweak.
+-- The price formula used by level-based upgrades (plot space).
 function Config.UpgradePrice(base: number, growth: number, currentLevel: number): number
 	return math.floor(base * growth ^ currentLevel + 0.5)
+end
+
+-- A pet's income per second at a given level.
+function Config.PetIncome(baseIncome: number, level: number): number
+	return baseIncome * (1 + (level - 1) * Config.Upgrades.PetLevel.IncomeBonusPerLevel)
+end
+
+-- Price to raise a pet from `level` to `level + 1`.
+function Config.PetUpgradePrice(baseIncome: number, level: number): number
+	local petLevel = Config.Upgrades.PetLevel
+	return math.max(1, math.floor(baseIncome * petLevel.PriceIncomeSeconds * petLevel.Growth ^ (level - 1) + 0.5))
+end
+
+-- Money you get for selling a pet: SellValueSeconds of its current income.
+function Config.PetSellValue(baseIncome: number, level: number): number
+	return math.max(1, math.floor(Config.PetIncome(baseIncome, level) * Config.Economy.SellValueSeconds + 0.5))
 end
 
 ---------------------------------------------------------------------------

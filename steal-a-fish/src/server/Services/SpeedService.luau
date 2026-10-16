@@ -285,6 +285,7 @@ end
 function SpeedService.SetTreadmillTier(player: Player, tier: number)
 	tier = math.clamp(math.floor(tier), 1, #Config.Treadmill.Tiers)
 	tiers[player] = tier
+	player:SetAttribute(Constants.Attributes.TreadmillTier, tier)
 	local plot = PlotService.GetPlot(player)
 	if plot and plot.TreadmillTier ~= tier then
 		stopTraining(player, false)
@@ -368,6 +369,7 @@ end
 
 local function watchPlayer(player: Player)
 	SpeedService.SetStat(player, SpeedService.GetStat(player))
+	player:SetAttribute(Constants.Attributes.TreadmillTier, SpeedService.GetTreadmillTier(player))
 
 	local function watchCharacter(character: Model)
 		local humanoid = character:WaitForChild("Humanoid", 10)

@@ -18,6 +18,8 @@ return {
 		HatchingEgg = "HatchingEgg",
 		-- Pet models on pads (the client makes them bob gently).
 		PetModel = "PetModel",
+		-- Upgrade/Sell prompts on pets (the client hides other players' prompts).
+		PetPrompt = "PetPrompt",
 	},
 	Attributes = {
 		-- Set on the Player while they carry an egg. Value = the egg's rarity.
@@ -36,5 +38,11 @@ return {
 		Money = "Money",
 		-- On the Player: total pet income per second (number).
 		Income = "Income",
+		-- On the Player: how many pads are unlocked on their plot.
+		PadsUnlocked = "PadsUnlocked",
+		-- On the Player: their treadmill tier (index into Config.Treadmill.Tiers).
+		TreadmillTier = "TreadmillTier",
+		-- On a pet prompt: the UserId of the pet's owner.
+		OwnerUserId = "OwnerUserId",
 	},
 }

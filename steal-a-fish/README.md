@@ -160,8 +160,8 @@ paste it into that setting as `"rbxassetid://<the number>"`. Adjust
 | 2 | Eggs and the danger zone | ✅ |
 | 3 | Chaser bots (sharks) | ✅ |
 | 4 | Speed & treadmill (Speed stat, training, treadmill tiers 1–10 defined) | ✅ |
-| 5 | **Hatching and pets** (eggs hatch on their pad, pets earn money, collect pad) | 🔨 testing |
-| 6 | Upgrades and economy, including **buying treadmill tiers** with money (`SpeedService.SetTreadmillTier`) | |
+| 5 | Hatching and pets (eggs hatch on their pad, pets earn money, collect pad) | ✅ |
+| 6 | **Upgrades and economy**: plot space (pads), treadmill tiers, pet levels, selling pets | 🔨 testing |
 | 7 | Saving (money, Speed stat, owned treadmill tier, upgrades, pets) | |
 | 8 | UI and polish | |
 | 9 | Monetization (Robux); Speed boosts plug into `SpeedService.SetGainMultiplier` | |
