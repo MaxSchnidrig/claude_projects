@@ -265,8 +265,8 @@ local function refreshPet(plot: Types.PlotInfo, padIndex: number)
 	end
 	local sell = root:FindFirstChild("SellPrompt")
 	if sell and sell:IsA("ProximityPrompt") then
-		sell.ActionText = `Sell  ${Format.short(Config.PetSellValue(item.Income, item.Level))}`
-		sell.ObjectText = item.PetName or "Pet"
+		sell.ActionText = `Hold to sell  ${Format.short(Config.PetSellValue(item.Income, item.Level))}`
+		sell.ObjectText = "" -- the name is already on the Upgrade prompt above
 	end
 end
 
@@ -279,6 +279,9 @@ local function addPetPrompt(root: BasePart, plot: Types.PlotInfo, padIndex: numb
 	prompt.HoldDuration = hold
 	prompt.MaxActivationDistance = 10
 	prompt.RequiresLineOfSight = false
+	-- Upgrade and Sell sit on the same fish: draw them one above the other
+	-- (pixels on screen) instead of on top of each other.
+	prompt.UIOffset = if action == "Upgrade" then Vector2.new(0, -44) else Vector2.new(0, 44)
 	prompt:SetAttribute(Constants.Attributes.OwnerUserId, if plot.Owner then plot.Owner.UserId else 0)
 	prompt.Parent = root
 	CollectionService:AddTag(prompt, Constants.Tags.PetPrompt)

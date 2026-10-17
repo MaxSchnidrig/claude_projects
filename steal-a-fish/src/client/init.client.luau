@@ -41,6 +41,7 @@ local CONTROLLER_MODULES: { Instance } = {
 	Controllers.TutorialController,
 	Controllers.EffectsController,
 	Controllers.CreatureController,
+	Controllers.PromptController,
 }
 
 -- How long a step may take before we warn that it's stuck. The other

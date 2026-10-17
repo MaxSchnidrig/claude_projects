@@ -172,9 +172,18 @@ function Kit.badge(button: GuiObject): (number) -> ()
 	local text = Kit.label(bubble, "", UDim2.new(1, -6, 1, -6), UDim2.fromOffset(3, 3))
 	text.TextXAlignment = Enum.TextXAlignment.Center
 	text.ZIndex = 6
+	local popScale = Instance.new("UIScale")
+	popScale.Parent = bubble
+	local shown = 0
 	return function(count: number)
 		bubble.Visible = count > 0
 		text.Text = if count > 99 then "99+" else tostring(count)
+		if count > shown then
+			-- A little pop when something new arrives.
+			popScale.Scale = 1.6
+			TweenService:Create(popScale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+		end
+		shown = count
 	end
 end
 

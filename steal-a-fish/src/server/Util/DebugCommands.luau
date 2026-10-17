@@ -3,7 +3,12 @@
 	DebugCommands
 	=============
 	Test commands that ONLY work while play-testing in Roblox Studio (never in
-	the real game). Services register their own commands here.
+	the real game). Services register their own commands here, and this is
+	the ONLY place that listens for them, so this file is the only place the
+	Studio check is needed. It is checked twice (look for "THE STUDIO
+	CHECK"): when a command is registered, and again every time one runs.
+	RunService:IsStudio() is false on every live Roblox server, for everyone,
+	including the game's owner.
 
 	How players use them (in Studio):
 	  - type in chat, for example:  !speed 5000
@@ -27,6 +32,12 @@ local handlers: { [string]: Handler } = {}
 local started = false
 
 local function run(player: Player, message: string)
+	-- THE STUDIO CHECK (second layer): even if a handler somehow got
+	-- registered, nothing runs outside Roblox Studio. Not for the game owner,
+	-- not for admins, not for anyone.
+	if not RunService:IsStudio() then
+		return
+	end
 	local words = string.split(string.lower(message), " ")
 	local first = words[1]
 	if string.sub(first, 1, 1) ~= "!" then
@@ -54,6 +65,8 @@ end
 
 -- Register "!name ..." for Studio play-tests. Does nothing in a live game.
 function DebugCommands.register(name: string, handler: Handler)
+	-- THE STUDIO CHECK (first layer): in a live game the command is never
+	-- stored, and no chat listener is ever connected.
 	if not RunService:IsStudio() then
 		return
 	end

@@ -12,7 +12,9 @@
 	    silhouette with "???". Card colors match the fish's rarity.
 	  - A newly found fish has a reward (cash + Speed) to claim; a green dot
 	    marks it. Finding all 8 fish of a zone unlocks the zone reward.
-	  - The red badge on the Index button = how many rewards are waiting.
+	  - The red badge on the Index button = how many rewards are waiting
+	    (new fish + completed zones). It disappears when everything is
+	    claimed, and updates the moment a new fish hatches.
 
 	The server owns the data: it sends it with "IndexSync", and every claim
 	only ASKS the server ("IndexClaim").
@@ -356,6 +358,14 @@ function IndexController.Start()
 		end
 		data = newData
 		redraw()
+	end)
+	-- A fish you just hatched counts right away (the server's IndexSync
+	-- confirms it a moment later), so the badge updates instantly.
+	Net.event(Net.Names.HatchReveal).OnClientEvent:Connect(function(petName: unknown)
+		if typeof(petName) == "string" and Fish.byName(petName) and not data.Found[petName] then
+			data.Found[petName] = true
+			redraw()
+		end
 	end)
 	-- Ask for our data (in case it was sent before we were listening).
 	Net.event(Net.Names.IndexClaim):FireServer("Sync")
