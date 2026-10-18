@@ -167,8 +167,9 @@ local function buildDangerZones(): Folder
 		-- "Recommended Speed" signs on both sides, facing players who walk in.
 		local shark = Config.Sharks[index]
 		local needed = if shark then shark.SpeedStatNeeded or 0 else 0
-		local text = if needed > 0 then `Recommended: ⚡ {Format.short(needed)}` else "No Speed needed!"
-		for _, side in { -1, 1 } do
+		local text = `Recommended: ⚡ {Format.short(needed)}`
+		-- Zones you can enter with no Speed at all (zone 1) get no sign.
+		for _, side in (if needed > 0 then { -1, 1 } else {}) :: { number } do
 			local x = side * (width / 2 - 9)
 			-- Turned around so its Front face looks toward the safe zone (+Z).
 			local signCFrame = CFrame.new(x, Layout.GroundTop, near - 4) * CFrame.Angles(0, math.pi, 0)

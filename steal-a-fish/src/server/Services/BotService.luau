@@ -272,8 +272,12 @@ end
 
 local function catch(bot: Bot, player: Player, now: number)
 	lastCaught[player] = now
-	EggService.DropEgg(player, "caught")
-	notify(player, "🦈 Caught by a shark! You lost your egg.", "danger")
+	local outcome = EggService.DropEgg(player, "caught")
+	if outcome == "Dropped" then
+		notify(player, "🦈 Caught! Your egg dropped. Grab it again before it's gone!", "danger")
+	else
+		notify(player, "🦈 Caught by a shark! Your egg is gone.", "danger")
+	end
 
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")

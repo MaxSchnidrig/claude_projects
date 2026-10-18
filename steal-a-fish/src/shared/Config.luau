@@ -418,7 +418,18 @@ Config.Eggs = {
 	-- What happens to a carried egg:
 	--   "Drop" = the egg falls on the ground where they were and can be picked up again
 	--   "Lose" = the egg disappears instantly
-	OnCaught = "Drop", -- caught by a shark (anyone can pick it up again)
+	-- CAUGHT BY A SHARK: it depends on WHERE you are caught, compared to the
+	-- zone the egg ORIGINALLY spawned in (eggs remember that zone forever):
+	--   caught in the egg's own zone or any DEEPER zone (zone number >= original)
+	--       -> OnCaught.SameOrDeeperZone
+	--   caught in a SHALLOWER zone (zone number < original)
+	--       -> OnCaught.ShallowerZone
+	-- Example: a zone 5 egg caught in zone 5..10 is gone; caught in zone 1..4
+	-- it drops, anyone can grab it again, and zone 5's shark chases again.
+	OnCaught = {
+		SameOrDeeperZone = "Lose",
+		ShallowerZone = "Drop",
+	},
 	OnDeath = "Drop", -- died or reset in any other way
 	DroppedEggLifetime = 20, -- seconds a dropped egg stays before vanishing
 
@@ -445,10 +456,14 @@ Config.Eggs = {
 -- EggWeights are relative weights, not percents: {Common = 3, Rare = 1}
 -- means Common is 3x as likely as Rare (75% vs 25%).
 ---------------------------------------------------------------------------
+-- How deep (studs, along the run) every danger zone is. Walls, egg spawns,
+-- signs, shark areas and the zone names on screen all follow this.
+local ZONE_LENGTH = 117
+
 local zones: { ZoneConfig } = {
 	{
 		Name = "Shallows", -- zone 1
-		Length = 90,
+		Length = ZONE_LENGTH,
 		Color = Color3.fromRGB(90, 200, 230),
 		MaxEggs = 6,
 		EggWeights = { Common = 80, Uncommon = 18, Rare = 2 },
@@ -457,7 +472,7 @@ local zones: { ZoneConfig } = {
 	},
 	{
 		Name = "Coral Reef", -- zone 2
-		Length = 90,
+		Length = ZONE_LENGTH,
 		Color = Color3.fromRGB(240, 120, 150),
 		MaxEggs = 6,
 		EggWeights = { Common = 40, Uncommon = 40, Rare = 17, Epic = 3 },
@@ -466,7 +481,7 @@ local zones: { ZoneConfig } = {
 	},
 	{
 		Name = "Kelp Forest", -- zone 3
-		Length = 90,
+		Length = ZONE_LENGTH,
 		Color = Color3.fromRGB(60, 150, 90),
 		MaxEggs = 5,
 		EggWeights = { Uncommon = 40, Rare = 40, Epic = 17, Legendary = 3 },
@@ -475,7 +490,7 @@ local zones: { ZoneConfig } = {
 	},
 	{
 		Name = "Shipwreck Bay", -- zone 4
-		Length = 90,
+		Length = ZONE_LENGTH,
 		Color = Color3.fromRGB(120, 95, 70),
 		MaxEggs = 5,
 		EggWeights = { Rare = 45, Epic = 40, Legendary = 13, Mythic = 2 },
@@ -484,7 +499,7 @@ local zones: { ZoneConfig } = {
 	},
 	{
 		Name = "Twilight Deep", -- zone 5
-		Length = 90,
+		Length = ZONE_LENGTH,
 		Color = Color3.fromRGB(70, 60, 160),
 		MaxEggs = 5,
 		EggWeights = { Epic = 50, Legendary = 38, Mythic = 11, Divine = 1 },
@@ -493,7 +508,7 @@ local zones: { ZoneConfig } = {
 	},
 	{
 		Name = "Midnight Trench", -- zone 6
-		Length = 90,
+		Length = ZONE_LENGTH,
 		Color = Color3.fromRGB(35, 40, 90),
 		MaxEggs = 4,
 		EggWeights = { Legendary = 50, Mythic = 38, Divine = 11, Celestial = 1 },
@@ -502,7 +517,7 @@ local zones: { ZoneConfig } = {
 	},
 	{
 		Name = "Hydrothermal Vents", -- zone 7
-		Length = 90,
+		Length = ZONE_LENGTH,
 		Color = Color3.fromRGB(90, 35, 30),
 		MaxEggs = 4,
 		EggWeights = { Mythic = 55, Divine = 35, Celestial = 10 },
@@ -511,7 +526,7 @@ local zones: { ZoneConfig } = {
 	},
 	{
 		Name = "The Abyss", -- zone 8
-		Length = 90,
+		Length = ZONE_LENGTH,
 		Color = Color3.fromRGB(25, 20, 50),
 		MaxEggs = 4,
 		EggWeights = { Divine = 55, Celestial = 35, Cosmic = 10 },
@@ -520,7 +535,7 @@ local zones: { ZoneConfig } = {
 	},
 	{
 		Name = "Leviathan's Lair", -- zone 9
-		Length = 90,
+		Length = ZONE_LENGTH,
 		Color = Color3.fromRGB(20, 30, 35),
 		MaxEggs = 3,
 		EggWeights = { Celestial = 60, Cosmic = 37, Secret = 3 },
@@ -529,7 +544,7 @@ local zones: { ZoneConfig } = {
 	},
 	{
 		Name = "The Void Below", -- zone 10
-		Length = 90,
+		Length = ZONE_LENGTH,
 		Color = Color3.fromRGB(8, 8, 14),
 		MaxEggs = 3,
 		EggWeights = { Celestial = 30, Cosmic = 60, Secret = 10 },

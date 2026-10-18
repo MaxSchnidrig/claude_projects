@@ -35,7 +35,8 @@ local Sounds = require(script.Parent.Parent.Ui.Sounds)
 local IndexController = {}
 IndexController.Name = "IndexController"
 
-local LOCKED_COLOR = Color3.fromRGB(55, 60, 75)
+-- Not-found fish keep their rarity color, just darker.
+local NOT_FOUND_DARKEN = 0.45
 
 type IndexData = { Found: { [string]: boolean }, Claimed: { [string]: boolean }, ZonesClaimed: { [number]: boolean } }
 
@@ -103,11 +104,16 @@ local function clearChildren(parent: Instance, keep: { [Instance]: boolean }?)
 	end
 end
 
-local function drawPreview()
-	local picture = preview:FindFirstChild("Picture")
-	if picture then
-		picture:Destroy()
+local function clearPreviewModel()
+	local holder = preview:FindFirstChild("PictureHolder")
+	if holder then
+		-- Destroying the picture also destroys its 3D model (no pile-up).
+		holder:ClearAllChildren()
 	end
+end
+
+local function drawPreview()
+	clearPreviewModel()
 	local fish = selected
 	if not fish then
 		previewName.Text = "Pick a fish"
@@ -144,14 +150,22 @@ local function drawGrid()
 		card.LayoutOrder = order
 		card.Text = ""
 		card.AutoButtonColor = true
-		card.BackgroundColor3 = if found then Rarity.color(fish.Rarity) else LOCKED_COLOR
+		local rarityColor = Rarity.color(fish.Rarity)
+		card.BackgroundColor3 = if found then rarityColor else rarityColor:Lerp(Color3.new(0, 0, 0), NOT_FOUND_DARKEN)
 		card.Parent = grid
 		Kit.corner(card, 10)
 		local isSelected = selected ~= nil and selected.Name == fish.Name
 		Kit.stroke(card, if isSelected then Color3.new(1, 1, 1) else Kit.Colors.Outline, if isSelected then 4 else 3)
-		FishPicture.create(card, fish, UDim2.new(1, -10, 1, -30), UDim2.fromOffset(5, 26), not found)
-		local name = Kit.label(card, if found then fish.Name else "???", UDim2.new(1, -8, 0, 22), UDim2.fromOffset(4, 3), Kit.Colors.Text, 2)
+		FishPicture.create(card, fish, UDim2.new(1, -10, 1, -40), UDim2.fromOffset(5, 36), not found)
+		-- Long names shrink and wrap onto two lines so they always fit.
+		local name = Kit.label(card, if found then fish.Name else "???", UDim2.new(1, -10, 0, 34), UDim2.fromOffset(5, 3), Kit.Colors.Text, 1.5)
 		name.TextXAlignment = Enum.TextXAlignment.Center
+		name.TextWrapped = true
+		name.TextTruncate = Enum.TextTruncate.None
+		local sizeLimit = Instance.new("UITextSizeConstraint")
+		sizeLimit.MaxTextSize = 18
+		sizeLimit.MinTextSize = 6
+		sizeLimit.Parent = name
 		if found and not data.Claimed[fish.Name] then
 			-- Green dot: a reward is waiting.
 			local dot = Instance.new("Frame")
@@ -321,6 +335,13 @@ function IndexController.Init()
 		end
 	end)
 
+	-- Closing the Index throws its 3D pictures away (they're rebuilt on open).
+	window.Frame:GetPropertyChangedSignal("Visible"):Connect(function()
+		if not window.Frame.Visible then
+			clearPreviewModel()
+			clearChildren(grid)
+		end
+	end)
 	window.Opened.Event:Connect(function()
 		if not selected then
 			selectZone(currentZone)

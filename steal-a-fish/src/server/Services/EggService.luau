@@ -32,7 +32,7 @@
 	Public interface:
 		EggService.IsCarrying(player) -> boolean
 		EggService.GetCarriedRarity(player) -> string?
-		EggService.DropEgg(player, reason)     -- reason: "caught", "died", ...
+		EggService.DropEgg(player, reason) -> "Dropped" | "Lost" | nil   -- reason: "caught", "died", ...
 		EggService.GetInventory(player) -> { InventoryEgg }    -- saving
 		EggService.SetInventory(player, eggs)                 -- loading
 		EggService.AddToInventory(player, rarity, zone) -> boolean
@@ -331,31 +331,43 @@ function EggService.GetCarriedRarity(player: Player): string?
 	return if carry then carry.Rarity else nil
 end
 
--- The player loses their egg. reason "caught" follows Config.Eggs.OnCaught;
--- anything else ("died", "respawned", ...) follows Config.Eggs.OnDeath.
--- "Drop" puts the egg on the ground (only inside the danger zone);
--- "Lose" makes it disappear.
-function EggService.DropEgg(player: Player, reason: string)
+-- The player loses their egg. Returns "Dropped" (it's on the ground and can
+-- be picked up again), "Lost" (gone) or nil (they had no egg).
+--   reason "caught": Config.Eggs.OnCaught, depending on where they were
+--     caught compared to the egg's ORIGINAL zone (see Config).
+--   anything else ("died", "respawned", ...): Config.Eggs.OnDeath.
+-- Eggs only drop inside the danger zone; elsewhere they're lost.
+function EggService.DropEgg(player: Player, reason: string): string?
 	local root = getRoot(player)
 	local position = if root then root.Position else nil
 	local carry = takeCarry(player)
 	if not carry then
-		return
+		return nil
 	end
 
-	local rule = if reason == "caught" then Config.Eggs.OnCaught else Config.Eggs.OnDeath
-	if rule == "Drop" and position then
-		-- Only inside the danger zone. The egg keeps its ORIGINAL zone.
-		if Layout.zoneIndexAt(position) then
-			local groundPosition = Vector3.new(position.X, restingY(Layout.GroundTop), position.Z)
-			createGroundEgg(carry.Rarity, carry.Zone, groundPosition, true)
-		end
+	local zoneHere = if position then Layout.zoneIndexAt(position) else nil
+	local rule: string
+	if reason == "caught" then
+		local onCaught = Config.Eggs.OnCaught
+		-- Caught in the egg's own zone or deeper: SameOrDeeperZone.
+		rule = if zoneHere == nil or zoneHere >= carry.Zone then onCaught.SameOrDeeperZone else onCaught.ShallowerZone
+	else
+		rule = Config.Eggs.OnDeath
+	end
+
+	local outcome = "Lost"
+	if rule == "Drop" and position and zoneHere then
+		-- The dropped egg keeps its ORIGINAL zone.
+		local groundPosition = Vector3.new(position.X, restingY(Layout.GroundTop), position.Z)
+		createGroundEgg(carry.Rarity, carry.Zone, groundPosition, true)
+		outcome = "Dropped"
 	end
 
 	if Config.Debug then
 		print(`[{Config.GameName}] {player.Name} lost a {carry.Rarity} Egg ({reason})`)
 	end
 	EggService.EggDropped:Fire(player, carry.Rarity, reason)
+	return outcome
 end
 
 ---------------------------------------------------------------------------
