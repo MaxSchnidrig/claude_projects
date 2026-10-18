@@ -115,17 +115,31 @@ local function buildGround()
 	})
 
 	-- Ocean outside the walls, so zooming out never shows an empty void.
-	-- Its top sits just below the ground, so the two never flicker.
-	Build.part({
-		Name = "Ocean",
-		Size = Vector3.new(4000, 1, 4000),
-		CFrame = CFrame.new(0, Layout.GroundTop - 1, Layout.DangerZoneFront),
-		Color = world.OceanColor,
-		Material = Enum.Material.SmoothPlastic,
-		Studs = false,
-		CanTouch = false,
-		Parent = worldFolder,
-	})
+	-- Its top sits just below the ground, so the two never flicker. It's made
+	-- of tiles, because one part can be at most 2048 studs big.
+	local oceanTile = 2000
+	local margin = 1500
+	local minX, maxX = -Layout.MapHalfWidth - margin, Layout.MapHalfWidth + margin
+	local minZ, maxZ = Layout.DangerZoneBack - margin, Layout.MapBackZ + margin
+	local x = minX
+	while x < maxX do
+		local z = minZ
+		while z < maxZ do
+			Build.part({
+				Name = "Ocean",
+				Size = Vector3.new(oceanTile, 1, oceanTile),
+				CFrame = CFrame.new(x + oceanTile / 2, Layout.GroundTop - 1, z + oceanTile / 2),
+				Color = world.OceanColor,
+				Material = Enum.Material.SmoothPlastic,
+				Studs = false,
+				CanTouch = false,
+				CanQuery = false,
+				Parent = worldFolder,
+			})
+			z += oceanTile
+		end
+		x += oceanTile
+	end
 end
 
 local function buildDangerZones(): Folder
@@ -371,6 +385,8 @@ local function buildWallSegment(parent: Instance, name: string, startPoint: Vect
 end
 
 -- Walk around Layout.mapOutline() and build a wall piece for every side.
+local WALL_PIECE = 400 -- studs; must be a multiple of 2 * Config.World.WallTileSize
+
 local function buildMapWall()
 	local folder = Instance.new("Folder")
 	folder.Name = "MapWall"
@@ -407,7 +423,17 @@ local function buildMapWall()
 			endPoint += direction * thickness
 		end
 
-		buildWallSegment(folder, `Wall{i}`, startPoint, endPoint, outward)
+		-- Roblox parts can be at most 2048 studs long, and the danger zone
+		-- walls are longer than that. So long sides are built from several
+		-- pieces (WALL_PIECE studs each, a multiple of two checker squares,
+		-- so the pattern continues seamlessly).
+		local length = (endPoint - startPoint).Magnitude
+		local pieces = math.max(1, math.ceil(length / WALL_PIECE))
+		for piece = 1, pieces do
+			local from = startPoint + direction * math.min((piece - 1) * WALL_PIECE, length)
+			local to = startPoint + direction * math.min(piece * WALL_PIECE, length)
+			buildWallSegment(folder, `Wall{i}_{piece}`, from, to, outward)
+		end
 	end
 end
 

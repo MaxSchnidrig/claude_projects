@@ -126,7 +126,7 @@ local function showPopup(amount: number)
 	label.AnchorPoint = Vector2.new(0.5, 0.5)
 	-- A random spot in the middle area of the screen (not over the HUD).
 	label.Position = UDim2.fromScale(rng:NextNumber(0.2, 0.8), rng:NextNumber(0.25, 0.65))
-	label.Size = UDim2.fromOffset(120, 32)
+	label.Size = UDim2.fromOffset(190, 50)
 	label.BackgroundTransparency = 1
 	label.Font = Enum.Font.FredokaOne
 	label.TextScaled = true
@@ -139,7 +139,7 @@ local function showPopup(amount: number)
 	table.insert(visiblePopups, label)
 
 	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 2
+	stroke.Thickness = 3
 	stroke.Color = Color3.fromRGB(30, 30, 50)
 	stroke.Parent = label
 
