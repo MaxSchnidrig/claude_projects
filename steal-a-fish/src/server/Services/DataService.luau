@@ -60,7 +60,15 @@ local UpgradeService = require(script.Parent.UpgradeService)
 
 -- 2: eggs remember their zone (EggInventory entries are { Rarity, Zone }),
 --    pets are fish from Config.Fish (old pets are converted when loading).
-local DATA_VERSION = 2
+-- 3: walk speed became a straight line of the Speed stat (1,000 Speed = +1
+--    walk speed). Old Speed stats are converted so you keep your walk speed.
+local DATA_VERSION = 3
+
+-- The walk speed formula before version 3: 16 + 0.18 * stat ^ 0.4 (cap 140).
+local function convertOldSpeedStat(oldStat: number): number
+	local walk = math.min(16 + 0.18 * math.max(oldStat, 0) ^ 0.4, 140)
+	return math.max(0, math.floor((walk - Config.Speed.BaseWalkSpeed) / Config.Speed.Factor))
+end
 
 export type SaveData = {
 	Version: number,
@@ -145,6 +153,9 @@ local function reconcile(raw: unknown): SaveData
 	local old = raw :: any
 	data.Money = cleanNumber(old.Money, data.Money)
 	data.SpeedStat = cleanNumber(old.SpeedStat, data.SpeedStat)
+	if cleanNumber(old.Version, 0) < 3 and cleanNumber(old.LastSave, 0) > 0 then
+		data.SpeedStat = convertOldSpeedStat(data.SpeedStat)
+	end
 	data.TreadmillTier = math.clamp(math.floor(cleanNumber(old.TreadmillTier, 1)), 1, #Config.Treadmill.Tiers)
 	data.PadsBought = math.floor(cleanNumber(old.PadsBought, 0))
 	data.LastSave = cleanNumber(old.LastSave, 0)

@@ -138,23 +138,23 @@ Config.Rarities = rarities
 
 ---------------------------------------------------------------------------
 -- SPEED (the main progression)
--- Players have a Speed STAT that grows on the treadmill and can get huge
--- ("12.5K"). Their actual WalkSpeed grows much more slowly from it:
+-- Players have a Speed STAT that grows on the treadmill. Their WalkSpeed
+-- grows with it in a straight line, so every bit of Speed counts:
 --
 --   WalkSpeed = min(BaseWalkSpeed + Factor * SpeedStat ^ Exponent, MaxWalkSpeed)
 --
--- With Factor 0.18 and Exponent 0.4:   Speed stat 0 -> 16,   3K -> 20.5,
---   100K -> 44.5,   1M -> 61,   4M -> 94.5,   12.5M -> 140 (the cap).
--- The cap is high on purpose: even the best treadmills (Rainbow, Cosmic)
--- still make you faster.
--- Egg carry slow-downs (Eggs.ByRarity) are multiplied on top.
+-- With Factor 0.001 and Exponent 1: every 1,000 Speed = +1 walk speed.
+--   0 -> 16,   18K -> 34,   48K -> 64,   115K -> 131,   159K -> 175 (the cap).
+-- Because it's a straight line, having only 80% of a zone's recommended
+-- Speed makes you clearly slower (about 12-18%), so its shark catches you
+-- well inside the zone. Egg carry slow-downs (Eggs.ByRarity) multiply on top.
 ---------------------------------------------------------------------------
 Config.Speed = {
 	StartingStat = 0,
 	BaseWalkSpeed = 16, -- a brand-new player (Roblox's default)
-	Factor = 0.18,
-	Exponent = 0.4,
-	MaxWalkSpeed = 140, -- hard cap, so the game stays controllable
+	Factor = 0.001,
+	Exponent = 1,
+	MaxWalkSpeed = 175, -- hard cap (a bit faster than the deepest shark, so top treadmills still help)
 	-- "Outrunning" a shark means walking at least this much faster than it.
 	OutrunMargin = 0.5,
 }
@@ -188,61 +188,61 @@ end
 ---------------------------------------------------------------------------
 local treadmillTiers: { TreadmillTier } = {
 	{
-		Name = "Basic", Price = 0, Gain = 10,
+		Name = "Basic", Price = 0, Gain = 30,
 		FrameColor = Color3.fromRGB(205, 205, 212), FrameMaterial = Enum.Material.SmoothPlastic,
 		BeltColor = Color3.fromRGB(45, 45, 52), ChevronColor = Color3.fromRGB(235, 235, 240), ChevronNeon = false,
 		AccentColor = nil, ScreenColor = Color3.fromRGB(80, 220, 255), Light = 0, Effect = "None", Rainbow = false,
 	},
 	{
-		Name = "Bronze", Price = 2_500, Gain = 25,
+		Name = "Bronze", Price = 2_500, Gain = 36,
 		FrameColor = Color3.fromRGB(205, 127, 50), FrameMaterial = Enum.Material.Metal,
 		BeltColor = Color3.fromRGB(50, 35, 25), ChevronColor = Color3.fromRGB(255, 170, 90), ChevronNeon = false,
 		AccentColor = nil, ScreenColor = Color3.fromRGB(255, 170, 90), Light = 0, Effect = "None", Rainbow = false,
 	},
 	{
-		Name = "Silver", Price = 15_000, Gain = 60,
+		Name = "Silver", Price = 15_000, Gain = 42,
 		FrameColor = Color3.fromRGB(200, 205, 215), FrameMaterial = Enum.Material.DiamondPlate,
 		BeltColor = Color3.fromRGB(40, 45, 55), ChevronColor = Color3.fromRGB(230, 240, 255), ChevronNeon = true,
 		AccentColor = nil, ScreenColor = Color3.fromRGB(200, 230, 255), Light = 0, Effect = "None", Rainbow = false,
 	},
 	{
-		Name = "Gold", Price = 80_000, Gain = 150,
+		Name = "Gold", Price = 80_000, Gain = 48,
 		FrameColor = Color3.fromRGB(255, 200, 60), FrameMaterial = Enum.Material.Foil,
 		BeltColor = Color3.fromRGB(60, 45, 20), ChevronColor = Color3.fromRGB(255, 230, 120), ChevronNeon = true,
 		AccentColor = Color3.fromRGB(255, 215, 80), ScreenColor = Color3.fromRGB(255, 230, 120), Light = 1, Effect = "None", Rainbow = false,
 	},
 	{
-		Name = "Emerald", Price = 400_000, Gain = 350,
+		Name = "Emerald", Price = 400_000, Gain = 56,
 		FrameColor = Color3.fromRGB(40, 190, 110), FrameMaterial = Enum.Material.Glass,
 		BeltColor = Color3.fromRGB(15, 50, 35), ChevronColor = Color3.fromRGB(120, 255, 170), ChevronNeon = true,
 		AccentColor = Color3.fromRGB(80, 255, 150), ScreenColor = Color3.fromRGB(120, 255, 170), Light = 1.5, Effect = "Sparkles", Rainbow = false,
 	},
 	{
-		Name = "Diamond", Price = 6_000_000, Gain = 800,
+		Name = "Diamond", Price = 6_000_000, Gain = 64,
 		FrameColor = Color3.fromRGB(170, 235, 255), FrameMaterial = Enum.Material.Glass,
 		BeltColor = Color3.fromRGB(20, 40, 60), ChevronColor = Color3.fromRGB(150, 240, 255), ChevronNeon = true,
 		AccentColor = Color3.fromRGB(120, 230, 255), ScreenColor = Color3.fromRGB(180, 245, 255), Light = 2, Effect = "Sparkles", Rainbow = false,
 	},
 	{
-		Name = "Neon", Price = 30_000_000, Gain = 2_000,
+		Name = "Neon", Price = 30_000_000, Gain = 74,
 		FrameColor = Color3.fromRGB(25, 25, 35), FrameMaterial = Enum.Material.SmoothPlastic,
 		BeltColor = Color3.fromRGB(10, 10, 15), ChevronColor = Color3.fromRGB(255, 60, 220), ChevronNeon = true,
 		AccentColor = Color3.fromRGB(0, 255, 255), ScreenColor = Color3.fromRGB(255, 60, 220), Light = 2.5, Effect = "Stars", Rainbow = false,
 	},
 	{
-		Name = "Magma", Price = 150_000_000, Gain = 5_000,
+		Name = "Magma", Price = 150_000_000, Gain = 85,
 		FrameColor = Color3.fromRGB(60, 30, 25), FrameMaterial = Enum.Material.Basalt,
 		BeltColor = Color3.fromRGB(30, 10, 5), ChevronColor = Color3.fromRGB(255, 120, 20), ChevronNeon = true,
 		AccentColor = Color3.fromRGB(255, 90, 0), ScreenColor = Color3.fromRGB(255, 140, 40), Light = 3, Effect = "Fire", Rainbow = false,
 	},
 	{
-		Name = "Rainbow", Price = 750_000_000, Gain = 12_000,
+		Name = "Rainbow", Price = 750_000_000, Gain = 98,
 		FrameColor = Color3.fromRGB(255, 255, 255), FrameMaterial = Enum.Material.SmoothPlastic,
 		BeltColor = Color3.fromRGB(25, 25, 30), ChevronColor = Color3.fromRGB(255, 255, 255), ChevronNeon = true,
 		AccentColor = Color3.fromRGB(255, 255, 255), ScreenColor = Color3.fromRGB(255, 255, 255), Light = 3, Effect = "Sparkles", Rainbow = true,
 	},
 	{
-		Name = "Cosmic", Price = 4_500_000_000, Gain = 30_000,
+		Name = "Cosmic", Price = 4_500_000_000, Gain = 112,
 		FrameColor = Color3.fromRGB(40, 20, 80), FrameMaterial = Enum.Material.Glass,
 		BeltColor = Color3.fromRGB(5, 0, 20), ChevronColor = Color3.fromRGB(190, 120, 255), ChevronNeon = true,
 		AccentColor = Color3.fromRGB(150, 80, 255), ScreenColor = Color3.fromRGB(220, 180, 255), Light = 4, Effect = "Stars", Rainbow = false,
@@ -581,31 +581,31 @@ local sharks: { SharkConfig } = {
 	{ Speed = 17, Count = 1, Color = Color3.fromRGB(125, 155, 180), Belly = Color3.fromRGB(240, 245, 250),
 		Scale = 0.9, EyeColor = Color3.fromRGB(20, 20, 25), GlowEyes = false, Scars = 0, Spikes = false },
 	-- 2 Coral Reef
-	{ RecommendedSpeed = 5_000, Speed = 0, Count = 1, Color = Color3.fromRGB(95, 125, 165), Belly = Color3.fromRGB(235, 240, 245),
+	{ RecommendedSpeed = 18_000, Speed = 0, Count = 1, Color = Color3.fromRGB(95, 125, 165), Belly = Color3.fromRGB(235, 240, 245),
 		Scale = 1, EyeColor = Color3.fromRGB(20, 20, 25), GlowEyes = false, Scars = 0, Spikes = false },
 	-- 3 Kelp Forest: green camouflage
-	{ RecommendedSpeed = 45_000, Speed = 0, Count = 1, Color = Color3.fromRGB(80, 115, 85), Belly = Color3.fromRGB(215, 225, 190),
+	{ RecommendedSpeed = 28_000, Speed = 0, Count = 1, Color = Color3.fromRGB(80, 115, 85), Belly = Color3.fromRGB(215, 225, 190),
 		Scale = 1.05, EyeColor = Color3.fromRGB(20, 20, 25), GlowEyes = false, Scars = 1, Spikes = false },
 	-- 4 Shipwreck Bay: rusty and scarred
-	{ RecommendedSpeed = 150_000, Speed = 0, Count = 1, Color = Color3.fromRGB(120, 100, 85), Belly = Color3.fromRGB(220, 205, 180),
+	{ RecommendedSpeed = 38_000, Speed = 0, Count = 1, Color = Color3.fromRGB(120, 100, 85), Belly = Color3.fromRGB(220, 205, 180),
 		Scale = 1.1, EyeColor = Color3.fromRGB(20, 20, 25), GlowEyes = false, Scars = 2, Spikes = false },
 	-- 5 Twilight Deep: purple, eyes start glowing
-	{ RecommendedSpeed = 350_000, Speed = 0, Count = 1, Color = Color3.fromRGB(80, 65, 140), Belly = Color3.fromRGB(190, 180, 225),
+	{ RecommendedSpeed = 48_000, Speed = 0, Count = 1, Color = Color3.fromRGB(80, 65, 140), Belly = Color3.fromRGB(190, 180, 225),
 		Scale = 1.15, EyeColor = Color3.fromRGB(255, 240, 120), GlowEyes = true, Scars = 1, Spikes = false },
 	-- 6 Midnight Trench
-	{ RecommendedSpeed = 700_000, Speed = 0, Count = 1, Color = Color3.fromRGB(40, 45, 80), Belly = Color3.fromRGB(150, 160, 200),
+	{ RecommendedSpeed = 60_000, Speed = 0, Count = 1, Color = Color3.fromRGB(40, 45, 80), Belly = Color3.fromRGB(150, 160, 200),
 		Scale = 1.2, EyeColor = Color3.fromRGB(120, 220, 255), GlowEyes = true, Scars = 2, Spikes = false },
 	-- 7 Hydrothermal Vents: charcoal with lava eyes
-	{ RecommendedSpeed = 1_300_000, Speed = 0, Count = 1, Color = Color3.fromRGB(70, 35, 30), Belly = Color3.fromRGB(150, 100, 80),
+	{ RecommendedSpeed = 72_000, Speed = 0, Count = 1, Color = Color3.fromRGB(70, 35, 30), Belly = Color3.fromRGB(150, 100, 80),
 		Scale = 1.3, EyeColor = Color3.fromRGB(255, 120, 30), GlowEyes = true, Scars = 2, Spikes = true },
 	-- 8 The Abyss
-	{ RecommendedSpeed = 2_000_000, Speed = 0, Count = 1, Color = Color3.fromRGB(28, 22, 45), Belly = Color3.fromRGB(90, 80, 120),
+	{ RecommendedSpeed = 85_000, Speed = 0, Count = 1, Color = Color3.fromRGB(28, 22, 45), Belly = Color3.fromRGB(90, 80, 120),
 		Scale = 1.4, EyeColor = Color3.fromRGB(255, 40, 60), GlowEyes = true, Scars = 3, Spikes = true },
 	-- 9 Leviathan's Lair
-	{ RecommendedSpeed = 3_500_000, Speed = 0, Count = 1, Color = Color3.fromRGB(20, 50, 50), Belly = Color3.fromRGB(80, 130, 120),
+	{ RecommendedSpeed = 100_000, Speed = 0, Count = 1, Color = Color3.fromRGB(20, 50, 50), Belly = Color3.fromRGB(80, 130, 120),
 		Scale = 1.5, EyeColor = Color3.fromRGB(80, 255, 160), GlowEyes = true, Scars = 3, Spikes = true },
 	-- 10 The Void Below: biggest and darkest
-	{ RecommendedSpeed = 6_000_000, Speed = 0, Count = 1, Color = Color3.fromRGB(12, 10, 20), Belly = Color3.fromRGB(60, 40, 90),
+	{ RecommendedSpeed = 115_000, Speed = 0, Count = 1, Color = Color3.fromRGB(12, 10, 20), Belly = Color3.fromRGB(60, 40, 90),
 		Scale = 1.6, EyeColor = Color3.fromRGB(190, 90, 255), GlowEyes = true, Scars = 3, Spikes = true },
 }
 Config.Sharks = sharks
@@ -1068,10 +1068,10 @@ Config.DailyGift = {
 ---------------------------------------------------------------------------
 Config.Index = {
 	FishCashSeconds = 60, -- cash reward = this many seconds of the fish's income
-	FishSpeedBase = 60, -- Speed reward for a zone-1 fish (grows deeper and rarer)
+	FishSpeedBase = 150, -- Speed reward for a zone-1 fish (grows deeper and rarer)
 	ZoneCashSeconds = 300, -- zone reward = this many seconds of ALL 8 fish's income together
-	ZoneSpeedBase = 1000, -- Speed reward for completing zone 1 (grows deeper)
-	SpeedGrowthPerZone = 2.2, -- each deeper zone's Speed rewards are this much bigger
+	ZoneSpeedBase = 1500, -- Speed reward for completing zone 1 (grows deeper)
+	SpeedGrowthPerZone = 1.2, -- each deeper zone's Speed rewards are this much bigger
 }
 
 -- What finding a fish gives: (cash, speed).
