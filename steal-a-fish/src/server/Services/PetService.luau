@@ -256,12 +256,16 @@ local function refreshPet(plot: Types.PlotInfo, padIndex: number)
 
 	local upgrade = root:FindFirstChild("UpgradePrompt")
 	if upgrade and upgrade:IsA("ProximityPrompt") then
+		local income = Config.PetIncome(item.Income, item.Level)
 		if item.Level >= maxLevel then
 			upgrade.ActionText = "Max level"
+			upgrade.ObjectText = `{item.PetName or "Pet"}  Lv {item.Level}  •  ${Format.short(income)}/s`
 		else
+			-- Show what the upgrade gives: "Lv 5 → 6: $120/s → $134/s"
+			local nextIncome = Config.PetIncome(item.Income, item.Level + 1)
 			upgrade.ActionText = `Upgrade  ${Format.short(Config.PetUpgradePrice(item.Income, item.Level))}`
+			upgrade.ObjectText = `Lv {item.Level} → {item.Level + 1}:  ${Format.short(income)}/s → ${Format.short(nextIncome)}/s`
 		end
-		upgrade.ObjectText = `{item.PetName or "Pet"}  Lv {item.Level}`
 	end
 	local sell = root:FindFirstChild("SellPrompt")
 	if sell and sell:IsA("ProximityPrompt") then
@@ -290,17 +294,34 @@ local function addPetPrompt(root: BasePart, plot: Types.PlotInfo, padIndex: numb
 	end)
 end
 
+local function numberAttribute(instance: Instance, name: string, default: number): number
+	local value = instance:GetAttribute(name)
+	return if typeof(value) == "number" then value else default
+end
+
+-- Resize a fish for its level (1 = the size it was built at) and keep its
+-- name label just above it.
+local function applySize(model: Model, factor: number)
+	model:ScaleTo(factor)
+	local root = model.PrimaryPart
+	local label = root and root:FindFirstChild("Label")
+	if label and label:IsA("BillboardGui") then
+		label.StudsOffsetWorldSpace = Vector3.new(0, numberAttribute(model, "Top", 1) * factor + 1.4, 0)
+	end
+end
+
 local function placePet(plot: Types.PlotInfo, padIndex: number, pet: Config.FishConfig, level: number): Model
 	local pad = plot.Pads[padIndex]
 	local model = FishModel.create(pet, petCFrameOnPad(pad))
-	-- Lift the fish so it floats HoverHeight above the pad, whatever its shape.
-	local bottom = model:GetAttribute("Bottom")
-	local top = model:GetAttribute("Top")
-	local lift = Config.PetDisplay.HoverHeight + (if typeof(bottom) == "number" then bottom else 1)
+	-- Lift the fish so that even at MAX level (its biggest size) its lowest
+	-- point floats HoverHeight above the pad. It grows around its middle.
+	local maxSize = Config.PetSizeAtLevel(Config.Upgrades.PetLevel.MaxLevel)
+	local lift = Config.PetDisplay.HoverHeight + numberAttribute(model, "Bottom", 1) * maxSize
 	model:PivotTo(model:GetPivot() + Vector3.new(0, lift, 0))
 	model:SetAttribute("PadIndex", padIndex)
 	local root = model.PrimaryPart :: BasePart
-	makeLabel(root, pet.Name, Rarity.color(pet.Rarity), "", (if typeof(top) == "number" then top else 1) + 1.4)
+	makeLabel(root, pet.Name, Rarity.color(pet.Rarity), "", numberAttribute(model, "Top", 1) + 1.4)
+	applySize(model, Config.PetSizeAtLevel(level))
 	addPetPrompt(root, plot, padIndex, "Upgrade", Enum.KeyCode.E, 0)
 	-- Selling needs a 1-second hold, so it doesn't happen by accident.
 	addPetPrompt(root, plot, padIndex, "Sell", Enum.KeyCode.F, 1)
@@ -322,12 +343,38 @@ local function placePet(plot: Types.PlotInfo, padIndex: number, pet: Config.Fish
 	return model
 end
 
+-- Grow a fish smoothly to its new size, with a sparkle for everyone nearby.
+local growTokens: { [Instance]: number } = {}
+local function growTo(model: Model, rarity: string, targetSize: number)
+	local token = (growTokens[model] or 0) + 1
+	growTokens[model] = token
+	Net.event(Net.Names.FishLeveledUp):FireAllClients(model:GetPivot().Position, rarity)
+	task.spawn(function()
+		local startSize = model:GetScale()
+		local steps = 7
+		for step = 1, steps do
+			task.wait(Config.Upgrades.PetLevel.GrowSeconds / steps)
+			if growTokens[model] ~= token or model.Parent == nil then
+				return -- a newer upgrade took over, or the fish is gone
+			end
+			-- Ease out: fast at first, gentle at the end.
+			local t = 1 - (1 - step / steps) ^ 2
+			applySize(model, startSize + (targetSize - startSize) * t)
+		end
+		growTokens[model] = nil
+	end)
+end
+
 -- Change a pet's level (UpgradeService calls this after taking the money).
 function PetService.SetPetLevel(plot: Types.PlotInfo, padIndex: number, level: number)
 	local item = getItems(plot)[padIndex]
 	if item and item.Kind == "Pet" then
 		item.Level = math.clamp(level, 1, Config.Upgrades.PetLevel.MaxLevel)
 		refreshPet(plot, padIndex)
+		local model = item.Instance
+		if model:IsA("Model") then
+			growTo(model, item.Rarity, Config.PetSizeAtLevel(item.Level))
+		end
 	end
 end
 

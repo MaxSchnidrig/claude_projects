@@ -52,6 +52,7 @@ Net.Names = {
 	IndexSync = "IndexSync", -- server -> owner: (data) found fish and claimed rewards, for the Index window
 	IndexClaim = "IndexClaim", -- client -> server: ("Fish", name) / ("Zone", zoneIndex) / ("All") / ("Sync")
 	DailyGiftClaim = "DailyGiftClaim", -- client -> server: claim the free daily gift
+	FishLeveledUp = "FishLeveledUp", -- server -> ALL clients: (position, rarity) sparkle when a fish levels up
 	ShopBuy = "ShopBuy", -- client -> server: (itemKey) buy a Robux item (Monetization milestone)
 }
 

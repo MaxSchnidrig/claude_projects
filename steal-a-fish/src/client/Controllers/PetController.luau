@@ -183,6 +183,12 @@ end
 function PetController.Start()
 	Net.event(Net.Names.PetHatched).OnClientEvent:Connect(burst)
 	Net.event(Net.Names.HatchReveal).OnClientEvent:Connect(showReveal)
+	-- A small golden sparkle when a fish levels up.
+	Net.event(Net.Names.FishLeveledUp).OnClientEvent:Connect(function(position: unknown)
+		if typeof(position) == "Vector3" then
+			Effects.burst(position, Color3.fromRGB(255, 220, 80), 18)
+		end
+	end)
 
 	RunService.RenderStepped:Connect(function()
 		local camera = Workspace.CurrentCamera

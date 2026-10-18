@@ -214,8 +214,8 @@ local function buildDangerZones(): Folder
 		end
 	end
 
-	-- SAFE ZONE line across the entrance: a red stripe with blue ends and
-	-- "SAFE ZONE" written on the ground just inside the safe side.
+	-- SAFE ZONE line across the entrance: a red stripe with "SAFE ZONE"
+	-- written on the ground just inside the safe side.
 	local front = Layout.DangerZoneFront
 	local world = Config.World
 	Build.part({
@@ -228,18 +228,6 @@ local function buildDangerZones(): Folder
 		CanQuery = false,
 		Parent = folder,
 	})
-	for _, side in { -1, 1 } do
-		Build.part({
-			Name = "SafeLineEnd",
-			Size = Vector3.new(8, 0.3, 2.2),
-			CFrame = CFrame.new(side * (width / 2 - 12), Layout.GroundTop + 0.15, front + 4),
-			Color = Color3.fromRGB(70, 170, 255),
-			CanCollide = false,
-			CanTouch = false,
-			CanQuery = false,
-			Parent = folder,
-		})
-	end
 	local writing = Build.part({
 		Name = "SafeZoneText",
 		Size = Vector3.new(44, 0.2, 6),

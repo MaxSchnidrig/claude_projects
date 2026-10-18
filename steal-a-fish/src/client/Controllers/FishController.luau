@@ -161,8 +161,11 @@ local function buildRow(entry: Entry, order: number, money: number)
 
 	Kit.label(row, entry.Name, UDim2.new(1, -210, 0, 28), UDim2.fromOffset(98, 8), color, 2)
 	local income = Config.PetIncome(entry.BaseIncome, entry.Level)
-	Kit.label(row, `${Format.short(income)}/s`, UDim2.new(1, -210, 0, 26), UDim2.fromOffset(98, 38), Color3.fromRGB(120, 255, 100), 2)
-	Kit.label(row, `{entry.Rarity} • Lv {entry.Level} • {zoneName(entry.Zone)}`, UDim2.new(1, -210, 0, 20), UDim2.fromOffset(98, 68), Kit.Colors.SubText)
+	Kit.label(row, `${Format.short(income)}/s  •  {zoneName(entry.Zone)}`, UDim2.new(1, -210, 0, 26), UDim2.fromOffset(98, 38), Color3.fromRGB(120, 255, 100), 2)
+	local levelText = if entry.Level >= Config.Upgrades.PetLevel.MaxLevel
+		then `{entry.Rarity} • Lv {entry.Level} (MAX)`
+		else `Lv {entry.Level} → {entry.Level + 1}: ${Format.short(income)}/s → ${Format.short(Config.PetIncome(entry.BaseIncome, entry.Level + 1))}/s`
+	Kit.label(row, levelText, UDim2.new(1, -210, 0, 20), UDim2.fromOffset(98, 68), Kit.Colors.SubText)
 
 	-- Upgrade button
 	local upgrade: TextButton

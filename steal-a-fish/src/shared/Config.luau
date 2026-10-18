@@ -45,7 +45,12 @@ export type RarityConfig = {
 }
 
 export type SharkConfig = {
-	Speed: number, -- chase speed in studs per second
+	-- The Speed stat shown on the zone's sign. If set, the shark's Speed is
+	-- CALCULATED from it (see BALANCE TABLE at the bottom), so at exactly
+	-- this Speed you just barely escape the zone. Leave it out to type the
+	-- shark's Speed yourself (zone 1).
+	RecommendedSpeed: number?,
+	Speed: number, -- chase speed in studs per second (calculated when RecommendedSpeed is set)
 	Count: number, -- how many sharks patrol this zone
 	-- Looks (deeper = bigger and scarier):
 	Color: Color3, -- back and fins
@@ -571,31 +576,31 @@ local sharks: { SharkConfig } = {
 	{ Speed = 17, Count = 1, Color = Color3.fromRGB(125, 155, 180), Belly = Color3.fromRGB(240, 245, 250),
 		Scale = 0.9, EyeColor = Color3.fromRGB(20, 20, 25), GlowEyes = false, Scars = 0, Spikes = false },
 	-- 2 Coral Reef
-	{ Speed = 26, Count = 1, Color = Color3.fromRGB(95, 125, 165), Belly = Color3.fromRGB(235, 240, 245),
+	{ RecommendedSpeed = 5_000, Speed = 0, Count = 1, Color = Color3.fromRGB(95, 125, 165), Belly = Color3.fromRGB(235, 240, 245),
 		Scale = 1, EyeColor = Color3.fromRGB(20, 20, 25), GlowEyes = false, Scars = 0, Spikes = false },
 	-- 3 Kelp Forest: green camouflage
-	{ Speed = 35, Count = 1, Color = Color3.fromRGB(80, 115, 85), Belly = Color3.fromRGB(215, 225, 190),
+	{ RecommendedSpeed = 45_000, Speed = 0, Count = 1, Color = Color3.fromRGB(80, 115, 85), Belly = Color3.fromRGB(215, 225, 190),
 		Scale = 1.05, EyeColor = Color3.fromRGB(20, 20, 25), GlowEyes = false, Scars = 1, Spikes = false },
 	-- 4 Shipwreck Bay: rusty and scarred
-	{ Speed = 45, Count = 1, Color = Color3.fromRGB(120, 100, 85), Belly = Color3.fromRGB(220, 205, 180),
+	{ RecommendedSpeed = 150_000, Speed = 0, Count = 1, Color = Color3.fromRGB(120, 100, 85), Belly = Color3.fromRGB(220, 205, 180),
 		Scale = 1.1, EyeColor = Color3.fromRGB(20, 20, 25), GlowEyes = false, Scars = 2, Spikes = false },
 	-- 5 Twilight Deep: purple, eyes start glowing
-	{ Speed = 56, Count = 1, Color = Color3.fromRGB(80, 65, 140), Belly = Color3.fromRGB(190, 180, 225),
+	{ RecommendedSpeed = 350_000, Speed = 0, Count = 1, Color = Color3.fromRGB(80, 65, 140), Belly = Color3.fromRGB(190, 180, 225),
 		Scale = 1.15, EyeColor = Color3.fromRGB(255, 240, 120), GlowEyes = true, Scars = 1, Spikes = false },
 	-- 6 Midnight Trench
-	{ Speed = 67, Count = 1, Color = Color3.fromRGB(40, 45, 80), Belly = Color3.fromRGB(150, 160, 200),
+	{ RecommendedSpeed = 700_000, Speed = 0, Count = 1, Color = Color3.fromRGB(40, 45, 80), Belly = Color3.fromRGB(150, 160, 200),
 		Scale = 1.2, EyeColor = Color3.fromRGB(120, 220, 255), GlowEyes = true, Scars = 2, Spikes = false },
 	-- 7 Hydrothermal Vents: charcoal with lava eyes
-	{ Speed = 80, Count = 1, Color = Color3.fromRGB(70, 35, 30), Belly = Color3.fromRGB(150, 100, 80),
+	{ RecommendedSpeed = 1_300_000, Speed = 0, Count = 1, Color = Color3.fromRGB(70, 35, 30), Belly = Color3.fromRGB(150, 100, 80),
 		Scale = 1.3, EyeColor = Color3.fromRGB(255, 120, 30), GlowEyes = true, Scars = 2, Spikes = true },
 	-- 8 The Abyss
-	{ Speed = 94, Count = 1, Color = Color3.fromRGB(28, 22, 45), Belly = Color3.fromRGB(90, 80, 120),
+	{ RecommendedSpeed = 2_000_000, Speed = 0, Count = 1, Color = Color3.fromRGB(28, 22, 45), Belly = Color3.fromRGB(90, 80, 120),
 		Scale = 1.4, EyeColor = Color3.fromRGB(255, 40, 60), GlowEyes = true, Scars = 3, Spikes = true },
 	-- 9 Leviathan's Lair
-	{ Speed = 112, Count = 1, Color = Color3.fromRGB(20, 50, 50), Belly = Color3.fromRGB(80, 130, 120),
+	{ RecommendedSpeed = 3_500_000, Speed = 0, Count = 1, Color = Color3.fromRGB(20, 50, 50), Belly = Color3.fromRGB(80, 130, 120),
 		Scale = 1.5, EyeColor = Color3.fromRGB(80, 255, 160), GlowEyes = true, Scars = 3, Spikes = true },
 	-- 10 The Void Below: biggest and darkest
-	{ Speed = 133, Count = 1, Color = Color3.fromRGB(12, 10, 20), Belly = Color3.fromRGB(60, 40, 90),
+	{ RecommendedSpeed = 6_000_000, Speed = 0, Count = 1, Color = Color3.fromRGB(12, 10, 20), Belly = Color3.fromRGB(60, 40, 90),
 		Scale = 1.6, EyeColor = Color3.fromRGB(190, 90, 255), GlowEyes = true, Scars = 3, Spikes = true },
 }
 Config.Sharks = sharks
@@ -628,7 +633,10 @@ Config.Bots = {
 	PatrolPauseTime = 0.6, -- seconds a shark waits at each end of its line
 
 	-- Being caught
-	CatchCooldown = 3, -- seconds a player is ignored by sharks after being caught
+	-- After being caught you're IMMUNE for this many seconds (the shark can't
+	-- catch you again), so you get a head start with a dropped egg. Raise it
+	-- to make re-catches less annoying, lower it to make them harsher.
+	CatchCooldown = 3,
 	PostCatchPause = 1.5, -- seconds a shark rests after catching someone
 	KnockbackForce = 70, -- sideways push on a caught player
 	KnockbackUpForce = 35, -- upward push on a caught player
@@ -938,11 +946,24 @@ Config.Data = {
 ---------------------------------------------------------------------------
 Config.Upgrades = {
 	Pads = { Base = 500, Growth = 2.5 }, -- 500, 1.25K, 3.1K, 7.8K for pads 7..10
+	-- Fish levels (press E on your fish, or use the Fish panel):
+	--   income at level L = base income * IncomeGrowth ^ (L - 1)
+	--     (1.12 -> every level +12% on top of the last; level 10 = 2.8x,
+	--      level 20 = 8.6x, level 30 = 26.7x the base income)
+	--   price of L -> L+1 = base income * PriceIncomeSeconds * PriceGrowth ^ (L - 1)
+	--     An upgrade pays for itself in about 1.5 minutes at low levels and
+	--     about 4 minutes near the max: usually a better deal than waiting for
+	--     a new egg, but it still costs real money.
 	PetLevel = {
-		MaxLevel = 10,
-		PriceIncomeSeconds = 30, -- level 1->2 costs 30 seconds of the pet's base income
-		Growth = 1.5, -- each further level costs 1.5x more
-		IncomeBonusPerLevel = 0.25, -- +25% of base income per level above 1
+		MaxLevel = 30,
+		IncomeGrowth = 1.12,
+		PriceIncomeSeconds = 10, -- level 1->2 costs 10 seconds of the fish's base income
+		PriceGrowth = 1.16, -- each further level costs 16% more
+		-- Fish grow a little with every level: size = SizeAtLevel1 + SizePerLevel * (L - 1)
+		-- (0.85 at level 1, about 1.2 at level 30, so a max fish still fits its pad).
+		SizeAtLevel1 = 0.85,
+		SizePerLevel = 0.012,
+		GrowSeconds = 0.35, -- how long the grow animation takes after an upgrade
 	},
 }
 
@@ -953,13 +974,19 @@ end
 
 -- A pet's income per second at a given level.
 function Config.PetIncome(baseIncome: number, level: number): number
-	return baseIncome * (1 + (level - 1) * Config.Upgrades.PetLevel.IncomeBonusPerLevel)
+	return baseIncome * Config.Upgrades.PetLevel.IncomeGrowth ^ (level - 1)
+end
+
+-- How big a fish is at a level (1 = the size of its rarity's model).
+function Config.PetSizeAtLevel(level: number): number
+	local petLevel = Config.Upgrades.PetLevel
+	return petLevel.SizeAtLevel1 + petLevel.SizePerLevel * (math.clamp(level, 1, petLevel.MaxLevel) - 1)
 end
 
 -- Price to raise a pet from `level` to `level + 1`.
 function Config.PetUpgradePrice(baseIncome: number, level: number): number
 	local petLevel = Config.Upgrades.PetLevel
-	return math.max(1, math.floor(baseIncome * petLevel.PriceIncomeSeconds * petLevel.Growth ^ (level - 1) + 0.5))
+	return math.max(1, math.floor(baseIncome * petLevel.PriceIncomeSeconds * petLevel.PriceGrowth ^ (level - 1) + 0.5))
 end
 
 -- Money you get for selling a pet: SellValueSeconds of its current income.
@@ -1080,7 +1107,20 @@ end
 ---------------------------------------------------------------------------
 Config.Balance = {
 	PlayerStartFraction = 0.75, -- average egg position (0 = zone start, 1 = deep edge)
+	-- How much room the recommended Speed leaves you: 0.02 = the shark is set
+	-- 2% slower than "exactly a tie", so at the recommended Speed you just
+	-- barely cross the zone's start line, and it catches you shortly after.
+	EscapeSlack = 0.02,
 }
+
+-- How much farther the shark has to swim than you have to run, in the race
+-- to the zone's start line (about 1.23 with the default numbers).
+local function raceRatio(zoneIndex: number): number
+	local zone = Config.Zones[zoneIndex]
+	local playerDistance = zone.Length * Config.Balance.PlayerStartFraction
+	local sharkDistance = zone.Length - Config.Bots.PatrolLineInset - Config.Bots.CatchDistance
+	return math.max(sharkDistance, 1) / playerDistance
+end
 
 -- The walk speed you need to escape zone `zoneIndex`'s shark to the zone's start.
 function Config.RecommendedWalkSpeed(zoneIndex: number): number
@@ -1089,13 +1129,21 @@ function Config.RecommendedWalkSpeed(zoneIndex: number): number
 	if not (zone and shark) then
 		return 0
 	end
-	local playerDistance = zone.Length * Config.Balance.PlayerStartFraction
-	local sharkDistance = zone.Length - Config.Bots.PatrolLineInset - Config.Bots.CatchDistance
-	return shark.Speed * playerDistance / math.max(sharkDistance, 1) + Config.Speed.OutrunMargin
+	return shark.Speed / raceRatio(zoneIndex)
+end
+
+-- Sharks with a RecommendedSpeed get their speed from it: the walk speed at
+-- that Speed stat, times the race ratio, minus the slack. So the number on
+-- the sign is always enough (it never lies).
+for zoneIndex, shark in Config.Sharks do
+	if shark.RecommendedSpeed then
+		local walk = Config.WalkSpeedFromStat(shark.RecommendedSpeed)
+		shark.Speed = math.floor(walk * raceRatio(zoneIndex) * (1 - Config.Balance.EscapeSlack) * 10) / 10
+	end
 end
 
 for zoneIndex, shark in Config.Sharks do
-	local needed = Config.StatNeededForWalkSpeed(Config.RecommendedWalkSpeed(zoneIndex))
+	local needed = shark.RecommendedSpeed or Config.StatNeededForWalkSpeed(Config.RecommendedWalkSpeed(zoneIndex))
 	shark.SpeedStatNeeded = needed
 	local gainPerMinute = treadmillTiers[1].Gain / Config.Treadmill.GainInterval * 60
 	shark.MinutesAtTier1 = needed / gainPerMinute
