@@ -30,7 +30,12 @@ local DEFAULT_RUN_R15 = "rbxassetid://913376220"
 local DEFAULT_RUN_R6 = "rbxassetid://180426354"
 local RUN_ANIMATION_SPEED = 1.4
 
-local MAX_POPUPS = 6 -- never more than this many popups on screen at once
+local MAX_POPUPS = 12 -- never more than this many popups on screen at once
+-- The server adds Speed once per second; the screen shows it as a fast
+-- stream of small popups: STREAM_PARTS popups, STREAM_STEP seconds apart,
+-- each with 1/STREAM_PARTS of the amount (the total stays the same).
+local STREAM_PARTS = 10
+local STREAM_STEP = 0.1
 local POPUP_COLORS = {
 	Color3.fromRGB(255, 230, 60),
 	Color3.fromRGB(90, 255, 140),
@@ -105,27 +110,36 @@ end
 -- "+X Speed" popups
 ---------------------------------------------------------------------------
 
+local visiblePopups: { TextLabel } = {}
+
 local function showPopup(amount: number)
-	-- Too many on screen? Skip this one rather than covering everything.
-	if #popupLayer:GetChildren() >= MAX_POPUPS then
-		return
+	-- Too many on screen? The oldest one makes room (so it never covers
+	-- the screen or lags).
+	while #visiblePopups >= MAX_POPUPS do
+		local oldest = table.remove(visiblePopups, 1)
+		if oldest then
+			oldest:Destroy()
+		end
 	end
 
 	local label = Instance.new("TextLabel")
 	label.AnchorPoint = Vector2.new(0.5, 0.5)
 	-- A random spot in the middle area of the screen (not over the HUD).
 	label.Position = UDim2.fromScale(rng:NextNumber(0.2, 0.8), rng:NextNumber(0.25, 0.65))
-	label.Size = UDim2.fromOffset(220, 56)
+	label.Size = UDim2.fromOffset(120, 32)
 	label.BackgroundTransparency = 1
 	label.Font = Enum.Font.FredokaOne
 	label.TextScaled = true
-	label.Text = `+{Format.short(amount)} Speed`
+	-- Small amounts keep one decimal (2.5), bigger ones are shortened (1.2K).
+	local amountText = if amount < 10 and amount % 1 ~= 0 then string.format("%.1f", amount) else Format.short(amount)
+	label.Text = `+{amountText} Speed`
 	label.TextColor3 = POPUP_COLORS[rng:NextInteger(1, #POPUP_COLORS)]
 	label.Rotation = rng:NextNumber(-12, 12)
 	label.Parent = popupLayer
+	table.insert(visiblePopups, label)
 
 	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 3
+	stroke.Thickness = 2
 	stroke.Color = Color3.fromRGB(30, 30, 50)
 	stroke.Parent = label
 
@@ -134,19 +148,37 @@ local function showPopup(amount: number)
 	scale.Parent = label
 
 	-- 1) Pop in with a bounce.
-	TweenService:Create(scale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+	TweenService:Create(scale, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
 
 	-- 2) Float up and fade out.
-	task.delay(0.35, function()
-		local info = TweenInfo.new(0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	task.delay(0.2, function()
+		if label.Parent == nil then
+			return -- already removed to make room
+		end
+		local info = TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 		TweenService:Create(label, info, {
-			Position = label.Position - UDim2.fromOffset(0, 80),
+			Position = label.Position - UDim2.fromOffset(0, 60),
 			TextTransparency = 1,
 		}):Play()
 		local fade = TweenService:Create(stroke, info, { Transparency = 1 })
 		fade:Play()
 		fade.Completed:Wait()
+		local index = table.find(visiblePopups, label)
+		if index then
+			table.remove(visiblePopups, index)
+		end
 		label:Destroy()
+	end)
+end
+
+-- Show one second's gain as a quick stream of small popups.
+local function streamPopups(amount: number)
+	local part = amount / STREAM_PARTS
+	task.spawn(function()
+		for _ = 1, STREAM_PARTS do
+			showPopup(part)
+			task.wait(STREAM_STEP)
+		end
 	end)
 end
 
@@ -214,7 +246,7 @@ function TrainingController.Start()
 
 	Net.event(Net.Names.SpeedGained).OnClientEvent:Connect(function(amount: unknown)
 		if typeof(amount) == "number" then
-			showPopup(amount)
+			streamPopups(amount)
 		end
 	end)
 end

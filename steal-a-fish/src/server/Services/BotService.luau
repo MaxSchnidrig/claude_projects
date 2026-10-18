@@ -6,9 +6,9 @@
 	its row in Config.Sharks (row 1 = zone 1, and so on).
 
 	What a shark does (checked every Config.Bots.UpdateInterval seconds):
-	  - PATROL: swim slowly to a random point in its home zone, wait, repeat.
-	    If it is outside its home zone (after a chase), it swims back at full
-	    speed first.
+	  - PATROL: swim slowly back and forth along a straight line across the
+	    width of its zone, at the zone's far (deep) end (Bots.PatrolLineInset).
+	    Away from that line (after a chase)? It swims back at full speed first.
 	  - CHASE: ONLY when an egg is stolen from ITS zone (EggService tells us
 	    which zone). Sharks never react just because someone walks by.
 	    It chases that thief across zone borders, at full speed:
@@ -75,6 +75,7 @@ type Bot = {
 	State: BotState,
 	Target: Player?,
 	PatrolPoint: Vector3?,
+	PatrolSide: number, -- which end of the patrol line it swims to next (-1 or 1)
 	PauseUntil: number,
 	Waypoints: { Vector3 }?,
 	WaypointIndex: number,
@@ -91,6 +92,7 @@ BotService.PlayerCaught = Signal.new()
 local SHARK_SIZE = Vector3.new(3, 3, 9) -- invisible body box (nose points to -Z)
 local WAYPOINT_REACHED = 3 -- studs: close enough to move on to the next waypoint
 local PATROL_REACHED = 4
+local LINE_TOLERANCE = 6 -- studs from the patrol line that still count as "on the line"
 
 local rng = Random.new()
 local bots: { Bot } = {}
@@ -130,12 +132,16 @@ local function clampToLeash(bot: Bot, position: Vector3): Vector3
 	)
 end
 
-local function randomPointInZone(zoneIndex: number): Vector3
-	local cf, size = Layout.zoneCFrameAndSize(zoneIndex)
-	local margin = 8
-	local x = rng:NextNumber(-size.X / 2 + margin, size.X / 2 - margin)
-	local z = rng:NextNumber(-size.Z / 2 + margin, size.Z / 2 - margin)
-	return (cf * CFrame.new(x, 0, z)).Position
+-- One end of a zone's patrol line (side -1 = left, 1 = right).
+local function linePoint(zoneIndex: number, side: number): Vector3
+	local halfLine = Config.World.DangerZoneWidth / 2 - Config.Bots.PatrolEdgeMargin
+	return Vector3.new(side * halfLine, Layout.GroundTop, Layout.patrolLineZ(zoneIndex))
+end
+
+-- A random spot on a zone's patrol line (where sharks start).
+local function randomPointOnLine(zoneIndex: number): Vector3
+	local halfLine = Config.World.DangerZoneWidth / 2 - Config.Bots.PatrolEdgeMargin
+	return Vector3.new(rng:NextNumber(-halfLine, halfLine), Layout.GroundTop, Layout.patrolLineZ(zoneIndex))
 end
 
 local function notify(player: Player, message: string, kind: string?)
@@ -149,7 +155,7 @@ end
 local function createBot(zoneIndex: number): Bot
 	local zone = Config.Zones[zoneIndex]
 	local sharkSpeed = Config.Sharks[zoneIndex].Speed
-	local spawnPoint = randomPointInZone(zoneIndex)
+	local spawnPoint = randomPointOnLine(zoneIndex)
 	local hover = Config.Bots.HoverHeight
 
 	local model = Instance.new("Model")
@@ -222,6 +228,7 @@ local function createBot(zoneIndex: number): Bot
 		State = "Patrol",
 		Target = nil,
 		PatrolPoint = nil,
+		PatrolSide = if rng:NextNumber() < 0.5 then -1 else 1,
 		PauseUntil = 0,
 		Waypoints = nil,
 		WaypointIndex = 1,
@@ -371,31 +378,31 @@ local function chaseStep(bot: Bot, now: number)
 	bot.Humanoid:MoveTo(goal)
 end
 
+-- Patrol: swim back and forth along the patrol line at the deep end of the
+-- zone. Away from the line (after a chase)? Hurry back at full speed first.
 local function patrolStep(bot: Bot, now: number)
 	local point = bot.PatrolPoint
 	if point and flatDistance(bot.Root.Position, point) <= PATROL_REACHED then
-		-- Arrived: rest a moment before choosing the next point.
+		-- Reached one end: rest a moment, then swim to the other end.
 		bot.PatrolPoint = nil
+		bot.PatrolSide = -bot.PatrolSide
 		bot.State = "Pause"
 		bot.PauseUntil = now + Config.Bots.PatrolPauseTime
 		return
 	end
 	if not point then
-		point = randomPointInZone(bot.Zone)
+		point = linePoint(bot.Zone, bot.PatrolSide)
 		bot.PatrolPoint = point
 	end
-	-- Outside its home zone (after a chase)? Hurry back at full speed.
-	local near, far = Layout.zoneZRange(bot.Zone)
-	local z = bot.Root.Position.Z
-	local atHome = z <= near and z >= far
-	bot.Humanoid.WalkSpeed = if atHome then bot.Speed * Config.Bots.PatrolSpeedMultiplier else bot.Speed
+	local onLine = math.abs(bot.Root.Position.Z - Layout.patrolLineZ(bot.Zone)) <= LINE_TOLERANCE
+	bot.Humanoid.WalkSpeed = if onLine then bot.Speed * Config.Bots.PatrolSpeedMultiplier else bot.Speed
 	bot.Humanoid:MoveTo(point :: Vector3)
 end
 
 local function updateBot(bot: Bot, now: number)
 	-- Safety net: if a shark somehow falls out of the world, put it back.
 	if bot.Root.Position.Y < Layout.GroundTop - 15 then
-		bot.Model:PivotTo(CFrame.new(randomPointInZone(bot.Zone) + Vector3.new(0, Config.Bots.HoverHeight + 2, 0)))
+		bot.Model:PivotTo(CFrame.new(randomPointOnLine(bot.Zone) + Vector3.new(0, Config.Bots.HoverHeight + 2, 0)))
 		stopChase(bot)
 	end
 

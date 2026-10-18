@@ -150,16 +150,14 @@ local function removeGroundEgg(egg: GroundEgg)
 	end
 end
 
--- A random free spot in a zone, or nil if no good spot was found.
+-- A random free spot in the BACK part of a zone (between its halfway mark and
+-- the shark's patrol line, see Layout.eggSpawnZRange), or nil if no good
+-- spot was found.
 local function randomSpotInZone(zoneIndex: number): Vector3?
-	local cf, size = Layout.zoneCFrameAndSize(zoneIndex)
-	local margin = Config.Eggs.SpawnMargin
-	local halfX = math.max(size.X / 2 - margin, 0)
-	local halfZ = math.max(size.Z / 2 - margin, 0)
+	local halfX = math.max(Config.World.DangerZoneWidth / 2 - Config.Eggs.SpawnMargin, 0)
+	local nearZ, farZ = Layout.eggSpawnZRange(zoneIndex)
 	for _ = 1, 10 do
-		local offset = CFrame.new(rng:NextNumber(-halfX, halfX), 0, rng:NextNumber(-halfZ, halfZ))
-		local spot = (cf * offset).Position
-		local position = Vector3.new(spot.X, restingY(Layout.GroundTop), spot.Z)
+		local position = Vector3.new(rng:NextNumber(-halfX, halfX), restingY(Layout.GroundTop), rng:NextNumber(farZ, nearZ))
 		local tooClose = false
 		for _, other in zoneEggs[zoneIndex] do
 			if (other.Part.Position - position).Magnitude < Config.Eggs.MinSpacing then

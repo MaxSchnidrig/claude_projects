@@ -93,6 +93,22 @@ function Layout.zoneZRange(index: number): (number, number)
 	return near, near - Config.Zones[index].Length
 end
 
+-- Z of the line a zone's shark patrols along (near the zone's deep edge).
+function Layout.patrolLineZ(index: number): number
+	local _, far = Layout.zoneZRange(index)
+	return far + Config.Bots.PatrolLineInset
+end
+
+-- Where a zone's eggs may spawn along Z: from the zone's halfway mark
+-- (Config.Eggs.SpawnFromFraction) back to just before the shark's patrol line.
+-- Returns (nearZ, farZ), nearZ > farZ.
+function Layout.eggSpawnZRange(index: number): (number, number)
+	local near, far = Layout.zoneZRange(index)
+	local startZ = near - (near - far) * Config.Eggs.SpawnFromFraction
+	local endZ = Layout.patrolLineZ(index) + Config.Eggs.SpawnLineGap
+	return startZ, math.min(endZ, startZ)
+end
+
 -- Center (at ground-top height) and size of danger zone `index`.
 function Layout.zoneCFrameAndSize(index: number): (CFrame, Vector3)
 	local near, far = Layout.zoneZRange(index)

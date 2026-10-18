@@ -335,9 +335,9 @@ end
 local function printBalanceTable()
 	local tiers = Config.Treadmill.Tiers
 	local lines = {
-		`[{Config.GameName}] BALANCE TABLE (outrun = walk {Config.Speed.OutrunMargin} faster than the shark; walk speed cap {Config.Speed.MaxWalkSpeed})`,
+		`[{Config.GameName}] BALANCE TABLE (recommended = reach the zone's start before its shark catches you; walk speed cap {Config.Speed.MaxWalkSpeed})`,
 		"  Training time from 0 Speed on each treadmill: Basic / Gold / Diamond / Magma / Rainbow / Cosmic",
-		"  Zone Name                 Shark Speed needed  Fish income      Training time",
+		"  Zone Name                 Shark Walk  Speed needed  Fish income      Training time",
 	}
 	local columns = { 1, 4, 6, 8, 9, 10 }
 	for index, zone in Config.Zones do
@@ -352,10 +352,11 @@ local function printBalanceTable()
 			table.insert(
 				lines,
 				string.format(
-					"  %-4d %-20s %-5s %-13s %-16s %s",
+					"  %-4d %-20s %-5s %-5s %-13s %-16s %s",
 					index,
 					zone.Name,
 					tostring(shark.Speed),
+					string.format("%.1f", Config.RecommendedWalkSpeed(index)),
 					neededText,
 					incomeRange(index),
 					table.concat(times, " / ")

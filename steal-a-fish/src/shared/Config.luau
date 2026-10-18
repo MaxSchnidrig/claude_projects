@@ -56,7 +56,7 @@ export type SharkConfig = {
 	Scars: number, -- 0..3 battle scars on its sides
 	Spikes: boolean, -- spiky ridge along its back
 	-- Filled in automatically at the bottom of this file (don't type these):
-	SpeedStatNeeded: number?, -- Speed stat at which you walk faster than this shark
+	SpeedStatNeeded: number?, -- recommended Speed stat for this zone (see BALANCE TABLE)
 	MinutesAtTier1: number?, -- treadmill minutes on the Basic treadmill to get there
 }
 
@@ -397,7 +397,11 @@ Config.Eggs = {
 	MaxInventory = 7,
 	PlaceHoldDuration = 0, -- seconds to hold E to place an egg on a pad
 	HatchHoldDuration = 1, -- seconds to hold E on a READY egg to hatch it
-	SpawnMargin = 10, -- eggs never spawn closer than this to the zone's walls/edges
+	SpawnMargin = 10, -- eggs never spawn closer than this to the zone's side walls
+	-- Eggs only spawn in the BACK part of their zone: from this far into the
+	-- zone (0.5 = the halfway mark) up to the shark's patrol line.
+	SpawnFromFraction = 0.5,
+	SpawnLineGap = 8, -- ...but never closer than this to the patrol line
 	MinSpacing = 8, -- eggs try not to spawn closer than this to each other
 	Size = Vector3.new(2.4, 3, 2.4), -- placeholder egg size (width, height, depth)
 	-- Carrying: the arms point straight up and the egg rests on the hands.
@@ -458,7 +462,7 @@ Config.Eggs = {
 ---------------------------------------------------------------------------
 -- How deep (studs, along the run) every danger zone is. Walls, egg spawns,
 -- signs, shark areas and the zone names on screen all follow this.
-local ZONE_LENGTH = 117
+local ZONE_LENGTH = 234
 
 local zones: { ZoneConfig } = {
 	{
@@ -564,34 +568,34 @@ Config.Zones = zones
 ---------------------------------------------------------------------------
 local sharks: { SharkConfig } = {
 	-- 1 Shallows: small, friendly-looking grey
-	{ Speed = 14, Count = 1, Color = Color3.fromRGB(125, 155, 180), Belly = Color3.fromRGB(240, 245, 250),
+	{ Speed = 17, Count = 1, Color = Color3.fromRGB(125, 155, 180), Belly = Color3.fromRGB(240, 245, 250),
 		Scale = 0.9, EyeColor = Color3.fromRGB(20, 20, 25), GlowEyes = false, Scars = 0, Spikes = false },
 	-- 2 Coral Reef
-	{ Speed = 20, Count = 1, Color = Color3.fromRGB(95, 125, 165), Belly = Color3.fromRGB(235, 240, 245),
+	{ Speed = 25, Count = 1, Color = Color3.fromRGB(95, 125, 165), Belly = Color3.fromRGB(235, 240, 245),
 		Scale = 1, EyeColor = Color3.fromRGB(20, 20, 25), GlowEyes = false, Scars = 0, Spikes = false },
 	-- 3 Kelp Forest: green camouflage
-	{ Speed = 24, Count = 1, Color = Color3.fromRGB(80, 115, 85), Belly = Color3.fromRGB(215, 225, 190),
+	{ Speed = 30, Count = 1, Color = Color3.fromRGB(80, 115, 85), Belly = Color3.fromRGB(215, 225, 190),
 		Scale = 1.05, EyeColor = Color3.fromRGB(20, 20, 25), GlowEyes = false, Scars = 1, Spikes = false },
 	-- 4 Shipwreck Bay: rusty and scarred
-	{ Speed = 28, Count = 1, Color = Color3.fromRGB(120, 100, 85), Belly = Color3.fromRGB(220, 205, 180),
+	{ Speed = 35, Count = 1, Color = Color3.fromRGB(120, 100, 85), Belly = Color3.fromRGB(220, 205, 180),
 		Scale = 1.1, EyeColor = Color3.fromRGB(20, 20, 25), GlowEyes = false, Scars = 2, Spikes = false },
 	-- 5 Twilight Deep: purple, eyes start glowing
-	{ Speed = 33, Count = 1, Color = Color3.fromRGB(80, 65, 140), Belly = Color3.fromRGB(190, 180, 225),
+	{ Speed = 41, Count = 1, Color = Color3.fromRGB(80, 65, 140), Belly = Color3.fromRGB(190, 180, 225),
 		Scale = 1.15, EyeColor = Color3.fromRGB(255, 240, 120), GlowEyes = true, Scars = 1, Spikes = false },
 	-- 6 Midnight Trench
-	{ Speed = 38, Count = 1, Color = Color3.fromRGB(40, 45, 80), Belly = Color3.fromRGB(150, 160, 200),
+	{ Speed = 47, Count = 1, Color = Color3.fromRGB(40, 45, 80), Belly = Color3.fromRGB(150, 160, 200),
 		Scale = 1.2, EyeColor = Color3.fromRGB(120, 220, 255), GlowEyes = true, Scars = 2, Spikes = false },
 	-- 7 Hydrothermal Vents: charcoal with lava eyes
-	{ Speed = 46, Count = 1, Color = Color3.fromRGB(70, 35, 30), Belly = Color3.fromRGB(150, 100, 80),
+	{ Speed = 57, Count = 1, Color = Color3.fromRGB(70, 35, 30), Belly = Color3.fromRGB(150, 100, 80),
 		Scale = 1.3, EyeColor = Color3.fromRGB(255, 120, 30), GlowEyes = true, Scars = 2, Spikes = true },
 	-- 8 The Abyss
-	{ Speed = 58, Count = 1, Color = Color3.fromRGB(28, 22, 45), Belly = Color3.fromRGB(90, 80, 120),
+	{ Speed = 72, Count = 1, Color = Color3.fromRGB(28, 22, 45), Belly = Color3.fromRGB(90, 80, 120),
 		Scale = 1.4, EyeColor = Color3.fromRGB(255, 40, 60), GlowEyes = true, Scars = 3, Spikes = true },
 	-- 9 Leviathan's Lair
-	{ Speed = 74, Count = 1, Color = Color3.fromRGB(20, 50, 50), Belly = Color3.fromRGB(80, 130, 120),
+	{ Speed = 91, Count = 1, Color = Color3.fromRGB(20, 50, 50), Belly = Color3.fromRGB(80, 130, 120),
 		Scale = 1.5, EyeColor = Color3.fromRGB(80, 255, 160), GlowEyes = true, Scars = 3, Spikes = true },
 	-- 10 The Void Below: biggest and darkest
-	{ Speed = 94, Count = 1, Color = Color3.fromRGB(12, 10, 20), Belly = Color3.fromRGB(60, 40, 90),
+	{ Speed = 116, Count = 1, Color = Color3.fromRGB(12, 10, 20), Belly = Color3.fromRGB(60, 40, 90),
 		Scale = 1.6, EyeColor = Color3.fromRGB(190, 90, 255), GlowEyes = true, Scars = 3, Spikes = true },
 }
 Config.Sharks = sharks
@@ -617,7 +621,11 @@ Config.Bots = {
 	UpdateInterval = 0.1, -- seconds between shark brain updates
 
 	-- Patrolling
-	PatrolPauseTime = 2, -- seconds a shark waits at each patrol point
+	-- Each shark swims back and forth in a straight line across the width of
+	-- its zone, at the far (deep) end. After a chase it swims back to it.
+	PatrolLineInset = 12, -- studs between the patrol line and the zone's deep edge
+	PatrolEdgeMargin = 10, -- the line stops this far from the side walls
+	PatrolPauseTime = 0.6, -- seconds a shark waits at each end of its line
 
 	-- Being caught
 	CatchCooldown = 3, -- seconds a player is ignored by sharks after being caught
@@ -1059,12 +1067,35 @@ end
 
 ---------------------------------------------------------------------------
 -- BALANCE TABLE (calculated, not typed by hand)
--- For every zone: the Speed stat you need to outrun its shark, and how many
--- minutes on the Basic treadmill that takes. Printed to Output when the
--- server starts. Change Config.Sharks speeds or Config.Speed to rebalance.
+-- The real challenge: steal an egg and reach the START (shallow edge) of its
+-- zone before that zone's shark catches you (caught after that, the egg
+-- only drops). The recommended Speed is calculated from that race:
+--   - the shark starts on its patrol line (Bots.PatrolLineInset from the deep edge)
+--   - you start at an average egg spot, Balance.PlayerStartFraction into the zone
+--   - you win if you reach the start edge before the shark gets within
+--     Bots.CatchDistance of it:
+--       your walk speed >= shark speed * (your distance / shark's distance) + OutrunMargin
+-- Printed to Output when the server starts, and shown on the zone signs.
+-- Change Config.Sharks speeds, the zone length or Config.Speed to rebalance.
 ---------------------------------------------------------------------------
-for _, shark in Config.Sharks do
-	local needed = Config.StatNeededForWalkSpeed(shark.Speed + Config.Speed.OutrunMargin)
+Config.Balance = {
+	PlayerStartFraction = 0.75, -- average egg position (0 = zone start, 1 = deep edge)
+}
+
+-- The walk speed you need to escape zone `zoneIndex`'s shark to the zone's start.
+function Config.RecommendedWalkSpeed(zoneIndex: number): number
+	local zone = Config.Zones[zoneIndex]
+	local shark = Config.Sharks[zoneIndex]
+	if not (zone and shark) then
+		return 0
+	end
+	local playerDistance = zone.Length * Config.Balance.PlayerStartFraction
+	local sharkDistance = zone.Length - Config.Bots.PatrolLineInset - Config.Bots.CatchDistance
+	return shark.Speed * playerDistance / math.max(sharkDistance, 1) + Config.Speed.OutrunMargin
+end
+
+for zoneIndex, shark in Config.Sharks do
+	local needed = Config.StatNeededForWalkSpeed(Config.RecommendedWalkSpeed(zoneIndex))
 	shark.SpeedStatNeeded = needed
 	local gainPerMinute = treadmillTiers[1].Gain / Config.Treadmill.GainInterval * 60
 	shark.MinutesAtTier1 = needed / gainPerMinute
