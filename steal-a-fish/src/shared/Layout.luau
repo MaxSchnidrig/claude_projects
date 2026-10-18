@@ -99,13 +99,14 @@ function Layout.patrolLineZ(index: number): number
 	return far + Config.Bots.PatrolLineInset
 end
 
--- Where a zone's eggs may spawn along Z: from the zone's halfway mark
--- (Config.Eggs.SpawnFromFraction) back to just before the shark's patrol line.
+-- Where a zone's eggs may spawn along Z: between Config.Eggs.SpawnFromFraction
+-- and SpawnToFraction of the way into the zone (and before the patrol line).
 -- Returns (nearZ, farZ), nearZ > farZ.
 function Layout.eggSpawnZRange(index: number): (number, number)
 	local near, far = Layout.zoneZRange(index)
-	local startZ = near - (near - far) * Config.Eggs.SpawnFromFraction
-	local endZ = Layout.patrolLineZ(index) + Config.Eggs.SpawnLineGap
+	local length = near - far
+	local startZ = near - length * Config.Eggs.SpawnFromFraction
+	local endZ = math.max(near - length * Config.Eggs.SpawnToFraction, Layout.patrolLineZ(index) + Config.Eggs.SpawnLineGap)
 	return startZ, math.min(endZ, startZ)
 end
 

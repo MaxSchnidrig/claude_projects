@@ -320,6 +320,17 @@ end
 -- Public
 ---------------------------------------------------------------------------
 
+-- Studio tests (!race): give the player a carried egg as if they had just
+-- stolen it (the zone's shark is alerted).
+function EggService.GiveCarriedEgg(player: Player, rarity: string, zoneIndex: number)
+	local root = getRoot(player)
+	if not root or carrying[player] then
+		return
+	end
+	attachCarriedEgg(player, rarity, zoneIndex, root)
+	EggService.EggPickedUp:Fire(player, rarity, zoneIndex)
+end
+
 function EggService.IsCarrying(player: Player): boolean
 	return carrying[player] ~= nil
 end

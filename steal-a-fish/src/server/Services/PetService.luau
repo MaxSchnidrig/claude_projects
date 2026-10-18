@@ -312,14 +312,14 @@ end
 
 local function placePet(plot: Types.PlotInfo, padIndex: number, pet: Config.FishConfig, level: number): Model
 	local pad = plot.Pads[padIndex]
-	local model = FishModel.create(pet, petCFrameOnPad(pad))
-	-- Lift the fish so that even at MAX level (its biggest size) its lowest
-	-- point floats HoverHeight above the pad. It grows around its middle.
-	local maxSize = Config.PetSizeAtLevel(Config.Upgrades.PetLevel.MaxLevel)
-	local lift = Config.PetDisplay.HoverHeight + numberAttribute(model, "Bottom", 1) * maxSize
-	model:PivotTo(model:GetPivot() + Vector3.new(0, lift, 0))
-	model:SetAttribute("PadIndex", padIndex)
+	local padTopCFrame = petCFrameOnPad(pad)
+	local model = FishModel.create(pet, padTopCFrame)
+	-- The fish's pivot is its LOWEST point, so it floats HoverHeight above the
+	-- pad and grows upward (never into the pad) when it levels up.
 	local root = model.PrimaryPart :: BasePart
+	root.PivotOffset = CFrame.new(0, -numberAttribute(model, "Bottom", 1), 0)
+	model:PivotTo(padTopCFrame + Vector3.new(0, Config.PetDisplay.HoverHeight, 0))
+	model:SetAttribute("PadIndex", padIndex)
 	makeLabel(root, pet.Name, Rarity.color(pet.Rarity), "", numberAttribute(model, "Top", 1) + 1.4)
 	applySize(model, Config.PetSizeAtLevel(level))
 	addPetPrompt(root, plot, padIndex, "Upgrade", Enum.KeyCode.E, 0)

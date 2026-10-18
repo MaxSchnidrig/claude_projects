@@ -323,15 +323,16 @@ Config.Tutorial = {
 ---------------------------------------------------------------------------
 Config.Plots = {
 	Count = 8, -- maximum players per server should be <= this
-	Size = Vector3.new(60, 1, 80), -- width (X), thickness (Y), depth (Z) of one plot
-	Gap = 8, -- empty space between two plots
+	-- Big enough for max-level fish (they're about 3x their level-1 size).
+	Size = Vector3.new(76, 1, 110), -- width (X), thickness (Y), depth (Z) of one plot
+	Gap = 10, -- empty space between two plots
 	-- PADS: rectangular pads along the left and right side of the plot. Each
 	-- pad holds ONE thing: an egg (until it hatches) or the pet that hatched
 	-- from it (until it's sold). Pads are unlocked front to back, left/right
 	-- alternating; the plot space upgrade unlocks more.
 	PadsPerSide = 5, -- so 10 pads in total
 	StartingPads = 6, -- unlocked on a brand new plot
-	PadSize = Vector3.new(6, 0.6, 7), -- depth toward the middle (X), height, length along the side (Z)
+	PadSize = Vector3.new(10, 0.6, 11), -- depth toward the middle (X), height, length along the side (Z)
 	PadColor = Color3.fromRGB(150, 150, 160),
 	SafeMargin = 3, -- the safe area reaches this many studs past the plot's edges
 	-- One floor color per plot (Plot 1 gets the first color, and so on).
@@ -405,8 +406,12 @@ Config.Eggs = {
 	SpawnMargin = 10, -- eggs never spawn closer than this to the zone's side walls
 	-- Eggs only spawn in the BACK part of their zone: from this far into the
 	-- zone (0.5 = the halfway mark) up to the shark's patrol line.
-	SpawnFromFraction = 0.5,
-	SpawnLineGap = 8, -- ...but never closer than this to the patrol line
+	-- Eggs spawn in a band around the "typical" egg spot the balance math
+	-- uses (Balance.PlayerStartFraction = 0.75): from 65% to 85% of the way
+	-- into their zone (and never closer than SpawnLineGap to the patrol line).
+	SpawnFromFraction = 0.65,
+	SpawnToFraction = 0.85,
+	SpawnLineGap = 8,
 	MinSpacing = 8, -- eggs try not to spawn closer than this to each other
 	Size = Vector3.new(2.4, 3, 2.4), -- placeholder egg size (width, height, depth)
 	-- Carrying: the arms point straight up and the egg rests on the hands.
@@ -619,10 +624,15 @@ Config.Bots = {
 	-- They follow across zone borders until the thief reaches the safe zone,
 	-- drops the egg or dies, then swim back to their own zone.
 	SafeLineMargin = 3, -- sharks stop this many studs before the safe zone starts
-	CatchDistance = 5.5, -- distance (center to center) that counts as "caught"
-	DirectChaseDistance = 20, -- closer than this: skip pathfinding, swim straight at them
-	PathRecomputeInterval = 0.5, -- seconds between path recalculations per shark
-	MaxPathComputesPerSecond = 10, -- pathfinding budget shared by ALL sharks
+	-- Distance (center to center) that counts as "caught", for a shark of
+	-- Scale 1. Bigger sharks (Config.Sharks[...].Scale) catch from farther.
+	CatchDistance = 6,
+	-- Sharks swim straight at the thief, aiming at where the thief will be
+	-- in up to this many seconds (so they cut you off instead of trailing).
+	MaxLeadTime = 1,
+	-- Studio only: print the real shark/player speeds and the race result to
+	-- Output during every chase (to compare with the BALANCE TABLE).
+	DebugChaseLog = true,
 	UpdateInterval = 0.1, -- seconds between shark brain updates
 
 	-- Patrolling
@@ -960,9 +970,9 @@ Config.Upgrades = {
 		PriceIncomeSeconds = 10, -- level 1->2 costs 10 seconds of the fish's base income
 		PriceGrowth = 1.16, -- each further level costs 16% more
 		-- Fish grow a little with every level: size = SizeAtLevel1 + SizePerLevel * (L - 1)
-		-- (0.85 at level 1, about 1.2 at level 30, so a max fish still fits its pad).
-		SizeAtLevel1 = 0.85,
-		SizePerLevel = 0.012,
+		-- Pads and plots are big enough for max-level fish (Config.Plots).
+		SizeAtLevel1 = 0.7,
+		SizePerLevel = 0.0483, -- level 30 = 0.7 + 29 * 0.0483 = 2.1 (3x level 1)
 		GrowSeconds = 0.35, -- how long the grow animation takes after an upgrade
 	},
 }
@@ -1107,18 +1117,27 @@ end
 ---------------------------------------------------------------------------
 Config.Balance = {
 	PlayerStartFraction = 0.75, -- average egg position (0 = zone start, 1 = deep edge)
-	-- How much room the recommended Speed leaves you: 0.02 = the shark is set
-	-- 2% slower than "exactly a tie", so at the recommended Speed you just
+	-- How much room the recommended Speed leaves you: 0.01 = the shark is set
+	-- 1% slower than "exactly a tie", so at the recommended Speed you just
 	-- barely cross the zone's start line, and it catches you shortly after.
-	EscapeSlack = 0.02,
+	-- Note: 80% of a Speed STAT is only 2-7% less WALK speed (walk speed grows
+	-- slowly with the stat), so this has to be small for 80% to get caught.
+	EscapeSlack = 0.01,
+	-- On average the shark is this far to the side of the egg when the egg is
+	-- stolen (it patrols the whole width): 2/3 of half the patrol line.
+	AverageSideOffset = (Config.World.DangerZoneWidth / 2 - Config.Bots.PatrolEdgeMargin) * 2 / 3,
 }
 
+
 -- How much farther the shark has to swim than you have to run, in the race
--- to the zone's start line (about 1.23 with the default numbers).
+-- to the zone's start line.
 local function raceRatio(zoneIndex: number): number
 	local zone = Config.Zones[zoneIndex]
+	local shark = Config.Sharks[zoneIndex]
 	local playerDistance = zone.Length * Config.Balance.PlayerStartFraction
-	local sharkDistance = zone.Length - Config.Bots.PatrolLineInset - Config.Bots.CatchDistance
+	local deep = zone.Length - Config.Bots.PatrolLineInset
+	local side = Config.Balance.AverageSideOffset
+	local sharkDistance = math.sqrt(deep * deep + side * side) - Config.Bots.CatchDistance * shark.Scale
 	return math.max(sharkDistance, 1) / playerDistance
 end
 

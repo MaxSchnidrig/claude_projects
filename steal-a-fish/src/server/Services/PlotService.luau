@@ -191,7 +191,7 @@ local function buildPlot(index: number, parent: Instance): PlotInfo
 	local treadmill = buildTreadmill(treadmillOrigin, model, 1)
 
 	-- Upgrade board next to the treadmill, facing the middle of the plot.
-	local boardCFrame = cf * CFrame.new(13, 0, -27) * CFrame.Angles(0, math.pi / 2, 0)
+	local boardCFrame = cf * CFrame.new(size.X / 2 - 25, 0, -size.Z / 2 + 13) * CFrame.Angles(0, math.pi / 2, 0)
 	Build.part({
 		Name = "UpgradePost",
 		Size = Vector3.new(1, 3, 1),
