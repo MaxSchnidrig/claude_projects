@@ -8,6 +8,10 @@
 	  - Every fish you hatch is "found" (saved). A newly found fish has a
 	    reward to claim: minutes of YOUR current income + minutes of YOUR
 	    treadmill, so it always feels big (Config.IndexFishReward).
+	  - LOCKED IN: a reward's value is calculated the moment the fish is
+	    found (or the zone is completed) and saved ("Locked"), so waiting to
+	    claim later never gives more. Fish found before this existed get
+	    their value locked when the player joins.
 	  - Finding all 8 fish of a zone unlocks a zone reward: lots of cash and
 	    Speed, a free egg from that zone, and a PERMANENT income bonus
 	    (+10% per completed zone, Config.IndexZoneReward). The bonus is an
@@ -55,13 +59,21 @@ export type SavedRewards = {
 	Found: { string }, -- names of every fish ever hatched
 	Claimed: { string }, -- fish whose Index reward was claimed
 	ZonesClaimed: { number }, -- zones whose completion reward was claimed
+	Locked: { SavedLock }, -- unclaimed rewards, value locked in when earned
 	LastDailyGift: number, -- os.time() of the last daily gift (0 = never)
 }
+
+-- Key = the fish's Id, or "Zone3" for zone 3's completion reward.
+-- EggCash = cash given instead of the zone egg if the hotbar is full.
+export type SavedLock = { Key: string, Cash: number, Speed: number, EggCash: number }
+
+type Lock = { Cash: number, Speed: number, EggCash: number }
 
 type State = {
 	Found: { [string]: boolean },
 	Claimed: { [string]: boolean },
 	ZonesClaimed: { [number]: boolean },
+	Locked: { [string]: Lock },
 	LastDailyGift: number,
 }
 
@@ -108,10 +120,15 @@ local function sync(player: Player)
 	for zoneIndex in state.ZonesClaimed do
 		table.insert(zones, zoneIndex)
 	end
+	local locked: { [string]: { Cash: number, Speed: number } } = {}
+	for key, lock in state.Locked do
+		locked[key] = { Cash = lock.Cash, Speed = lock.Speed }
+	end
 	Net.event(Net.Names.IndexSync):FireClient(player, {
 		Found = keys(state.Found),
 		Claimed = keys(state.Claimed),
 		ZonesClaimed = zones,
+		Locked = locked,
 	})
 end
 
@@ -122,19 +139,6 @@ end
 ---------------------------------------------------------------------------
 -- Index
 ---------------------------------------------------------------------------
-
-local function discover(player: Player, fishKey: string, quiet: boolean?)
-	local state = states[player]
-	local fish = Fish.byName(fishKey)
-	if not (state and fish) or state.Found[fish.Id] then
-		return
-	end
-	state.Found[fish.Id] = true
-	if not quiet then
-		notify(player, `📖 New fish in your Index: {fish.Name}! Open the Index to claim a reward.`, "epic")
-		sync(player)
-	end
-end
 
 local function zoneComplete(state: State, zoneIndex: number): boolean
 	local list = Fish.inZone(zoneIndex)
@@ -181,30 +185,77 @@ local function applyIndexBonus(player: Player, state: State)
 	player:SetAttribute("IndexBonus", Config.IndexIncomeMultiplier(zones) - 1)
 end
 
+local function zoneKey(zoneIndex: number): string
+	return `Zone{zoneIndex}`
+end
+
+-- Lock in the value of every reward that is earned but not claimed and has
+-- no value yet, using the player's progress RIGHT NOW.
+local function lockRewards(player: Player, state: State)
+	local income, speedPerSecond, speedStat = rates(player)
+	for fishId in state.Found do
+		local fish = Fish.byId(fishId)
+		if fish and not state.Claimed[fishId] and not state.Locked[fishId] then
+			local cash, speed = Config.IndexFishReward(fish, income, speedPerSecond, speedStat)
+			state.Locked[fishId] = { Cash = cash, Speed = speed, EggCash = 0 }
+		end
+	end
+	for zoneIndex in Config.Zones do
+		local key = zoneKey(zoneIndex)
+		if not state.ZonesClaimed[zoneIndex] and not state.Locked[key] and zoneComplete(state, zoneIndex) then
+			local cash, speed = Config.IndexZoneReward(zoneIndex, income, speedPerSecond, speedStat)
+			local eggCash = math.floor(income * Config.Index.FullHotbarEggCashMinutes * 60 + 0.5)
+			state.Locked[key] = { Cash = cash, Speed = speed, EggCash = eggCash }
+		end
+	end
+end
+
+local function discover(player: Player, fishKey: string, quiet: boolean?)
+	local state = states[player]
+	local fish = Fish.byName(fishKey)
+	if not (state and fish) or state.Found[fish.Id] then
+		return
+	end
+	state.Found[fish.Id] = true
+	lockRewards(player, state)
+	if not quiet then
+		notify(player, `📖 New fish in your Index: {fish.Name}! Open the Index to claim a reward.`, "epic")
+		sync(player)
+	end
+end
+
 -- Returns (claimed?, cash, speed).
-local function claimFish(player: Player, state: State, fishKey: string, income: number, speedPerSecond: number, speedStat: number): (boolean, number, number)
+local function claimFish(player: Player, state: State, fishKey: string): (boolean, number, number)
 	local fish = Fish.byName(fishKey)
 	if not (fish and state.Found[fish.Id]) or state.Claimed[fish.Id] then
 		return false, 0, 0
 	end
+	lockRewards(player, state) -- (only fills in a value if one is missing)
+	local lock = state.Locked[fish.Id]
 	state.Claimed[fish.Id] = true
-	local cash, speed = Config.IndexFishReward(fish, income, speedPerSecond, speedStat)
+	state.Locked[fish.Id] = nil
+	local cash, speed = lock.Cash, lock.Speed
 	pay(player, cash, speed)
 	return true, cash, speed
 end
 
 -- Returns (claimed?, cash, speed, egg rarity or nil if the hotbar was full).
-local function claimZone(player: Player, state: State, zoneIndex: number, income: number, speedPerSecond: number, speedStat: number): (boolean, number, number, string?)
+local function claimZone(player: Player, state: State, zoneIndex: number): (boolean, number, number, string?)
 	if not Config.Zones[zoneIndex] or state.ZonesClaimed[zoneIndex] or not zoneComplete(state, zoneIndex) then
 		return false, 0, 0, nil
 	end
+	lockRewards(player, state) -- (only fills in a value if one is missing)
+	local key = zoneKey(zoneIndex)
+	local lock = state.Locked[key]
 	state.ZonesClaimed[zoneIndex] = true
-	local cash, speed, eggRarity = Config.IndexZoneReward(zoneIndex, income, speedPerSecond, speedStat)
+	state.Locked[key] = nil
+	local cash, speed = lock.Cash, lock.Speed
+	local eggRarity = Config.IndexZoneEggRarity(zoneIndex)
 	local egg: string? = eggRarity
 	if not EggService.AddToInventory(player, eggRarity, zoneIndex) then
 		-- Hotbar full: extra cash instead of the egg.
 		egg = nil
-		cash += math.floor(income * Config.Index.FullHotbarEggCashMinutes * 60 + 0.5)
+		cash += lock.EggCash
 		notify(player, "Your hotbar is full, so you got cash instead of the egg.", "warning")
 	end
 	pay(player, cash, speed)
@@ -232,17 +283,15 @@ local function onClaim(player: Player, kind: unknown, value: unknown)
 		sync(player)
 		return
 	end
-	-- Measure progress once, BEFORE paying, so claim order doesn't matter.
-	local income, speedPerSecond, speedStat = rates(player)
 	if kind == "Fish" and typeof(value) == "string" then
-		local ok, cash, speed = claimFish(player, state, value, income, speedPerSecond, speedStat)
+		local ok, cash, speed = claimFish(player, state, value)
 		if ok then
 			local fish = Fish.byName(value) :: Config.FishConfig
 			notify(player, `📖 {fish.Name}: +${Format.short(cash)} and +⚡{Format.short(speed)}`, "purchase")
 			celebrate(player, cash, speed, {}, 0)
 		end
 	elseif kind == "Zone" and typeof(value) == "number" then
-		local ok, cash, speed, egg = claimZone(player, state, math.floor(value), income, speedPerSecond, speedStat)
+		local ok, cash, speed, egg = claimZone(player, state, math.floor(value))
 		if ok then
 			celebrate(player, cash, speed, if egg then { egg } else {}, 1)
 		end
@@ -255,7 +304,7 @@ local function onClaim(player: Player, kind: unknown, value: unknown)
 			end
 		end
 		for _, name in fishKeys do
-			local ok, cash, speed = claimFish(player, state, name, income, speedPerSecond, speedStat)
+			local ok, cash, speed = claimFish(player, state, name)
 			if ok then
 				totalCash += cash
 				totalSpeed += speed
@@ -268,7 +317,7 @@ local function onClaim(player: Player, kind: unknown, value: unknown)
 		local eggs: { string } = {}
 		local zonesDone = 0
 		for zoneIndex in Config.Zones do
-			local ok, cash, speed, egg = claimZone(player, state, zoneIndex, income, speedPerSecond, speedStat)
+			local ok, cash, speed, egg = claimZone(player, state, zoneIndex)
 			if ok then
 				totalCash += cash
 				totalSpeed += speed
@@ -385,16 +434,21 @@ end
 function RewardService.Export(player: Player): SavedRewards
 	local state = states[player]
 	if not state then
-		return { Found = {}, Claimed = {}, ZonesClaimed = {}, LastDailyGift = 0 }
+		return { Found = {}, Claimed = {}, ZonesClaimed = {}, Locked = {}, LastDailyGift = 0 }
 	end
 	local zones: { number } = {}
 	for zoneIndex in state.ZonesClaimed do
 		table.insert(zones, zoneIndex)
 	end
+	local locked: { SavedLock } = {}
+	for key, lock in state.Locked do
+		table.insert(locked, { Key = key, Cash = lock.Cash, Speed = lock.Speed, EggCash = lock.EggCash })
+	end
 	return {
 		Found = keys(state.Found),
 		Claimed = keys(state.Claimed),
 		ZonesClaimed = zones,
+		Locked = locked,
 		LastDailyGift = state.LastDailyGift,
 	}
 end
@@ -408,17 +462,27 @@ function RewardService.Import(player: Player, saved: SavedRewards)
 		Found = setKeys(saved.Found),
 		Claimed = setKeys(saved.Claimed),
 		ZonesClaimed = zones,
+		Locked = {},
 		LastDailyGift = saved.LastDailyGift,
 	}
+	for _, entry in saved.Locked do
+		-- Fish keys may be an old name: store them by Id.
+		local fish = Fish.byName(entry.Key)
+		local key = if fish then fish.Id else entry.Key
+		state.Locked[key] = { Cash = entry.Cash, Speed = entry.Speed, EggCash = entry.EggCash }
+	end
 	states[player] = state
+	-- The income bonus first, so values locked below include it.
+	applyIndexBonus(player, state)
 	-- Fish already on the pads count as found (older saves had no Index).
 	for _, entry in PetService.ExportPads(player) do
 		if entry.Kind == "Pet" and entry.Name then
 			discover(player, entry.Name, true)
 		end
 	end
+	-- Rewards earned before values were locked in get locked now.
+	lockRewards(player, state)
 	updateGiftAttribute(player, state)
-	applyIndexBonus(player, state)
 	sync(player)
 end
 
@@ -478,7 +542,9 @@ function RewardService.Start()
 		if state then
 			state.Claimed = {}
 			state.ZonesClaimed = {}
+			state.Locked = {}
 			applyIndexBonus(player, state)
+			lockRewards(player, state)
 			sync(player)
 			notify(player, "[Studio] Index rewards can be claimed again.", "info")
 		end

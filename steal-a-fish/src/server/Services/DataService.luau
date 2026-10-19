@@ -136,7 +136,7 @@ local function defaultData(): SaveData
 		Pads = {},
 		EggInventory = {},
 		ProcessedPurchases = {},
-		Rewards = { Found = {}, Claimed = {}, ZonesClaimed = {}, LastDailyGift = 0 },
+		Rewards = { Found = {}, Claimed = {}, ZonesClaimed = {}, Locked = {}, LastDailyGift = 0 },
 		TutorialDone = false,
 		LastSave = 0,
 		Lock = nil,
@@ -215,6 +215,19 @@ local function reconcile(raw: unknown): SaveData
 			for _, zoneIndex in rewards.ZonesClaimed do
 				if typeof(zoneIndex) == "number" then
 					table.insert(data.Rewards.ZonesClaimed, zoneIndex)
+				end
+			end
+		end
+		if typeof(rewards.Locked) == "table" then
+			-- Index rewards locked in when the fish was found / the zone completed.
+			for _, entry in rewards.Locked do
+				if typeof(entry) == "table" and typeof(entry.Key) == "string" then
+					table.insert(data.Rewards.Locked, {
+						Key = entry.Key,
+						Cash = cleanNumber(entry.Cash, 0),
+						Speed = cleanNumber(entry.Speed, 0),
+						EggCash = cleanNumber(entry.EggCash, 0),
+					})
 				end
 			end
 		end

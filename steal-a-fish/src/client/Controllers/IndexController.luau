@@ -13,8 +13,10 @@
 	  - A newly found fish has a reward (cash + Speed) to claim; a green dot
 	    marks it. Finding all 8 fish of a zone unlocks the zone reward (cash,
 	    Speed, a free egg and a permanent income bonus).
-	  - Rewards grow with your progress (minutes of YOUR income and treadmill),
-	    so the shown amounts update every second while the window is open.
+	  - Rewards grow with your progress (minutes of YOUR income and treadmill).
+	    A reward's value is LOCKED IN the moment you find the fish / complete
+	    the zone (the server sends it as "Locked"), so waiting doesn't pay
+	    more. Rewards not earned yet show a live "if found now" estimate.
 	  - Claiming plays a coin burst, a sound and a big popup ("IndexRewarded").
 	  - The red badge on the Index button = how many rewards are waiting
 	    (new fish + completed zones). It disappears when everything is
@@ -50,9 +52,15 @@ local POPUP_HOLD = 1.8 -- seconds the claim popup stays before floating away
 
 local player = Players.LocalPlayer
 
-type IndexData = { Found: { [string]: boolean }, Claimed: { [string]: boolean }, ZonesClaimed: { [number]: boolean } }
+type LockedReward = { Cash: number, Speed: number }
+type IndexData = {
+	Found: { [string]: boolean },
+	Claimed: { [string]: boolean },
+	ZonesClaimed: { [number]: boolean },
+	Locked: { [string]: LockedReward }, -- fish Id or "Zone3" -> locked-in value
+}
 
-local data: IndexData = { Found = {}, Claimed = {}, ZonesClaimed = {} }
+local data: IndexData = { Found = {}, Claimed = {}, ZonesClaimed = {}, Locked = {} }
 local window: Kit.Window
 local zoneButtons: { [number]: TextButton } = {}
 local grid: Frame
@@ -135,20 +143,34 @@ local function updateRewards()
 	local income, speedPerSecond, speedStat = rates()
 	local fish = selected
 	if fish then
-		local cash, speed = Config.IndexFishReward(fish, income, speedPerSecond, speedStat)
 		local found = data.Found[fish.Id] == true
 		local claimable = found and not data.Claimed[fish.Id]
-		previewReward.Text = rewardText(cash, speed)
+		local locked = data.Locked[fish.Id]
+		local cash, speed
+		if locked then
+			cash, speed = locked.Cash, locked.Speed
+		else
+			cash, speed = Config.IndexFishReward(fish, income, speedPerSecond, speedStat)
+		end
+		previewReward.Text = if locked or claimable
+			then rewardText(cash, speed)
+			elseif found then "Claimed ✓"
+			else `If found now: {rewardText(cash, speed)}`
 		previewReward.TextColor3 = if claimable then GOLD else Kit.Colors.SubText
 		Kit.setText(previewClaim, if claimable then `CLAIM  +${Format.short(cash)}  +⚡{Format.short(speed)}` elseif found then "Claimed ✓" else "")
 	end
 	local cash, speed, egg = Config.IndexZoneReward(currentZone, income, speedPerSecond, speedStat)
+	local zoneLocked = data.Locked[`Zone{currentZone}`]
+	if zoneLocked then
+		cash, speed = zoneLocked.Cash, zoneLocked.Speed
+	end
 	local bonus = bonusPercent(Config.Index.ZoneIncomeBonus)
 	if data.ZonesClaimed[currentZone] then
 		zoneRewardText.Text = `✓ Zone complete: +{bonus}% income forever`
 		zoneRewardText.TextColor3 = Kit.Colors.SubText
 	else
-		zoneRewardText.Text = `Complete: {rewardText(cash, speed, egg)}   +{bonus}% income forever`
+		local prefix = if zoneLocked then "Reward" else "Complete now"
+		zoneRewardText.Text = `{prefix}: {rewardText(cash, speed, egg)}   +{bonus}% income forever`
 		zoneRewardText.TextColor3 = if zoneClaimable(currentZone) then GOLD else Kit.Colors.SubText
 	end
 	local total = player:GetAttribute("IndexBonus")
@@ -560,7 +582,7 @@ function IndexController.Start()
 			return
 		end
 		local raw = incoming :: any
-		local newData: IndexData = { Found = {}, Claimed = {}, ZonesClaimed = {} }
+		local newData: IndexData = { Found = {}, Claimed = {}, ZonesClaimed = {}, Locked = {} }
 		for _, field in { "Found", "Claimed" } do
 			if typeof(raw[field]) == "table" then
 				for _, name in raw[field] do
@@ -574,6 +596,13 @@ function IndexController.Start()
 			for _, zoneIndex in raw.ZonesClaimed do
 				if typeof(zoneIndex) == "number" then
 					newData.ZonesClaimed[zoneIndex] = true
+				end
+			end
+		end
+		if typeof(raw.Locked) == "table" then
+			for key, value in raw.Locked do
+				if typeof(key) == "string" and typeof(value) == "table" and typeof(value.Cash) == "number" and typeof(value.Speed) == "number" then
+					newData.Locked[key] = { Cash = value.Cash, Speed = value.Speed }
 				end
 			end
 		end
