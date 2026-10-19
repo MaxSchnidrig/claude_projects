@@ -7,7 +7,7 @@
 	only then takes the money and applies the upgrade.
 
 	Upgrades are bought IN THE WORLD with prompts (PlotService fires
-	UpgradePromptTriggered): "Unlock Pad" on your next locked pad and
+	UpgradePromptTriggered): "Upgrade Plot" on the board in front of your plot and
 	"Upgrade Treadmill" on the board next to your treadmill. The Fish panel
 	can also ask with the "BuyUpgrade" remote:
 	  - "Pads": plot space, unlocks the next pad on your plot.
@@ -70,25 +70,24 @@ end
 -- Plot space (pads)
 ---------------------------------------------------------------------------
 
-local function maxPads(): number
-	return Config.Plots.PadsPerSide * 2
+-- padsBought[player] = the plot LEVEL (it started as "pads bought", and the
+-- first 4 levels still are exactly that, so old saves keep their pads).
+local function plotLevel(player: Player): number
+	return math.clamp(padsBought[player] or 0, 0, Config.MaxPlotLevel())
 end
 
-local function unlockedPads(player: Player): number
-	return math.min(Config.Plots.StartingPads + (padsBought[player] or 0), maxPads())
-end
-
-local function applyPads(player: Player)
-	local count = unlockedPads(player)
-	player:SetAttribute(Constants.Attributes.PadsUnlocked, count)
+local function applyPads(player: Player, animate: boolean?)
+	local level = plotLevel(player)
+	player:SetAttribute(Constants.Attributes.PadsUnlocked, Config.PadsAtPlotLevel(level))
+	player:SetAttribute("PlotLevel", level)
 	local plot = PlotService.GetPlot(player)
 	if plot then
-		PlotService.SetUnlockedPads(plot, count)
+		PlotService.SetPlotLevel(plot, level, animate)
 	end
 end
 
 function UpgradeService.GetPadsBought(player: Player): number
-	return padsBought[player] or 0
+	return plotLevel(player)
 end
 
 function UpgradeService.SetPadsBought(player: Player, count: number)
@@ -96,16 +95,22 @@ function UpgradeService.SetPadsBought(player: Player, count: number)
 	applyPads(player)
 end
 
-local function buyPad(player: Player)
-	if unlockedPads(player) >= maxPads() then
-		notify(player, "Your plot already has every pad!", "warning")
+-- Buy the next plot level: +1 pad, or the second floor.
+local function buyPlotLevel(player: Player)
+	local level = plotLevel(player)
+	local price = Config.NextPlotPrice(level)
+	if not price then
+		notify(player, "Your plot is already at MAX level!", "warning")
 		return
 	end
-	local price = Config.UpgradePrice(Config.Upgrades.Pads.Base, Config.Upgrades.Pads.Growth, padsBought[player] or 0)
 	if pay(player, price) then
-		padsBought[player] = (padsBought[player] or 0) + 1
-		applyPads(player)
-		notify(player, `🟩 New pad unlocked! ({unlockedPads(player)}/{maxPads()})`, "purchase")
+		padsBought[player] = level + 1
+		applyPads(player, true)
+		if level + 1 == Config.Upgrades.SecondFloorLevel then
+			notify(player, "🏗 Second floor built! Upgrade again for pads upstairs.", "purchase")
+		else
+			notify(player, `🟩 New pad! ({Config.PadsAtPlotLevel(level + 1)}/{Config.MaxPads()})`, "purchase")
+		end
 	end
 end
 
@@ -194,8 +199,8 @@ function UpgradeService.Start()
 		if not PlotService.GetPlot(player) then
 			return
 		end
-		if upgradeName == "Pads" then
-			buyPad(player)
+		if upgradeName == "Pads" or upgradeName == "Plot" then
+			buyPlotLevel(player)
 		elseif upgradeName == "Treadmill" then
 			buyTreadmill(player)
 		end
@@ -226,18 +231,18 @@ function UpgradeService.Start()
 		end
 		local character = player.Character
 		local root = character and character:FindFirstChild("HumanoidRootPart")
-		local target: BasePart? = if kind == "Treadmill" then plot.UpgradeSign else plot.Pads[plot.UnlockedPads + 1]
+		local target: BasePart? = if kind == "Treadmill" then plot.UpgradeSign else plot.PlotSign
 		if not (root and root:IsA("BasePart") and target) or (root.Position - target.Position).Magnitude > 16 then
 			return
 		end
-		if kind == "Pad" then
-			buyPad(player)
+		if kind == "Plot" then
+			buyPlotLevel(player)
 		elseif kind == "Treadmill" then
 			buyTreadmill(player)
 		end
 	end)
 
-	-- A (new) plot gets the owner's number of pads.
+	-- A (new) plot gets the owner's plot level.
 	PlotService.PlotAssigned:Connect(function(player: Player)
 		applyPads(player)
 	end)

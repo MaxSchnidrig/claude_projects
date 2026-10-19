@@ -36,6 +36,7 @@ export type PartProps = {
 	CanQuery: boolean?, -- default true
 	Studs: boolean?, -- default true for blocks, false for cylinders
 	StudFaces: { Enum.NormalId }?, -- default: every face except the bottom
+	StudTransparency: number?, -- default: Config.Visuals.StudTransparency
 }
 
 local Build = {}
@@ -51,7 +52,7 @@ local STUD_TEXTURE_NAME = "Studs"
 
 -- Add stud textures to `part`. The studs follow the part's color, even if the
 -- color changes later (for example, a plot floor that brightens when owned).
-function Build.addStuds(part: BasePart, faces: { Enum.NormalId }?)
+function Build.addStuds(part: BasePart, faces: { Enum.NormalId }?, transparency: number?)
 	local visuals = Config.Visuals
 	if not visuals.StudsEnabled then
 		return
@@ -64,7 +65,7 @@ function Build.addStuds(part: BasePart, faces: { Enum.NormalId }?)
 		texture.Face = face
 		texture.StudsPerTileU = visuals.StudsPerTile
 		texture.StudsPerTileV = visuals.StudsPerTile
-		texture.Transparency = visuals.StudTransparency
+		texture.Transparency = transparency or visuals.StudTransparency
 		texture.Color3 = part.Color
 		texture.Parent = part
 	end
@@ -111,7 +112,7 @@ function Build.part(props: PartProps): Part
 	part.Size = props.Size
 	part.CFrame = props.CFrame
 	if wantsStuds(props, true) then
-		Build.addStuds(part, props.StudFaces)
+		Build.addStuds(part, props.StudFaces, props.StudTransparency)
 	end
 	part.Parent = props.Parent
 	return part
@@ -127,7 +128,7 @@ function Build.cylinder(props: PartProps): Part
 	part.Size = Vector3.new(props.Size.Y, props.Size.X, props.Size.Z)
 	part.CFrame = props.CFrame * CFrame.Angles(0, 0, math.rad(90))
 	if wantsStuds(props, false) then
-		Build.addStuds(part, props.StudFaces)
+		Build.addStuds(part, props.StudFaces, props.StudTransparency)
 	end
 	part.Parent = props.Parent
 	return part

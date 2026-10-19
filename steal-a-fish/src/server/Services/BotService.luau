@@ -257,6 +257,8 @@ end
 local function startChase(bot: Bot, player: Player)
 	bot.State = "Chase"
 	bot.Target = player
+	-- The thief's screen shows the "RUN!!" effect while a shark chases them.
+	bot.Model:SetAttribute("ChasingUserId", player.UserId)
 	bot.ChaseStartedAt = os.clock()
 	bot.ReactionLogged = false
 	bot.NextLogAt = 0
@@ -281,6 +283,7 @@ end
 local function stopChase(bot: Bot)
 	bot.State = "Patrol"
 	bot.Target = nil
+	bot.Model:SetAttribute("ChasingUserId", nil)
 	bot.PatrolPoint = nil
 	bot.Humanoid.WalkSpeed = bot.Speed * Config.Bots.PatrolSpeedMultiplier
 	bot.Indicator.Enabled = false

@@ -3,8 +3,8 @@
 	FishController
 	==============
 	The 🐟 Fish panel on the right side of the screen:
-	  - Top: "Pads 5/8 used" and the price of the next pad (with an Unlock
-	    button; you can also unlock pads with the prompt on the pad itself).
+	  - Top: "Pads 5/8 used" and the next plot upgrade with its price (with a
+	    button; you can also use the "Upgrade Plot" board in front of your plot).
 	  - A list of all your fish: picture, name in its rarity color, zone,
 	    level and $/s, with Upgrade and Sell buttons. Sell needs a second
 	    click ("Sure?") to avoid accidents.
@@ -220,16 +220,17 @@ function refresh()
 	end
 	local money = attributeNumber(Constants.Attributes.Money, 0)
 
-	-- Pads summary and the next pad's price.
+	-- Pads summary and the next plot upgrade.
 	local unlocked = attributeNumber(Constants.Attributes.PadsUnlocked, Config.Plots.StartingPads)
-	local maxPads = Config.Plots.PadsPerSide * 2
+	local level = attributeNumber("PlotLevel", 0)
 	padsText.Text = `Pads {used}/{unlocked} used`
-	if unlocked >= maxPads then
-		nextPadText.Text = "All pads unlocked!"
+	local price = Config.NextPlotPrice(level)
+	if not price then
+		nextPadText.Text = "Plot is MAX level!"
 		unlockButton.Visible = false
 	else
-		local price = Config.UpgradePrice(Config.Upgrades.Pads.Base, Config.Upgrades.Pads.Growth, unlocked - Config.Plots.StartingPads)
-		nextPadText.Text = `Next pad: ${Format.short(price)}`
+		local what = if level + 1 == Config.Upgrades.SecondFloorLevel then "2nd floor" else "+1 pad"
+		nextPadText.Text = `Plot Lv {level + 1} ({what}): ${Format.short(price)}`
 		unlockButton.Visible = true
 		Kit.setColor(unlockButton, if money >= price then Kit.Colors.Green else Kit.Colors.Grey)
 	end
@@ -285,9 +286,9 @@ function FishController.Init()
 	Kit.stroke(top)
 	padsText = Kit.label(top, "", UDim2.new(1, -150, 0, 32), UDim2.fromOffset(12, 6), Kit.Colors.Text, 3)
 	nextPadText = Kit.label(top, "", UDim2.new(1, -150, 0, 26), UDim2.fromOffset(12, 40), Color3.fromRGB(255, 230, 90), 2)
-	unlockButton = Kit.button(top, "🔓 Unlock", Kit.Colors.Green, UDim2.fromOffset(124, 52), UDim2.new(1, -134, 0, 11))
+	unlockButton = Kit.button(top, "⬆ Plot", Kit.Colors.Green, UDim2.fromOffset(124, 52), UDim2.new(1, -134, 0, 11))
 	unlockButton.Activated:Connect(function()
-		Net.event(Net.Names.BuyUpgrade):FireServer("Pads")
+		Net.event(Net.Names.BuyUpgrade):FireServer("Plot")
 	end)
 
 	list = Kit.scroll(window.Content, UDim2.new(1, 0, 1, -86), UDim2.fromOffset(0, 86))

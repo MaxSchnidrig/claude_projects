@@ -13,8 +13,9 @@
 	  5. Train on your treadmill              -> arrow to your treadmill
 	  6. "Faster = deeper zones = rarer eggs!" -> done after a few seconds
 
-	The arrow floats above your character and points at the target. A tall
-	glowing beacon marks the target. Both exist only on your own screen.
+	A trail of bold red arrows (chevrons) lies flat on the ground from you to
+	the target. They flow toward the target and get smaller farther away. A
+	tall glowing beacon marks the target. Both exist only on your own screen.
 ]]
 
 local CollectionService = game:GetService("CollectionService")
@@ -50,7 +51,12 @@ local FINAL_STEP_SECONDS = 6
 local step = 0 -- 0 = tutorial not running
 local banner: TextLabel
 local bannerFrame: Frame
-local arrow: Model? = nil
+local CHEVRONS = 14 -- how many arrows the trail has (at most)
+local CHEVRON_SPACING = 4.5 -- studs between two arrows
+local CHEVRON_COLOR = Color3.fromRGB(235, 35, 35)
+local FLOW_SPEED = 6 -- studs per second the arrows flow toward the target
+local chevrons: { { Left: BasePart, Right: BasePart } } = {}
+local chevronFolder: Folder? = nil
 local beacon: BasePart? = nil
 -- Counts when the current step started, to notice progress.
 local eggsAtStepStart = 0
@@ -136,18 +142,46 @@ local function neonPart(name: string, size: Vector3, parent: Instance): Part
 	return part
 end
 
-local function buildArrow(): Model
-	local model = Instance.new("Model")
-	model.Name = "TutorialArrow"
-	local shaft = neonPart("Shaft", Vector3.new(0.6, 0.3, 3), model)
-	model.PrimaryPart = shaft
-	-- Two angled bars at the front (-Z) make the arrow head.
-	for _, side in { -1, 1 } do
-		local bar = neonPart("Head", Vector3.new(0.6, 0.3, 2), model)
-		bar.CFrame = CFrame.new(side * 0.6, 0, -1.4) * CFrame.Angles(0, side * math.rad(-40), 0)
+-- One flat chevron: two bars meeting at a point (">"), lying on the ground.
+local function buildChevrons()
+	local folder = Instance.new("Folder")
+	folder.Name = "TutorialArrows"
+	folder.Parent = Workspace
+	chevronFolder = folder
+	for _ = 1, CHEVRONS do
+		local left: BasePart = neonPart("ArrowLeft", Vector3.new(0.7, 0.15, 2.6), folder)
+		local right: BasePart = neonPart("ArrowRight", Vector3.new(0.7, 0.15, 2.6), folder)
+		left.Color = CHEVRON_COLOR
+		right.Color = CHEVRON_COLOR
+		table.insert(chevrons, { Left = left, Right = right })
 	end
-	model.Parent = Workspace
-	return model
+end
+
+local function hideChevrons()
+	for _, chevron in chevrons do
+		chevron.Left.Transparency = 1
+		chevron.Right.Transparency = 1
+	end
+end
+
+-- The floor height under a spot (plot floors, second floors, sand).
+local rayParams = RaycastParams.new()
+rayParams.FilterType = Enum.RaycastFilterType.Exclude
+local function floorY(position: Vector3): number
+	local exclude: { Instance } = {}
+	if player.Character then
+		table.insert(exclude, player.Character)
+	end
+	if chevronFolder then
+		table.insert(exclude, chevronFolder)
+	end
+	if beacon then
+		table.insert(exclude, beacon)
+	end
+	rayParams.FilterDescendantsInstances = exclude
+	local origin = Vector3.new(position.X, position.Y + 4, position.Z)
+	local result = Workspace:Raycast(origin, Vector3.new(0, -30, 0), rayParams)
+	return if result then result.Position.Y else Layout.GroundTop
 end
 
 local function buildBeacon(): BasePart
@@ -159,10 +193,7 @@ local function buildBeacon(): BasePart
 end
 
 local function clearMarkers()
-	if arrow then
-		arrow:Destroy()
-		arrow = nil
-	end
+	hideChevrons()
 	if beacon then
 		beacon:Destroy()
 		beacon = nil
@@ -177,8 +208,8 @@ local function updateMarkers()
 		clearMarkers()
 		return
 	end
-	if not arrow then
-		arrow = buildArrow()
+	if #chevrons == 0 then
+		buildChevrons()
 	end
 	if not beacon then
 		beacon = buildBeacon()
@@ -188,27 +219,42 @@ local function updateMarkers()
 	local height = Config.Tutorial.BeaconHeight
 	;(beacon :: BasePart).CFrame = CFrame.new(target + Vector3.new(0, height / 2, 0)) * CFrame.Angles(0, 0, math.rad(90))
 
-	-- Arrow: floats above you, pointing (flat) at the target, bobbing.
+	-- Arrow trail: from just in front of you toward the target, flowing
+	-- forward, smaller (and fainter) farther away.
 	local flat = Vector3.new(target.X - root.Position.X, 0, target.Z - root.Position.Z)
-	if flat.Magnitude < 0.1 then
+	local total = flat.Magnitude
+	if total < 0.1 then
+		hideChevrons()
 		return
 	end
 	local direction = flat.Unit
-	local bob = math.sin(os.clock() * 4) * 0.3
-	local position = root.Position + Vector3.new(0, 4.5 + bob, 0) + direction * (Config.Tutorial.ArrowDistance * 0.5)
-	local origin = CFrame.lookAt(position, position + direction)
-	local model = arrow :: Model
-	local shaft = model.PrimaryPart :: BasePart
-	-- Move all arrow parts together, keeping their shape.
-	local offsetHead = {}
-	for _, part in model:GetChildren() do
-		if part:IsA("BasePart") and part ~= shaft then
-			table.insert(offsetHead, { Part = part, Offset = shaft.CFrame:ToObjectSpace(part.CFrame) })
+	local time = os.clock()
+	local offset = (time * FLOW_SPEED) % CHEVRON_SPACING
+	local trailLength = CHEVRONS * CHEVRON_SPACING
+	for index, chevron in chevrons do
+		local distance = 3 + (index - 1) * CHEVRON_SPACING + offset
+		if distance > total - 2 or distance > trailLength then
+			chevron.Left.Transparency = 1
+			chevron.Right.Transparency = 1
+			continue
 		end
-	end
-	shaft.CFrame = origin
-	for _, entry in offsetHead do
-		entry.Part.CFrame = origin * entry.Offset
+		local along = distance / trailLength -- 0 near you, 1 at the end of the trail
+		local scale = 1.25 - along * 0.65
+		local spot = Vector3.new(root.Position.X, 0, root.Position.Z) + direction * distance
+		local y = floorY(Vector3.new(spot.X, root.Position.Y, spot.Z)) + 0.1
+		local base = CFrame.lookAt(Vector3.new(spot.X, y, spot.Z), Vector3.new(spot.X, y, spot.Z) + direction)
+		-- A gentle pulse running along the trail.
+		local pulse = 0.5 + 0.5 * math.sin(time * 6 - index * 0.8)
+		local transparency = math.clamp(0.05 + along * 0.45 + pulse * 0.15, 0, 0.9)
+		local armLength = 2.6 * scale
+		for side, part in { [-1] = chevron.Left, [1] = chevron.Right } do
+			part.Size = Vector3.new(0.7 * scale, 0.15, armLength)
+			-- Each bar goes back from the tip at 40 degrees to one side.
+			local angle = math.rad(40) * side
+			local center = CFrame.Angles(0, angle, 0) * CFrame.new(0, 0, armLength / 2)
+			part.CFrame = base * center
+			part.Transparency = transparency
+		end
 	end
 end
 

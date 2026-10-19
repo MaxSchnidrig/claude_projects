@@ -183,6 +183,13 @@ end
 function PetController.Start()
 	Net.event(Net.Names.PetHatched).OnClientEvent:Connect(burst)
 	Net.event(Net.Names.HatchReveal).OnClientEvent:Connect(showReveal)
+	-- Sparkles where a new pad or the second floor appears.
+	Net.event(Net.Names.PlotUpgraded).OnClientEvent:Connect(function(position: unknown)
+		if typeof(position) == "Vector3" then
+			Effects.burst(position + Vector3.new(0, 1, 0), Color3.fromRGB(120, 255, 140), 30)
+			Effects.confetti(position + Vector3.new(0, 1, 0), 30)
+		end
+	end)
 	-- A small golden sparkle when a fish levels up.
 	Net.event(Net.Names.FishLeveledUp).OnClientEvent:Connect(function(position: unknown)
 		if typeof(position) == "Vector3" then

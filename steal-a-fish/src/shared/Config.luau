@@ -138,44 +138,51 @@ Config.Rarities = rarities
 
 ---------------------------------------------------------------------------
 -- SPEED (the main progression)
--- Players have a Speed STAT that grows on the treadmill. Their WalkSpeed
--- grows with it in a straight line, so every bit of Speed counts:
+-- Players have a Speed STAT that grows on the treadmill. Their WalkSpeed:
 --
---   WalkSpeed = min(BaseWalkSpeed + Factor * SpeedStat ^ Exponent, MaxWalkSpeed)
+--   speedPart = Factor * SpeedStat ^ Exponent
+--   WalkSpeed = (BaseWalkSpeed^Blend + speedPart^Blend) ^ (1/Blend), at most MaxWalkSpeed
 --
--- With Factor 0.001 and Exponent 1: every 1,000 Speed = +1 walk speed.
---   0 -> 16,   18K -> 34,   48K -> 64,   115K -> 131,   159K -> 175 (the cap).
--- Because it's a straight line, having only 80% of a zone's recommended
--- Speed makes you clearly slower (about 12-18%), so its shark catches you
--- well inside the zone. Egg carry slow-downs (Eggs.ByRarity) multiply on top.
+-- In words: walk speed is about Factor * Speed^0.55, but never below the
+-- normal 16 (the "Blend" smoothly joins the two). With these numbers:
+--   0 -> 16,   8.1K -> 25,   34K -> 53,   110K -> 101,   270K -> 165,   340K -> 210 (cap)
+-- Why not a straight line: with treadmills that are each ~1.6x stronger,
+-- the Speed needed per zone has to grow ~1.6x per zone too. A straight
+-- line would then make deep zones need impossible walk speeds. Exponent
+-- 0.55 keeps the 80% rule at EVERY zone: 80% of a zone's Speed always means
+-- ~11.5% less walk speed, so its shark catches you well inside the zone.
 ---------------------------------------------------------------------------
 Config.Speed = {
 	StartingStat = 0,
 	BaseWalkSpeed = 16, -- a brand-new player (Roblox's default)
-	Factor = 0.001,
-	Exponent = 1,
-	MaxWalkSpeed = 175, -- hard cap (a bit faster than the deepest shark, so top treadmills still help)
+	Factor = 0.17,
+	Exponent = 0.55,
+	Blend = 4, -- how smoothly the normal speed (16) turns into the Speed-based part
+	MaxWalkSpeed = 210, -- hard cap (a bit faster than the deepest shark, so top treadmills still help)
 	-- "Outrunning" a shark means walking at least this much faster than it.
 	OutrunMargin = 0.5,
 }
 
 -- WalkSpeed for a given Speed stat (before carry slow-downs).
 function Config.WalkSpeedFromStat(stat: number): number
-	local speed = Config.Speed.BaseWalkSpeed + Config.Speed.Factor * math.max(stat, 0) ^ Config.Speed.Exponent
-	return math.min(speed, Config.Speed.MaxWalkSpeed)
+	local speed = Config.Speed
+	local part = speed.Factor * math.max(stat, 0) ^ speed.Exponent
+	local walk = (speed.BaseWalkSpeed ^ speed.Blend + part ^ speed.Blend) ^ (1 / speed.Blend)
+	return math.min(walk, speed.MaxWalkSpeed)
 end
 
 -- The reverse: the Speed stat needed to reach a WalkSpeed. math.huge if the
 -- cap makes it impossible.
 function Config.StatNeededForWalkSpeed(walkSpeed: number): number
-	local extra = walkSpeed - Config.Speed.BaseWalkSpeed
-	if extra <= 0 then
+	local speed = Config.Speed
+	if walkSpeed <= speed.BaseWalkSpeed then
 		return 0
 	end
-	if walkSpeed > Config.Speed.MaxWalkSpeed then
+	if walkSpeed > speed.MaxWalkSpeed then
 		return math.huge
 	end
-	return math.ceil((extra / Config.Speed.Factor) ^ (1 / Config.Speed.Exponent))
+	local part = (walkSpeed ^ speed.Blend - speed.BaseWalkSpeed ^ speed.Blend) ^ (1 / speed.Blend)
+	return math.ceil((part / speed.Factor) ^ (1 / speed.Exponent))
 end
 
 ---------------------------------------------------------------------------
@@ -194,61 +201,63 @@ local treadmillTiers: { TreadmillTier } = {
 		AccentColor = nil, ScreenColor = Color3.fromRGB(80, 220, 255), Light = 0, Effect = "None", Rainbow = false,
 	},
 	{
-		Name = "Bronze", Price = 2_500, Gain = 36,
+		Name = "Bronze", Price = 2_500, Gain = 50,
 		FrameColor = Color3.fromRGB(205, 127, 50), FrameMaterial = Enum.Material.Metal,
 		BeltColor = Color3.fromRGB(50, 35, 25), ChevronColor = Color3.fromRGB(255, 170, 90), ChevronNeon = false,
 		AccentColor = nil, ScreenColor = Color3.fromRGB(255, 170, 90), Light = 0, Effect = "None", Rainbow = false,
 	},
 	{
-		Name = "Silver", Price = 15_000, Gain = 42,
+		Name = "Silver", Price = 15_000, Gain = 80,
 		FrameColor = Color3.fromRGB(200, 205, 215), FrameMaterial = Enum.Material.DiamondPlate,
 		BeltColor = Color3.fromRGB(40, 45, 55), ChevronColor = Color3.fromRGB(230, 240, 255), ChevronNeon = true,
 		AccentColor = nil, ScreenColor = Color3.fromRGB(200, 230, 255), Light = 0, Effect = "None", Rainbow = false,
 	},
 	{
-		Name = "Gold", Price = 80_000, Gain = 48,
+		Name = "Gold", Price = 80_000, Gain = 125,
 		FrameColor = Color3.fromRGB(255, 200, 60), FrameMaterial = Enum.Material.Foil,
 		BeltColor = Color3.fromRGB(60, 45, 20), ChevronColor = Color3.fromRGB(255, 230, 120), ChevronNeon = true,
 		AccentColor = Color3.fromRGB(255, 215, 80), ScreenColor = Color3.fromRGB(255, 230, 120), Light = 1, Effect = "None", Rainbow = false,
 	},
 	{
-		Name = "Emerald", Price = 400_000, Gain = 56,
+		Name = "Emerald", Price = 400_000, Gain = 200,
 		FrameColor = Color3.fromRGB(40, 190, 110), FrameMaterial = Enum.Material.Glass,
 		BeltColor = Color3.fromRGB(15, 50, 35), ChevronColor = Color3.fromRGB(120, 255, 170), ChevronNeon = true,
 		AccentColor = Color3.fromRGB(80, 255, 150), ScreenColor = Color3.fromRGB(120, 255, 170), Light = 1.5, Effect = "Sparkles", Rainbow = false,
 	},
 	{
-		Name = "Diamond", Price = 6_000_000, Gain = 64,
+		Name = "Diamond", Price = 6_000_000, Gain = 320,
 		FrameColor = Color3.fromRGB(170, 235, 255), FrameMaterial = Enum.Material.Glass,
 		BeltColor = Color3.fromRGB(20, 40, 60), ChevronColor = Color3.fromRGB(150, 240, 255), ChevronNeon = true,
 		AccentColor = Color3.fromRGB(120, 230, 255), ScreenColor = Color3.fromRGB(180, 245, 255), Light = 2, Effect = "Sparkles", Rainbow = false,
 	},
 	{
-		Name = "Neon", Price = 30_000_000, Gain = 74,
+		Name = "Neon", Price = 30_000_000, Gain = 500,
 		FrameColor = Color3.fromRGB(25, 25, 35), FrameMaterial = Enum.Material.SmoothPlastic,
 		BeltColor = Color3.fromRGB(10, 10, 15), ChevronColor = Color3.fromRGB(255, 60, 220), ChevronNeon = true,
 		AccentColor = Color3.fromRGB(0, 255, 255), ScreenColor = Color3.fromRGB(255, 60, 220), Light = 2.5, Effect = "Stars", Rainbow = false,
 	},
 	{
-		Name = "Magma", Price = 150_000_000, Gain = 85,
+		Name = "Magma", Price = 150_000_000, Gain = 800,
 		FrameColor = Color3.fromRGB(60, 30, 25), FrameMaterial = Enum.Material.Basalt,
 		BeltColor = Color3.fromRGB(30, 10, 5), ChevronColor = Color3.fromRGB(255, 120, 20), ChevronNeon = true,
 		AccentColor = Color3.fromRGB(255, 90, 0), ScreenColor = Color3.fromRGB(255, 140, 40), Light = 3, Effect = "Fire", Rainbow = false,
 	},
 	{
-		Name = "Rainbow", Price = 750_000_000, Gain = 98,
+		Name = "Rainbow", Price = 750_000_000, Gain = 1300,
 		FrameColor = Color3.fromRGB(255, 255, 255), FrameMaterial = Enum.Material.SmoothPlastic,
 		BeltColor = Color3.fromRGB(25, 25, 30), ChevronColor = Color3.fromRGB(255, 255, 255), ChevronNeon = true,
 		AccentColor = Color3.fromRGB(255, 255, 255), ScreenColor = Color3.fromRGB(255, 255, 255), Light = 3, Effect = "Sparkles", Rainbow = true,
 	},
 	{
-		Name = "Cosmic", Price = 4_500_000_000, Gain = 112,
+		Name = "Cosmic", Price = 4_500_000_000, Gain = 2000,
 		FrameColor = Color3.fromRGB(40, 20, 80), FrameMaterial = Enum.Material.Glass,
 		BeltColor = Color3.fromRGB(5, 0, 20), ChevronColor = Color3.fromRGB(190, 120, 255), ChevronNeon = true,
 		AccentColor = Color3.fromRGB(150, 80, 255), ScreenColor = Color3.fromRGB(220, 180, 255), Light = 4, Effect = "Stars", Rainbow = false,
 	},
 }
 
+-- Each tier is ~1.6x the one before (Cosmic = 67x Basic). With the tier you
+-- normally own when you reach a zone, training for it takes a few minutes.
 Config.Treadmill = {
 	GainInterval = 1, -- seconds between Speed gains while training
 	Tiers = treadmillTiers,
@@ -278,6 +287,7 @@ Config.Visuals = {
 	StudTexture = "rbxassetid://8130710802",
 	StudsPerTile = 1, -- size of one stud texture tile, in studs
 	StudTransparency = 0.3, -- 0 = strong studs, 1 = invisible studs
+	PlotStudTransparency = 0.12, -- plots get stronger studs, so they look properly blocky
 	TreadmillBeltSpeed = 6, -- how fast the belt markings scroll (studs per second)
 }
 
@@ -330,7 +340,12 @@ Config.Plots = {
 	-- pad holds ONE thing: an egg (until it hatches) or the pet that hatched
 	-- from it (until it's sold). Pads are unlocked front to back, left/right
 	-- alternating; the plot space upgrade unlocks more.
-	PadsPerSide = 5, -- so 10 pads in total
+	PadsPerSide = 5, -- per floor, so 10 pads per floor (20 with the second floor)
+	-- The second floor (built by a plot upgrade): walkways along both sides
+	-- (where its pads are) and across the back, stairs in the middle. The
+	-- middle stays open so you can still see the fish downstairs.
+	SecondFloorHeight = 16, -- studs above the ground floor (big fish fit below)
+	SecondFloorDeckWidth = 17, -- width of the side walkways
 	StartingPads = 6, -- unlocked on a brand new plot
 	PadSize = Vector3.new(10, 0.6, 11), -- depth toward the middle (X), height, length along the side (Z)
 	PadColor = Color3.fromRGB(150, 150, 160),
@@ -581,31 +596,31 @@ local sharks: { SharkConfig } = {
 	{ Speed = 17, Count = 1, Color = Color3.fromRGB(125, 155, 180), Belly = Color3.fromRGB(240, 245, 250),
 		Scale = 0.9, EyeColor = Color3.fromRGB(20, 20, 25), GlowEyes = false, Scars = 0, Spikes = false },
 	-- 2 Coral Reef
-	{ RecommendedSpeed = 18_000, Speed = 0, Count = 1, Color = Color3.fromRGB(95, 125, 165), Belly = Color3.fromRGB(235, 240, 245),
+	{ RecommendedSpeed = 8_100, Speed = 0, Count = 1, Color = Color3.fromRGB(95, 125, 165), Belly = Color3.fromRGB(235, 240, 245),
 		Scale = 1, EyeColor = Color3.fromRGB(20, 20, 25), GlowEyes = false, Scars = 0, Spikes = false },
 	-- 3 Kelp Forest: green camouflage
-	{ RecommendedSpeed = 28_000, Speed = 0, Count = 1, Color = Color3.fromRGB(80, 115, 85), Belly = Color3.fromRGB(215, 225, 190),
+	{ RecommendedSpeed = 19_000, Speed = 0, Count = 1, Color = Color3.fromRGB(80, 115, 85), Belly = Color3.fromRGB(215, 225, 190),
 		Scale = 1.05, EyeColor = Color3.fromRGB(20, 20, 25), GlowEyes = false, Scars = 1, Spikes = false },
 	-- 4 Shipwreck Bay: rusty and scarred
-	{ RecommendedSpeed = 38_000, Speed = 0, Count = 1, Color = Color3.fromRGB(120, 100, 85), Belly = Color3.fromRGB(220, 205, 180),
+	{ RecommendedSpeed = 34_000, Speed = 0, Count = 1, Color = Color3.fromRGB(120, 100, 85), Belly = Color3.fromRGB(220, 205, 180),
 		Scale = 1.1, EyeColor = Color3.fromRGB(20, 20, 25), GlowEyes = false, Scars = 2, Spikes = false },
 	-- 5 Twilight Deep: purple, eyes start glowing
-	{ RecommendedSpeed = 48_000, Speed = 0, Count = 1, Color = Color3.fromRGB(80, 65, 140), Belly = Color3.fromRGB(190, 180, 225),
+	{ RecommendedSpeed = 53_000, Speed = 0, Count = 1, Color = Color3.fromRGB(80, 65, 140), Belly = Color3.fromRGB(190, 180, 225),
 		Scale = 1.15, EyeColor = Color3.fromRGB(255, 240, 120), GlowEyes = true, Scars = 1, Spikes = false },
 	-- 6 Midnight Trench
-	{ RecommendedSpeed = 60_000, Speed = 0, Count = 1, Color = Color3.fromRGB(40, 45, 80), Belly = Color3.fromRGB(150, 160, 200),
+	{ RecommendedSpeed = 77_000, Speed = 0, Count = 1, Color = Color3.fromRGB(40, 45, 80), Belly = Color3.fromRGB(150, 160, 200),
 		Scale = 1.2, EyeColor = Color3.fromRGB(120, 220, 255), GlowEyes = true, Scars = 2, Spikes = false },
 	-- 7 Hydrothermal Vents: charcoal with lava eyes
-	{ RecommendedSpeed = 72_000, Speed = 0, Count = 1, Color = Color3.fromRGB(70, 35, 30), Belly = Color3.fromRGB(150, 100, 80),
+	{ RecommendedSpeed = 110_000, Speed = 0, Count = 1, Color = Color3.fromRGB(70, 35, 30), Belly = Color3.fromRGB(150, 100, 80),
 		Scale = 1.3, EyeColor = Color3.fromRGB(255, 120, 30), GlowEyes = true, Scars = 2, Spikes = true },
 	-- 8 The Abyss
-	{ RecommendedSpeed = 85_000, Speed = 0, Count = 1, Color = Color3.fromRGB(28, 22, 45), Belly = Color3.fromRGB(90, 80, 120),
+	{ RecommendedSpeed = 150_000, Speed = 0, Count = 1, Color = Color3.fromRGB(28, 22, 45), Belly = Color3.fromRGB(90, 80, 120),
 		Scale = 1.4, EyeColor = Color3.fromRGB(255, 40, 60), GlowEyes = true, Scars = 3, Spikes = true },
 	-- 9 Leviathan's Lair
-	{ RecommendedSpeed = 100_000, Speed = 0, Count = 1, Color = Color3.fromRGB(20, 50, 50), Belly = Color3.fromRGB(80, 130, 120),
+	{ RecommendedSpeed = 200_000, Speed = 0, Count = 1, Color = Color3.fromRGB(20, 50, 50), Belly = Color3.fromRGB(80, 130, 120),
 		Scale = 1.5, EyeColor = Color3.fromRGB(80, 255, 160), GlowEyes = true, Scars = 3, Spikes = true },
 	-- 10 The Void Below: biggest and darkest
-	{ RecommendedSpeed = 115_000, Speed = 0, Count = 1, Color = Color3.fromRGB(12, 10, 20), Belly = Color3.fromRGB(60, 40, 90),
+	{ RecommendedSpeed = 270_000, Speed = 0, Count = 1, Color = Color3.fromRGB(12, 10, 20), Belly = Color3.fromRGB(60, 40, 90),
 		Scale = 1.6, EyeColor = Color3.fromRGB(190, 90, 255), GlowEyes = true, Scars = 3, Spikes = true },
 }
 Config.Sharks = sharks
@@ -955,7 +970,17 @@ Config.Data = {
 --   - Pet level: press E on one of your pets. Sell with F (hold).
 ---------------------------------------------------------------------------
 Config.Upgrades = {
-	Pads = { Base = 500, Growth = 2.5 }, -- 500, 1.25K, 3.1K, 7.8K for pads 7..10
+	-- PLOT UPGRADES (the "Upgrade Plot" board in front of your plot). One
+	-- upgrade = one level. Levels 1-4: +1 pad on the ground floor (pads 7-10).
+	-- Level 5: builds the SECOND FLOOR. Levels 6-15: +1 pad upstairs (pads
+	-- 11-20). Prices[n] = the price of level n.
+	PlotPrices = {
+		500, 1_250, 3_000, 8_000, -- ground floor pads 7-10
+		50_000, -- second floor
+		100_000, 200_000, 400_000, 800_000, 1_600_000, -- upstairs pads 11-15
+		3_200_000, 6_400_000, 13_000_000, 25_000_000, 50_000_000, -- upstairs pads 16-20
+	},
+	SecondFloorLevel = 5, -- the level that builds the second floor
 	-- Fish levels (press E on your fish, or use the Fish panel):
 	--   income at level L = base income * IncomeGrowth ^ (L - 1)
 	--     (1.12 -> every level +12% on top of the last; level 10 = 2.8x,
@@ -977,9 +1002,38 @@ Config.Upgrades = {
 	},
 }
 
--- The price formula used by level-based upgrades (plot space).
-function Config.UpgradePrice(base: number, growth: number, currentLevel: number): number
-	return math.floor(base * growth ^ currentLevel + 0.5)
+-- Plot levels (see Upgrades.PlotPrices).
+function Config.MaxPlotLevel(): number
+	return #Config.Upgrades.PlotPrices
+end
+
+-- Pads per floor, and on the whole plot (both floors).
+function Config.PadsPerFloor(): number
+	return Config.Plots.PadsPerSide * 2
+end
+
+function Config.MaxPads(): number
+	return Config.PadsPerFloor() * 2
+end
+
+-- Does a plot of this level have its second floor?
+function Config.HasSecondFloor(level: number): boolean
+	return level >= Config.Upgrades.SecondFloorLevel
+end
+
+-- How many pads are unlocked at a plot level.
+function Config.PadsAtPlotLevel(level: number): number
+	local perFloor = Config.PadsPerFloor()
+	local ground = math.min(Config.Plots.StartingPads + level, perFloor)
+	if not Config.HasSecondFloor(level) then
+		return ground
+	end
+	return math.min(perFloor + (level - Config.Upgrades.SecondFloorLevel), Config.MaxPads())
+end
+
+-- Price of the NEXT plot level after `level` (nil = already max).
+function Config.NextPlotPrice(level: number): number?
+	return Config.Upgrades.PlotPrices[level + 1]
 end
 
 -- A pet's income per second at a given level.

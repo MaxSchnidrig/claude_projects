@@ -14,8 +14,8 @@
 	  - CollectPad (green, middle): step on it to collect your pets' money
 	  - Pads along the left and right side (Config.Plots.PadsPerSide each).
 	    Each pad holds ONE egg or ONE pet (PetService decides what's on it).
-	    Locked pads are see-through and show their price ("🔒 $1.2K"); the
-	    NEXT locked pad has an "Unlock Pad" prompt (only its owner sees it).
+	    Locked pads are hidden. The "Upgrade Plot" board in front of the plot
+	    adds one pad per level; level 5 builds a SECOND FLOOR with 10 more pads.
 	  - An upgrade board next to the treadmill with an "Upgrade Treadmill"
 	    prompt showing the next tier and its price.
 	  Both prompts fire PlotService.UpgradePromptTriggered; UpgradeService
@@ -29,16 +29,17 @@
 		PlotService.GetPlots() -> { PlotInfo }             -- all plots
 		PlotService.GetPlotAt(position) -> PlotInfo?       -- plot containing a point
 		PlotService.IsInsideAnyPlot(position) -> boolean
-		PlotService.SetUnlockedPads(plot, count)           -- show/hide pads
+		PlotService.SetPlotLevel(plot, level, animate?)    -- pads + second floor for a plot level
 		PlotService.SetTreadmillTier(plot, tier)           -- rebuild the treadmill as another tier
 		PlotService.TreadmillChanged:Connect(function(plot) end)
 		PlotService.PlotAssigned:Connect(function(player, plot) end)
 		PlotService.PlotReleased:Connect(function(player, plot) end)
-		PlotService.UpgradePromptTriggered:Connect(function(player, plot, "Pad" | "Treadmill") end)
+		PlotService.UpgradePromptTriggered:Connect(function(player, plot, "Plot" | "Treadmill") end)
 ]]
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
@@ -50,6 +51,7 @@ local Assets = require(script.Parent.Parent.Util.Assets)
 local Build = require(script.Parent.Parent.Util.Build)
 local Constants = require(ReplicatedStorage.Shared.Constants)
 local Format = require(ReplicatedStorage.Shared.Format)
+local Net = require(ReplicatedStorage.Shared.Net)
 local TreadmillBuilder = require(script.Parent.Parent.Util.TreadmillBuilder)
 local PlayerLifecycle = require(script.Parent.Parent.Util.PlayerLifecycle)
 local WorldService = require(script.Parent.WorldService)
@@ -64,10 +66,14 @@ PlotService.PlotAssigned = Signal.new()
 PlotService.PlotReleased = Signal.new()
 -- Fired with (plot) after a plot's treadmill was rebuilt as another tier.
 PlotService.TreadmillChanged = Signal.new()
--- Fired with (player, plot, "Pad" or "Treadmill") when an upgrade prompt is used.
+-- Fired with (player, plot, "Plot" or "Treadmill") when an upgrade prompt is used.
 PlotService.UpgradePromptTriggered = Signal.new()
 
-local LOCKED_PAD_COLOR = Color3.fromRGB(90, 90, 100)
+-- Every part of a plot gets the (strong) plot studs.
+local function plotPart(props: Build.PartProps): Part
+	props.StudTransparency = Config.Visuals.PlotStudTransparency
+	return Build.part(props)
+end
 
 local plots: { PlotInfo } = {}
 local plotByPlayer: { [Player]: PlotInfo } = {}
@@ -116,12 +122,11 @@ local function buildPlot(index: number, parent: Instance): PlotInfo
 	model:SetAttribute("PlotIndex", index)
 	model:SetAttribute("OwnerUserId", 0)
 
-	local floor = Build.part({
+	local floor = plotPart({
 		Name = "Floor",
 		Size = size,
 		CFrame = cf * CFrame.new(0, -size.Y / 2, 0),
 		Color = color,
-		StudFaces = { Enum.NormalId.Top },
 		Parent = model,
 	})
 	model.PrimaryPart = floor
@@ -129,7 +134,7 @@ local function buildPlot(index: number, parent: Instance): PlotInfo
 	-- Low rails on the left, right and back. The front stays open.
 	local railColor = color:Lerp(Color3.new(0, 0, 0), 0.35)
 	for _, side in { -1, 1 } do
-		Build.part({
+		plotPart({
 			Name = "Rail",
 			Size = Vector3.new(1, 2, size.Z),
 			CFrame = cf * CFrame.new(side * (size.X / 2 - 0.5), 1, 0),
@@ -137,7 +142,7 @@ local function buildPlot(index: number, parent: Instance): PlotInfo
 			Parent = model,
 		})
 	end
-	Build.part({
+	plotPart({
 		Name = "Rail",
 		Size = Vector3.new(size.X, 2, 1),
 		CFrame = cf * CFrame.new(0, 1, size.Z / 2 - 0.5),
@@ -148,7 +153,7 @@ local function buildPlot(index: number, parent: Instance): PlotInfo
 	-- Sign gate at the front: two posts with a board across the top.
 	local frontZ = -size.Z / 2 + 1
 	for _, side in { -1, 1 } do
-		Build.part({
+		plotPart({
 			Name = "SignPost",
 			Size = Vector3.new(1.5, 12, 1.5),
 			CFrame = cf * CFrame.new(side * 14, 6, frontZ),
@@ -156,7 +161,7 @@ local function buildPlot(index: number, parent: Instance): PlotInfo
 			Parent = model,
 		})
 	end
-	local board = Build.part({
+	local board = plotPart({
 		Name = "Sign",
 		Size = Vector3.new(30, 5, 1),
 		CFrame = cf * CFrame.new(0, 14, frontZ),
@@ -192,14 +197,14 @@ local function buildPlot(index: number, parent: Instance): PlotInfo
 
 	-- Upgrade board next to the treadmill, facing the middle of the plot.
 	local boardCFrame = cf * CFrame.new(size.X / 2 - 25, 0, -size.Z / 2 + 13) * CFrame.Angles(0, math.pi / 2, 0)
-	Build.part({
+	plotPart({
 		Name = "UpgradePost",
 		Size = Vector3.new(1, 3, 1),
 		CFrame = boardCFrame * CFrame.new(0, 1.5, 0),
 		Color = railColor,
 		Parent = model,
 	})
-	local upgradeSign = Build.part({
+	local upgradeSign = plotPart({
 		Name = "UpgradeSign",
 		Size = Vector3.new(7, 4, 0.8),
 		CFrame = boardCFrame * CFrame.new(0, 5, 0),
@@ -219,7 +224,7 @@ local function buildPlot(index: number, parent: Instance): PlotInfo
 
 	-- Collect pad in the middle, behind the spawn: step on it to take the
 	-- money your pets made (Config.Economy.CollectMode = "Pad").
-	local collectPad = Build.part({
+	local collectPad = plotPart({
 		Name = "CollectPad",
 		Size = Config.Economy.CollectPadSize,
 		CFrame = cf * CFrame.new(0, Config.Economy.CollectPadSize.Y / 2, -size.Z / 2 + 20),
@@ -238,18 +243,52 @@ local function buildPlot(index: number, parent: Instance): PlotInfo
 	local pads: { BasePart } = {}
 	-- Rotated so the pad's "depth" (PadSize.X) points toward the middle.
 	local padSize = Config.Plots.PadSize
-	for padIndex = 1, Config.Plots.PadsPerSide * 2 do
-		local pad = Build.part({
+	-- Pads 1-10 on the ground floor, 11-20 on the second floor (same spots,
+	-- SecondFloorHeight higher). Locked pads are hidden (parent = nil).
+	local perFloor = Config.PadsPerFloor()
+	for padIndex = 1, Config.MaxPads() do
+		local floorIndex = (padIndex - 1) % perFloor + 1
+		local height = if padIndex > perFloor then Config.Plots.SecondFloorHeight else 0
+		local pad = plotPart({
 			Name = `Pad{padIndex}`,
 			Size = Vector3.new(padSize.Z, padSize.Y, padSize.X),
-			CFrame = cf * padCFrame(padIndex),
+			CFrame = cf * CFrame.new(0, height, 0) * padCFrame(floorIndex),
 			Color = Config.Plots.PadColor,
 			Parent = padsFolder,
 		})
 		pad:SetAttribute("PadIndex", padIndex)
 		Assets.decorate(pad, "Pad")
+		pad.Parent = nil
 		table.insert(pads, pad)
 	end
+
+	-- "Upgrade Plot" board in front of the plot, next to the entrance,
+	-- facing the open area.
+	local plotSignCFrame = cf * CFrame.new(-24, 0, -size.Z / 2 - 3)
+	plotPart({
+		Name = "PlotSignPost",
+		Size = Vector3.new(1, 3, 1),
+		CFrame = plotSignCFrame * CFrame.new(0, 1.5, 0),
+		Color = railColor,
+		Parent = model,
+	})
+	local plotSign = plotPart({
+		Name = "PlotSign",
+		Size = Vector3.new(9, 5, 0.8),
+		CFrame = plotSignCFrame * CFrame.new(0, 5.5, 0),
+		Color = Color3.fromRGB(40, 90, 60),
+		StudFaces = { Enum.NormalId.Top, Enum.NormalId.Back },
+		Parent = model,
+	})
+	local plotSignLabel = Build.surfaceText(plotSign, Enum.NormalId.Front, "", Color3.fromRGB(255, 240, 120))
+	local plotPrompt = Instance.new("ProximityPrompt")
+	plotPrompt.Name = "PlotPrompt"
+	plotPrompt.ActionText = "Upgrade Plot"
+	plotPrompt.HoldDuration = 0.3
+	plotPrompt.MaxActivationDistance = 10
+	plotPrompt.RequiresLineOfSight = false
+	plotPrompt:SetAttribute(Constants.Attributes.OwnerUserId, 0)
+	plotPrompt.Parent = plotSign
 
 	model.Parent = parent
 
@@ -263,7 +302,11 @@ local function buildPlot(index: number, parent: Instance): PlotInfo
 		TreadmillOrigin = treadmillOrigin,
 		TreadmillTier = 1,
 		Pads = pads,
-		UnlockedPads = #pads,
+		UnlockedPads = 0,
+		Level = 0,
+		SecondFloor = nil,
+		PlotSign = plotSign,
+		PlotSignLabel = plotSignLabel,
 		SignLabels = signLabels,
 		CollectPad = collectPad,
 		CollectLabel = collectLabel,
@@ -324,51 +367,135 @@ function PlotService.SetTreadmillTier(plot: PlotInfo, tier: number)
 	PlotService.TreadmillChanged:Fire(plot)
 end
 
--- Price of locked pad number `padIndex` (pads are unlocked in order).
-function PlotService.PadPrice(padIndex: number): number
-	local bought = padIndex - Config.Plots.StartingPads - 1
-	return Config.UpgradePrice(Config.Upgrades.Pads.Base, Config.Upgrades.Pads.Growth, math.max(bought, 0))
-end
+-- The second floor: walkways along both sides (where its pads go) and
+-- across the back, railings, pillars, and stairs up the middle. The middle
+-- stays open, so you can still see the fish downstairs.
+local function buildSecondFloor(plot: PlotInfo): Model
+	local size = Config.Plots.Size
+	local cf = plot.CFrame
+	local height = Config.Plots.SecondFloorHeight
+	local deckWidth = Config.Plots.SecondFloorDeckWidth
+	local color = Config.Plots.Colors[(plot.Index - 1) % #Config.Plots.Colors + 1]:Lerp(Color3.new(1, 1, 1), 0.15)
+	local railColor = color:Lerp(Color3.new(0, 0, 0), 0.35)
+	local thickness = 1
 
--- The first `count` pads are unlocked. Locked pads are see-through with
--- their price; the next one gets an "Unlock Pad" prompt for the owner.
-function PlotService.SetUnlockedPads(plot: PlotInfo, count: number)
-	count = math.clamp(count, 0, #plot.Pads)
-	plot.UnlockedPads = count
-	for padIndex, pad in plot.Pads do
-		local locked = padIndex > count
-		pad:SetAttribute("Locked", locked)
-		pad.Color = if locked then LOCKED_PAD_COLOR else Config.Plots.PadColor
-		pad.Transparency = if locked then 0.55 else 0
-		local oldLabel = pad:FindFirstChild("Label")
-		if oldLabel then
-			oldLabel:Destroy()
-		end
-		local oldPrompt = pad:FindFirstChild("UnlockPrompt")
-		if oldPrompt then
-			oldPrompt:Destroy()
-		end
-		if locked then
-			local label = Build.billboard(pad, `🔒 ${Format.short(PlotService.PadPrice(padIndex))}`, 2.5, 50)
-			label.TextColor3 = Color3.fromRGB(255, 220, 90)
-			if padIndex == count + 1 and plot.Owner then
-				local prompt = Instance.new("ProximityPrompt")
-				prompt.Name = "UnlockPrompt"
-				prompt.ActionText = "Unlock Pad"
-				prompt.ObjectText = `${Format.short(PlotService.PadPrice(padIndex))}`
-				prompt.HoldDuration = 0.3
-				prompt.MaxActivationDistance = 8
-				prompt.RequiresLineOfSight = false
-				-- Same tag as pet prompts: only the owner sees it.
-				prompt:SetAttribute(Constants.Attributes.OwnerUserId, plot.Owner.UserId)
-				prompt.Parent = pad
-				CollectionService:AddTag(prompt, Constants.Tags.PetPrompt)
-				prompt.Triggered:Connect(function(player: Player)
-					PlotService.UpgradePromptTriggered:Fire(player, plot, "Pad")
-				end)
-			end
+	local model = Instance.new("Model")
+	model.Name = "SecondFloor"
+
+	local frontZ = -size.Z / 2 + 24 -- the walkways start just behind the treadmill
+	local backZ = size.Z / 2
+	local bridgeDepth = 12
+	local bridgeFront = backZ - bridgeDepth
+	local innerX = size.X / 2 - deckWidth -- inner edge of the side walkways
+
+	local function part(name: string, partSize: Vector3, center: Vector3, partColor: Color3?)
+		plotPart({
+			Name = name,
+			Size = partSize,
+			CFrame = cf * CFrame.new(center),
+			Color = partColor or color,
+			Parent = model,
+		})
+	end
+
+	-- Side walkways and the back bridge.
+	for _, side in { -1, 1 } do
+		part("Walkway", Vector3.new(deckWidth, thickness, backZ - frontZ), Vector3.new(side * (size.X / 2 - deckWidth / 2), height - thickness / 2, (frontZ + backZ) / 2))
+		-- Railings: outer edge, inner edge (up to the bridge) and front end.
+		part("Railing", Vector3.new(0.6, 3, backZ - frontZ), Vector3.new(side * (size.X / 2 - 0.3), height + 1.5, (frontZ + backZ) / 2), railColor)
+		part("Railing", Vector3.new(0.6, 3, bridgeFront - frontZ), Vector3.new(side * innerX, height + 1.5, (frontZ + bridgeFront) / 2), railColor)
+		part("Railing", Vector3.new(deckWidth, 3, 0.6), Vector3.new(side * (size.X / 2 - deckWidth / 2), height + 1.5, frontZ + 0.3), railColor)
+		-- Pillars under the walkway.
+		for _, z in { frontZ + 1, (frontZ + backZ) / 2, backZ - 1 } do
+			part("Pillar", Vector3.new(1.5, height - thickness, 1.5), Vector3.new(side * (innerX + 1), (height - thickness) / 2, z), railColor)
 		end
 	end
+	part("Bridge", Vector3.new(innerX * 2, thickness, bridgeDepth), Vector3.new(0, height - thickness / 2, backZ - bridgeDepth / 2))
+	part("Railing", Vector3.new(size.X, 3, 0.6), Vector3.new(0, height + 1.5, backZ - 0.3), railColor)
+
+	-- Stairs up the middle, ending at the front of the bridge (with railings
+	-- on the bridge's front edge on both sides of the stairs).
+	local stairWidth = 8
+	local steps = math.ceil(height)
+	local run = 2
+	for step = 1, steps do
+		local top = math.min(step, height)
+		local z = bridgeFront - (steps - step + 0.5) * run
+		part("Stair", Vector3.new(stairWidth, top, run), Vector3.new(0, top / 2, z), railColor:Lerp(color, 0.5))
+	end
+	for _, side in { -1, 1 } do
+		local half = (innerX - stairWidth / 2)
+		part("Railing", Vector3.new(half, 3, 0.6), Vector3.new(side * (stairWidth / 2 + half / 2), height + 1.5, bridgeFront + 0.3), railColor)
+	end
+
+	model.Parent = plot.Model
+	return model
+end
+
+-- Little "build" effect: everyone nearby sees a sparkle burst there.
+local function buildEffect(position: Vector3)
+	Net.event(Net.Names.PlotUpgraded):FireAllClients(position)
+end
+
+-- The plot's upgrade board shows its level and what the next upgrade gives.
+local function refreshPlotSign(plot: PlotInfo)
+	local level = plot.Level
+	local price = Config.NextPlotPrice(level)
+	local prompt = plot.PlotSign:FindFirstChild("PlotPrompt")
+	local text
+	if not price then
+		text = `🏠 PLOT LEVEL {level}\nMAX`
+	elseif level + 1 == Config.Upgrades.SecondFloorLevel then
+		text = `🏠 PLOT LEVEL {level}\n🏗 BUILD 2ND FLOOR\n${Format.short(price)}`
+	else
+		text = `🏠 PLOT LEVEL {level}\n+1 PAD\n${Format.short(price)}`
+	end
+	plot.PlotSignLabel.Text = text
+	if prompt and prompt:IsA("ProximityPrompt") then
+		prompt.ObjectText = if price then `${Format.short(price)}` else "MAX"
+	end
+end
+
+-- Set a plot's level: shows the unlocked pads (hides the rest) and builds or
+-- removes the second floor. animate = true plays the build effects (an
+-- upgrade was just bought).
+function PlotService.SetPlotLevel(plot: PlotInfo, level: number, animate: boolean?)
+	level = math.clamp(math.floor(level), 0, Config.MaxPlotLevel())
+	plot.Level = level
+	local count = Config.PadsAtPlotLevel(level)
+	local before = plot.UnlockedPads
+	plot.UnlockedPads = count
+
+	-- Second floor.
+	local wantFloor = Config.HasSecondFloor(level)
+	if wantFloor and not plot.SecondFloor then
+		plot.SecondFloor = buildSecondFloor(plot)
+		if animate then
+			buildEffect((plot.CFrame * CFrame.new(0, Config.Plots.SecondFloorHeight, Config.Plots.Size.Z / 2 - 6)).Position)
+		end
+	elseif not wantFloor and plot.SecondFloor then
+		(plot.SecondFloor :: Model):Destroy()
+		plot.SecondFloor = nil
+	end
+
+	-- Pads: unlocked ones are in the world, locked ones are hidden.
+	local folder = plot.Model:FindFirstChild("Pads")
+	for padIndex, pad in plot.Pads do
+		local unlocked = padIndex <= count
+		if unlocked and pad.Parent == nil then
+			pad.Parent = folder
+			if animate and padIndex > before then
+				-- The new pad rises out of the floor with a sparkle.
+				local target = pad.CFrame
+				pad.CFrame = target * CFrame.new(0, -1.5, 0)
+				TweenService:Create(pad, TweenInfo.new(0.6, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { CFrame = target }):Play()
+				buildEffect(target.Position)
+			end
+		elseif not unlocked and pad.Parent then
+			pad.Parent = nil
+		end
+	end
+	refreshPlotSign(plot)
 end
 
 local function spawnCFrame(plot: PlotInfo): CFrame
@@ -417,7 +544,9 @@ local function assignPlot(player: Player)
 	plot.Model:SetAttribute("OwnerUserId", player.UserId)
 	local upgradePrompt = plot.UpgradeSign:FindFirstChild("UpgradePrompt") :: ProximityPrompt
 	upgradePrompt:SetAttribute(Constants.Attributes.OwnerUserId, player.UserId)
-	PlotService.SetUnlockedPads(plot, Config.Plots.StartingPads)
+	local plotPrompt = plot.PlotSign:FindFirstChild("PlotPrompt") :: ProximityPrompt
+	plotPrompt:SetAttribute(Constants.Attributes.OwnerUserId, player.UserId)
+	PlotService.SetPlotLevel(plot, 0)
 	refreshLooks(plot)
 
 	-- Spawn the player on this plot from now on.
@@ -446,7 +575,9 @@ local function releasePlot(player: Player)
 	plot.Model:SetAttribute("OwnerUserId", 0)
 	local upgradePrompt = plot.UpgradeSign:FindFirstChild("UpgradePrompt") :: ProximityPrompt
 	upgradePrompt:SetAttribute(Constants.Attributes.OwnerUserId, 0)
-	PlotService.SetUnlockedPads(plot, Config.Plots.StartingPads)
+	local plotPrompt = plot.PlotSign:FindFirstChild("PlotPrompt") :: ProximityPrompt
+	plotPrompt:SetAttribute(Constants.Attributes.OwnerUserId, 0)
+	PlotService.SetPlotLevel(plot, 0)
 	PlotService.SetTreadmillTier(plot, 1)
 	refreshLooks(plot)
 
@@ -502,7 +633,12 @@ function PlotService.Start()
 		upgradePrompt.Triggered:Connect(function(player: Player)
 			PlotService.UpgradePromptTriggered:Fire(player, plot, "Treadmill")
 		end)
-		PlotService.SetUnlockedPads(plot, Config.Plots.StartingPads)
+		local plotPrompt = plot.PlotSign:FindFirstChild("PlotPrompt") :: ProximityPrompt
+		CollectionService:AddTag(plotPrompt, Constants.Tags.PetPrompt)
+		plotPrompt.Triggered:Connect(function(player: Player)
+			PlotService.UpgradePromptTriggered:Fire(player, plot, "Plot")
+		end)
+		PlotService.SetPlotLevel(plot, 0)
 		refreshLooks(plot)
 	end
 

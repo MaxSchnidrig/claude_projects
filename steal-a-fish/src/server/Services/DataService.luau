@@ -62,12 +62,20 @@ local UpgradeService = require(script.Parent.UpgradeService)
 --    pets are fish from Config.Fish (old pets are converted when loading).
 -- 3: walk speed became a straight line of the Speed stat (1,000 Speed = +1
 --    walk speed). Old Speed stats are converted so you keep your walk speed.
-local DATA_VERSION = 3
+-- 4: walk speed formula changed again (Config.Speed); Speed stats are
+--    converted so you keep your walk speed.
+local DATA_VERSION = 4
 
--- The walk speed formula before version 3: 16 + 0.18 * stat ^ 0.4 (cap 140).
-local function convertOldSpeedStat(oldStat: number): number
-	local walk = math.min(16 + 0.18 * math.max(oldStat, 0) ^ 0.4, 140)
-	return math.max(0, math.floor((walk - Config.Speed.BaseWalkSpeed) / Config.Speed.Factor))
+-- Turn an old Speed stat into the new one that gives the same walk speed.
+local function convertOldSpeedStat(oldStat: number, oldVersion: number): number
+	local stat = math.max(oldStat, 0)
+	local walk
+	if oldVersion < 3 then
+		walk = math.min(16 + 0.18 * stat ^ 0.4, 140) -- before version 3
+	else
+		walk = math.min(16 + 0.001 * stat, 175) -- version 3 (straight line)
+	end
+	return math.max(0, Config.StatNeededForWalkSpeed(math.min(walk, Config.Speed.MaxWalkSpeed)))
 end
 
 export type SaveData = {
@@ -153,8 +161,9 @@ local function reconcile(raw: unknown): SaveData
 	local old = raw :: any
 	data.Money = cleanNumber(old.Money, data.Money)
 	data.SpeedStat = cleanNumber(old.SpeedStat, data.SpeedStat)
-	if cleanNumber(old.Version, 0) < 3 and cleanNumber(old.LastSave, 0) > 0 then
-		data.SpeedStat = convertOldSpeedStat(data.SpeedStat)
+	local oldVersion = cleanNumber(old.Version, 0)
+	if oldVersion < 4 and cleanNumber(old.LastSave, 0) > 0 then
+		data.SpeedStat = convertOldSpeedStat(data.SpeedStat, oldVersion)
 	end
 	data.TreadmillTier = math.clamp(math.floor(cleanNumber(old.TreadmillTier, 1)), 1, #Config.Treadmill.Tiers)
 	data.PadsBought = math.floor(cleanNumber(old.PadsBought, 0))

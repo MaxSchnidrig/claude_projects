@@ -54,6 +54,10 @@ export type PlotInfo = {
 	CollectLabel: TextLabel, -- shows how much money is waiting on the collect pad
 	UpgradeSign: BasePart, -- the board next to the treadmill ("Upgrade Treadmill" prompt)
 	UpgradeLabel: TextLabel,
+	Level: number, -- plot level (Config.Upgrades.PlotPrices); decides pads and the second floor
+	SecondFloor: Model?, -- built at Config.Upgrades.SecondFloorLevel
+	PlotSign: BasePart, -- the "Upgrade Plot" board in front of the plot
+	PlotSignLabel: TextLabel,
 }
 
 return {}

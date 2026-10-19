@@ -56,7 +56,7 @@ function ZoneController.Init()
 	local gui = Kit.screenGui("ZoneBanner", 9)
 	banner = Instance.new("TextLabel")
 	banner.AnchorPoint = Vector2.new(0.5, 0)
-	banner.Position = UDim2.new(0.5, 0, 0, 66)
+	banner.Position = UDim2.new(0.5, 0, 0, 160) -- below the "RUN!!" banner
 	banner.Size = UDim2.fromOffset(600, 76)
 	banner.BackgroundTransparency = 1
 	banner.Font = Enum.Font.FredokaOne

@@ -116,7 +116,7 @@ local function buildNotifications()
 	notificationList = Instance.new("Frame")
 	notificationList.Name = "List"
 	notificationList.AnchorPoint = Vector2.new(0.5, 0)
-	notificationList.Position = UDim2.new(0.5, 0, 0, 150) -- below the zone name banner
+	notificationList.Position = UDim2.new(0.5, 0, 0, 244) -- below the "RUN!!" and zone name banners
 	notificationList.Size = UDim2.fromOffset(520, 220)
 	notificationList.BackgroundTransparency = 1
 	notificationList.Parent = gui
