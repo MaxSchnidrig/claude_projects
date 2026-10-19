@@ -35,8 +35,13 @@
 	stolen from (EggService remembers that zone for the egg's whole life,
 	also when it's dropped and picked up again).
 
+	SHARK FREEZE (Robux product): BotService.Freeze(seconds) stops every
+	shark where it is (chases end, nobody can be chased) and turns it icy
+	blue (model attribute "Frozen", the client tints it).
+
 	Public interface:
 		BotService.PlayerCaught:Connect(function(player) end)
+		BotService.Freeze(seconds)                       -- Shark Freeze
 ]]
 
 local Players = game:GetService("Players")
@@ -100,6 +105,7 @@ local bots: { Bot } = {}
 local botsFolder: Folder
 local lastCaught: { [Player]: number } = {}
 local chaseLog = Config.Bots.DebugChaseLog and RunService:IsStudio()
+local frozenUntil = 0 -- os.clock() when Shark Freeze ends
 
 ---------------------------------------------------------------------------
 -- Helpers
@@ -255,6 +261,9 @@ local function onCatchCooldown(player: Player, now: number): boolean
 end
 
 local function startChase(bot: Bot, player: Player)
+	if os.clock() < frozenUntil then
+		return -- frozen sharks don't chase
+	end
 	bot.State = "Chase"
 	bot.Target = player
 	-- The thief's screen shows the "RUN!!" effect while a shark chases them.
@@ -436,6 +445,15 @@ local function patrolStep(bot: Bot, now: number)
 end
 
 local function updateBot(bot: Bot, now: number)
+	if now < frozenUntil then
+		return
+	end
+	if bot.Model:GetAttribute("Frozen") then
+		-- The freeze is over: thaw.
+		bot.Root.Anchored = false
+		bot.Model:SetAttribute("Frozen", nil)
+	end
+
 	-- Safety net: if a shark somehow falls out of the world, put it back.
 	if bot.Root.Position.Y < Layout.GroundTop - 15 then
 		bot.Model:PivotTo(CFrame.new(randomPointOnLine(bot.Zone) + Vector3.new(0, Config.Bots.HoverHeight + 2, 0)))
@@ -472,6 +490,19 @@ end
 ---------------------------------------------------------------------------
 -- Lifecycle
 ---------------------------------------------------------------------------
+
+function BotService.Freeze(seconds: number)
+	frozenUntil = math.max(frozenUntil, os.clock()) + seconds
+	for _, bot in bots do
+		if bot.State == "Chase" then
+			stopChase(bot)
+		end
+		bot.Humanoid:MoveTo(bot.Root.Position)
+		bot.Root.AssemblyLinearVelocity = Vector3.zero
+		bot.Root.Anchored = true
+		bot.Model:SetAttribute("Frozen", true)
+	end
+end
 
 function BotService.Init()
 end

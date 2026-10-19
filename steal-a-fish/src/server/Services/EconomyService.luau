@@ -25,6 +25,7 @@
 		EconomyService.TrySpend(player, amount) -> boolean   -- false if they can't afford it
 		EconomyService.GetIncomePerSecond(player) -> number   -- after boosts
 		EconomyService.SetIncomeMultiplier(player, key, value?)  -- e.g. "MoneyPass" = 2
+		EconomyService.SetAutoCollect(player, on)          -- Auto Collect pass: money goes straight to the player
 		EconomyService.SetMoney(player, amount)            -- loading saved data
 		EconomyService.GetMoneyForSave(player) -> number   -- wallet + money waiting on the pad
 ]]
@@ -51,6 +52,7 @@ local COLLECT_CHECK_INTERVAL = 0.2
 local money: { [Player]: number } = {}
 local waiting: { [Player]: number } = {} -- money waiting on the collect pad
 local incomeMultipliers: { [Player]: { [string]: number } } = {}
+local autoCollect: { [Player]: boolean? } = {} -- players with the Auto Collect pass
 
 local function moneyText(amount: number): string
 	return `${Format.short(amount)}`
@@ -126,8 +128,22 @@ end
 local function updateCollectLabel(player: Player)
 	local plot = PlotService.GetPlot(player)
 	if plot then
-		plot.CollectLabel.Text = `💰 {moneyText(math.floor(waiting[player] or 0))}`
+		plot.CollectLabel.Text = if autoCollect[player] then "🧲 AUTO COLLECT" else `💰 {moneyText(math.floor(waiting[player] or 0))}`
 	end
+end
+
+-- Auto Collect: income goes straight into the wallet (and whatever is
+-- waiting on the pad is paid out right away).
+function EconomyService.SetAutoCollect(player: Player, on: boolean)
+	autoCollect[player] = if on then true else nil
+	if on then
+		local amount = math.floor(waiting[player] or 0)
+		if amount >= 1 then
+			waiting[player] = (waiting[player] or 0) - amount
+			EconomyService.AddMoney(player, amount)
+		end
+	end
+	updateCollectLabel(player)
 end
 
 -- Remove everything waiting on the collect pad (used by the Studio !wipe command).
@@ -147,7 +163,7 @@ local function payIncome()
 		player:SetAttribute(Constants.Attributes.Income, perSecond)
 		local earned = perSecond * interval
 		if earned > 0 then
-			if Config.Economy.CollectMode == "Auto" then
+			if Config.Economy.CollectMode == "Auto" or autoCollect[player] then
 				EconomyService.AddMoney(player, earned)
 			else
 				waiting[player] = (waiting[player] or 0) + earned
@@ -204,6 +220,7 @@ function EconomyService.Start()
 		money[player] = nil
 		waiting[player] = nil
 		incomeMultipliers[player] = nil
+		autoCollect[player] = nil
 	end)
 
 	-- Fresh plot: empty collect pad. In "Auto" mode the pad isn't needed.

@@ -7,8 +7,8 @@
 	What is saved (one record per player, key "Player_<UserId>"):
 	  Money (wallet + money waiting on the collect pad), Speed stat, treadmill
 	  tier, pads bought, every egg/pet on the pads, the eggs in the hotbar
-	  inventory, and (for the Robux
-	  milestone) the IDs of processed purchases.
+	  inventory, Index rewards, the time left on Robux boosts, and the IDs
+	  of processed Robux purchases (so a purchase is never given twice).
 
 	How it stays safe:
 	  - SESSION LOCK: when you join, your record is marked "open on server X".
@@ -34,7 +34,8 @@
 	Public interface:
 		DataService.GetData(player) -> SaveData?    -- the live record (nil until loaded)
 		DataService.IsLoaded(player) -> boolean
-		DataService.SaveNow(player) -> boolean      -- yields; true if saved (for purchases later)
+		DataService.SaveNow(player) -> boolean      -- yields; true if saved (purchases wait for this)
+		DataService.PlayerLoaded:Connect(function(player, data) end)  -- after the data is in the game
 ]]
 
 local DataStoreService = game:GetService("DataStoreService")
@@ -44,6 +45,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Signal = require(ReplicatedStorage.Shared.Signal)
 local Constants = require(ReplicatedStorage.Shared.Constants)
 local Net = require(ReplicatedStorage.Shared.Net)
 local Notify = require(script.Parent.Parent.Util.Notify)
@@ -87,6 +89,7 @@ export type SaveData = {
 	Pads: { PetService.SavedPadItem },
 	EggInventory: { EggService.InventoryEgg }, -- eggs in the hotbar: { Rarity, Zone }
 	ProcessedPurchases: { [string]: boolean },
+	Boosts: { [string]: number }, -- seconds left on each Robux boost ("Money", "Speed", "Luck")
 	Rewards: RewardService.SavedRewards, -- Index (found fish, claimed rewards) and the Daily Gift
 	TutorialDone: boolean,
 	LastSave: number, -- os.time() of the last save (0 = never saved)
@@ -103,6 +106,7 @@ type Profile = {
 
 local DataService = {}
 DataService.Name = "DataService"
+DataService.PlayerLoaded = Signal.new()
 
 -- A unique ID for THIS server (game.JobId is empty in Studio).
 local SESSION_ID = HttpService:GenerateGUID(false)
@@ -136,6 +140,7 @@ local function defaultData(): SaveData
 		Pads = {},
 		EggInventory = {},
 		ProcessedPurchases = {},
+		Boosts = {},
 		Rewards = { Found = {}, Claimed = {}, ZonesClaimed = {}, Locked = {}, LastDailyGift = 0 },
 		TutorialDone = false,
 		LastSave = 0,
@@ -237,6 +242,13 @@ local function reconcile(raw: unknown): SaveData
 		for id, value in old.ProcessedPurchases do
 			if typeof(id) == "string" and value == true then
 				data.ProcessedPurchases[id] = true
+			end
+		end
+	end
+	if typeof(old.Boosts) == "table" then
+		for name, seconds in old.Boosts do
+			if typeof(name) == "string" and typeof(seconds) == "number" and seconds > 0 then
+				data.Boosts[name] = cleanNumber(seconds, 0)
 			end
 		end
 	end
@@ -425,6 +437,7 @@ local function onPlayerAdded(player: Player)
 		profiles[player] = profile
 		apply(player, profile.Data)
 		profile.Applied = true
+		DataService.PlayerLoaded:Fire(player, profile.Data)
 		notify(player, "⚠ Saving is OFF in Studio (see Output for how to turn it on).", "warning")
 		return
 	end
@@ -453,6 +466,7 @@ local function onPlayerAdded(player: Player)
 
 	apply(player, data)
 	profile.Applied = true
+	DataService.PlayerLoaded:Fire(player, data)
 	log(`Loaded {player.Name} (money {data.Money}, speed {data.SpeedStat}, {#data.Pads} pad items)`)
 	if data.LastSave > 0 then
 		notify(player, "💾 Welcome back! Your progress was loaded.", "success")

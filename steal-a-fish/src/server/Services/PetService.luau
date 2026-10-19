@@ -37,7 +37,9 @@
 		PetService.GetFreePadCount(player) -> number
 		PetService.GetPadItem(plot, padIndex) -> PadItem?
 		PetService.GetIncomePerSecond(player) -> number   -- all pets, before boosts
-		PetService.FinishHatching(player)                 -- make every egg READY now (Instant Hatch product later)
+		PetService.FinishHatching(player)                 -- make every egg READY now (Instant Hatch product)
+		PetService.CountHatchingEggs(player) -> number    -- eggs on the pads that aren't ready yet
+		PetService.SetLuck(player, luck)                  -- 1 = normal; higher = rarer fish (Monetization)
 		PetService.PlaceEggOnPad(player, padIndex, rarity, zone) -> boolean
 		PetService.SetHatchTimeMultiplier(player, value)  -- e.g. 0.5 for a Faster Hatching pass
 		PetService.ExportPads(player) / ImportPads(player, list)  -- saving (DataService)
@@ -99,6 +101,7 @@ local rng = Random.new()
 -- padItems[plotIndex][padIndex] = what's on that pad (nil = free).
 local padItems: { [number]: { [number]: PadItem } } = {}
 local hatchTimeMultipliers: { [Player]: number } = {}
+local lucks: { [Player]: number } = {}
 
 local function serverNow(): number
 	return Workspace:GetServerTimeNow()
@@ -397,7 +400,7 @@ end
 
 local function hatch(plot: Types.PlotInfo, padIndex: number, egg: PadItem)
 	local owner = plot.Owner
-	local pet = Fish.roll(egg.Rarity, egg.Zone)
+	local pet = Fish.roll(egg.Rarity, egg.Zone, nil, if owner then lucks[owner] else nil)
 	local pad = plot.Pads[padIndex]
 
 	egg.Instance:Destroy()
@@ -491,6 +494,23 @@ function PetService.FinishHatching(player: Player)
 		end
 	end
 	checkHatches()
+end
+
+function PetService.CountHatchingEggs(player: Player): number
+	local plot = PlotService.GetPlot(player)
+	local count = 0
+	if plot then
+		for _, item in getItems(plot) do
+			if item.Kind == "Egg" and not item.Ready then
+				count += 1
+			end
+		end
+	end
+	return count
+end
+
+function PetService.SetLuck(player: Player, luck: number)
+	lucks[player] = luck
 end
 
 function PetService.SetHatchTimeMultiplier(player: Player, value: number)
@@ -753,6 +773,7 @@ function PetService.Start()
 	end)
 	PlayerLifecycle.onLeave(function(player)
 		hatchTimeMultipliers[player] = nil
+		lucks[player] = nil
 	end)
 	registerDebugCommands()
 	if Config.Hatching.PrintOddsTable then

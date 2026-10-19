@@ -6,6 +6,7 @@
 	controller requires this module):
 
 	  left, middle:   [🛒 Shop]  (green)      [📖 Index] (blue, red badge = rewards to claim)
+	                  active boost timers below them (Hud.Boosts, filled by ShopController)
 	  right, middle:  [🥚] Eggs (red)          [🐟] Fish (orange)
 	  bottom left:    👟 58.1K    (Speed)
 	                  💵 $4.1M    (Money)
@@ -59,6 +60,17 @@ Kit.autoScale(left)
 Hud.Shop = menuButton(left, "🛒", "Shop", Kit.Colors.Green, 1)
 Hud.Index = menuButton(left, "📖", "Index", Kit.Colors.Blue, 2)
 Hud.setIndexBadge = Kit.badge(Hud.Index)
+
+-- Active boosts ("💸 2x Money 12:30") under the buttons.
+local boosts = Instance.new("Frame")
+boosts.Name = "Boosts"
+boosts.LayoutOrder = 3
+boosts.Size = UDim2.fromOffset(170, 0)
+boosts.AutomaticSize = Enum.AutomaticSize.Y
+boosts.BackgroundTransparency = 1
+boosts.Parent = left
+Kit.list(boosts, 6)
+Hud.Boosts = boosts
 
 -- Right middle: Eggs and Fish.
 local right = Instance.new("Frame")

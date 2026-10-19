@@ -13,6 +13,7 @@
 	    move, so a chasing shark really thrashes its tail.
 	  - A chasing shark (attribute "Chasing") smoothly turns red and glows
 	    (red highlight and light), and fades back to normal afterwards.
+	  - A frozen shark (attribute "Frozen", Shark Freeze) turns icy blue.
 	  - Lights and particles tagged "LodEffect" are switched off when they
 	    are far from the camera (Config.RarityEffects.EffectsDistance), and
 	    animations stop beyond AnimateDistance, to keep the game smooth.
@@ -33,6 +34,7 @@ local LOD_INTERVAL = 0.5
 local RED_FADE_SECONDS = 0.5 -- how long a shark takes to turn red (and back)
 local RED = Color3.fromRGB(235, 35, 35)
 local RED_AMOUNT = 0.7 -- how red the shark gets (1 = completely)
+local ICE = Color3.fromRGB(150, 220, 255)
 -- Parts that keep their own color when a shark turns red.
 local KEEP_COLOR: { [string]: boolean } = { Eye = true, Pupil = true, Tooth = true, Mouth = true }
 
@@ -53,6 +55,7 @@ type Creature = {
 	Phase: number, -- so identical creatures don't move in sync
 	Dirty: boolean, -- joints need to be looked up (again)
 	Red: number, -- 0 = normal colors, 1 = fully red (chasing)
+	Frozen: boolean, -- icy blue instead of red (Shark Freeze)
 	Colors: { [BasePart]: Color3 }, -- original colors, to fade back to
 	Connection: RBXScriptConnection?,
 }
@@ -117,6 +120,7 @@ local function add(instance: Instance)
 		Phase = rng:NextNumber(0, math.pi * 2),
 		Dirty = true,
 		Red = 0,
+		Frozen = false,
 		Colors = {},
 		Connection = nil,
 	}
@@ -141,25 +145,31 @@ end
 
 -- Fade a shark toward red while it chases, and back afterwards.
 local function updateRed(creature: Creature, dt: number)
-	local target = if creature.Instance:GetAttribute("Chasing") == true then 1 else 0
-	if creature.Red == target then
+	local frozen = creature.Instance:GetAttribute("Frozen") == true
+	local target = if frozen or creature.Instance:GetAttribute("Chasing") == true then 1 else 0
+	if creature.Red == target and creature.Frozen == frozen then
 		return
 	end
+	creature.Frozen = frozen
 	local step = dt / RED_FADE_SECONDS
 	creature.Red = if target > creature.Red then math.min(target, creature.Red + step) else math.max(target, creature.Red - step)
 	local red = creature.Red
+	local tint = if frozen then ICE else RED
 	for part, color in creature.Colors do
-		part.Color = color:Lerp(RED, red * RED_AMOUNT)
+		part.Color = color:Lerp(tint, red * RED_AMOUNT)
 	end
 	local glow = creature.Instance:FindFirstChild("ChaseGlow")
 	if glow and glow:IsA("Highlight") then
 		glow.Enabled = red > 0.01
+		glow.FillColor = tint
+		glow.OutlineColor = tint
 		glow.FillTransparency = 1 - 0.4 * red
 		glow.OutlineTransparency = 1 - red
 	end
 	local light = creature.Instance:FindFirstChild("ChaseLight", true)
 	if light and light:IsA("PointLight") then
 		light.Enabled = red > 0.01
+		light.Color = tint
 		light.Brightness = 2.5 * red
 	end
 end

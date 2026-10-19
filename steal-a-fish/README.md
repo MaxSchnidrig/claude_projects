@@ -167,13 +167,40 @@ paste it into that setting as `"rbxassetid://<the number>"`. Adjust
 | 8b | Gameplay changes: egg hotbar inventory, carry pose, hold-E hatching, caught = drop, one alerted shark | ✅ |
 | 8c | 80 fish + visual makeover: 8 fish per zone, eggs remember their zone, blocky fish/eggs/sharks with effects and animation | ✅ |
 | 8d | **Balance + design batch**: new HUD, Shop (Daily Gift), Index, Eggs and Fish panels, zone banners, speed signs, safe zone, red sharks, ocean wall, upgrades in the world | 🔨 testing |
-| 9 | Monetization (Robux); Speed boosts plug into `SpeedService.SetGainMultiplier` | |
+| 9 | Monetization: 6 game passes, boosts, Instant Hatch, Server Luck, Shark Freeze, cash packs | 🔨 testing |
 
 ## Sounds
 
 Sound effects are listed in `Config.Sounds`. They start as short placeholder sounds that come
 with Roblox. To use your own: Toolbox → Creator Store → **Audio**, pick a sound, right-click →
 **Copy Asset ID**, and set e.g. `Pickup = { Id = "rbxassetid://123456", Volume = 0.6 }`.
+
+## Monetization setup (Robux)
+
+Every Robux item is listed in `Config.Shop` (in `src/shared/Config.luau`); what each one does
+(multipliers, minutes, luck) is in `Config.Monetization`. The server code is
+`src/server/Services/MonetizationService.luau`.
+
+**While an item's `Id` is `0`:** in Studio, clicking its buy button *simulates* the purchase
+for free so you can test it; in the live game the button says "Coming soon".
+
+**To sell an item for real:**
+1. Publish the game (File → Publish to Roblox).
+2. Open the [Creator Dashboard](https://create.roblox.com/dashboard/creations) → your game →
+   **Monetization**.
+3. **Passes** (2x Money, 2x Speed, VIP, Lucky Pass, Faster Hatching, Auto Collect): **Passes →
+   Create a Pass**, give it a name, icon and description, save, then open it → **Sales** → turn
+   on **Item for Sale** and set the price.
+4. **Developer Products** (all Boosts and Cash items): **Developer Products → Create a
+   Developer Product**, set the name, icon and price.
+5. Copy each item's **ID** (the number on its page or in its URL) into the matching `Id = 0`
+   in `Config.Shop`. The Shop shows the real price automatically.
+6. Test in Studio: Roblox shows a *test* purchase window and nothing is charged. Developer
+   products only work in a published place with API access on (see Saving below).
+
+Purchases are safe: a developer product is only marked as done after it was given AND saved,
+and every purchase ID is remembered so nothing is ever given twice. Passes are checked with
+Roblox every time a player joins.
 
 ## Saving (DataStores)
 
@@ -209,6 +236,9 @@ Only work while play-testing in Studio. Type them in the chat:
 | `!showclear` | remove the preview (it also disappears by itself after 3 minutes) |
 | `!gift` | make your Daily Gift ready again |
 | `!findall` | mark every fish as found in your Index (`!findall 2`: only zone 2's fish) |
+| `!resetindex` | make every Index reward claimable again (found fish stay found) |
+| `!buy DoubleMoney` | simulate buying a Shop item for free (any Key from `Config.Shop`, e.g. `!buy BotFreeze`) |
+| `!unbuy` | remove the passes you simulated and your running boosts |
 
 If chat commands don't do anything, open **View → Command Bar**, set its dropdown to
 **Server**, and run, for example:

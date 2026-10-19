@@ -101,7 +101,8 @@ end
 
 -- The chance of every fish that can come out of an egg of `eggRarity` from
 -- zone `zoneIndex`. See Config.Hatching for how it works.
-function Fish.hatchChances(eggRarity: string, zoneIndex: number): { Chance }
+-- luck (default 1): rarer-than-the-egg fish are `luck` times as likely.
+function Fish.hatchChances(eggRarity: string, zoneIndex: number, luck: number?): { Chance }
 	local candidates = Fish.inZone(zoneIndex)
 	if #candidates == 0 then
 		candidates = Fish.ofRarity(eggRarity)
@@ -119,7 +120,11 @@ function Fish.hatchChances(eggRarity: string, zoneIndex: number): { Chance }
 	local weights: { [string]: number } = {}
 	local total = 0
 	for rarity in counts do
-		local weight = Config.Hatching.RarityStepWeights[Rarity.rank(rarity) - eggRank] or 0
+		local step = Rarity.rank(rarity) - eggRank
+		local weight = Config.Hatching.RarityStepWeights[step] or 0
+		if step > 0 then
+			weight *= math.max(luck or 1, 1)
+		end
 		weights[rarity] = weight
 		total += weight
 	end
@@ -150,8 +155,8 @@ function Fish.hatchChances(eggRarity: string, zoneIndex: number): { Chance }
 	return result
 end
 
-function Fish.roll(eggRarity: string, zoneIndex: number, random: Random?): Config.FishConfig
-	local chances = Fish.hatchChances(eggRarity, zoneIndex)
+function Fish.roll(eggRarity: string, zoneIndex: number, random: Random?, luck: number?): Config.FishConfig
+	local chances = Fish.hatchChances(eggRarity, zoneIndex, luck)
 	local roll = (random or rng):NextNumber()
 	for _, entry in chances do
 		roll -= entry.Chance

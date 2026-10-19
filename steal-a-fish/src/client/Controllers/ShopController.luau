@@ -9,19 +9,28 @@
 	    button shows a countdown until it's ready. Clicking only ASKS the
 	    server ("DailyGiftClaim"); the server checks the time and gives the
 	    reward.
-	  - Passes / Boosts / Cash: the Robux items from Config.Shop. They are
-	    wired up in the Monetization milestone; for now the buttons say
-	    "Coming soon".
+	  - Passes / Boosts / Cash: the Robux items from Config.Shop. The buy
+	    button only ASKS the server ("ShopBuy"); the server opens Roblox's
+	    purchase window (see MonetizationService). Owned passes say
+	    "OWNED ✓", running boosts show their time left, and the real Robux
+	    price is loaded from Roblox when the item has an ID.
+	  - Active boosts are shown as timers under the HUD buttons.
+	  - After a purchase: sound + confetti ("PurchaseThanks").
+	  - VIP players get a gold [👑 VIP] tag in the chat.
 ]]
 
+local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TextChatService = game:GetService("TextChatService")
 local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Net = require(ReplicatedStorage.Shared.Net)
+local Effects = require(script.Parent.Parent.Ui.Effects)
 local Hud = require(script.Parent.Parent.Ui.Hud)
 local Kit = require(script.Parent.Parent.Ui.Kit)
+local Sounds = require(script.Parent.Parent.Ui.Sounds)
 local UIController = require(script.Parent.UIController)
 
 local ShopController = {}
@@ -42,9 +51,39 @@ local tabButtons: { [string]: TextButton } = {}
 local giftButton: TextButton
 local currentTab = "Daily"
 
+-- Buy buttons and timer labels, by item Key.
+type Card = { Item: Config.ShopItem, Buy: TextButton, Timer: TextLabel, Price: number }
+local cards: { Card } = {}
+-- Which boost each product feeds (for its timer).
+local BOOST_OF: { [string]: string } = { Money15 = "Money", Speed15 = "Speed", Luck15 = "Luck" }
+local HUD_BOOSTS = {
+	{ Attribute = "BoostMoneyEndsAt", Text = "💸 2x Money", Color = Color3.fromRGB(70, 190, 90) },
+	{ Attribute = "BoostSpeedEndsAt", Text = "⚡ 2x Speed", Color = Color3.fromRGB(60, 150, 240) },
+	{ Attribute = "BoostLuckEndsAt", Text = "🍀 2x Luck", Color = Color3.fromRGB(60, 200, 90) },
+	{ Attribute = "ServerLuckEndsAt", Text = "🌟 Server Luck", Color = Color3.fromRGB(240, 190, 40), OnWorkspace = true },
+}
+local hudPills: { [string]: TextLabel } = {}
+
 local function formatCountdown(seconds: number): string
 	seconds = math.max(0, math.ceil(seconds))
 	return string.format("%d:%02d:%02d", seconds // 3600, (seconds // 60) % 60, seconds % 60)
+end
+
+local function shortCountdown(seconds: number): string
+	seconds = math.max(0, math.ceil(seconds))
+	if seconds >= 3600 then
+		return string.format("%d:%02d:%02d", seconds // 3600, (seconds // 60) % 60, seconds % 60)
+	end
+	return string.format("%d:%02d", seconds // 60, seconds % 60)
+end
+
+-- Seconds left on a boost (0 = not running).
+local function boostLeft(attribute: string, onWorkspace: boolean?): number
+	local endsAt = if onWorkspace then Workspace:GetAttribute(attribute) else player:GetAttribute(attribute)
+	if typeof(endsAt) ~= "number" then
+		return 0
+	end
+	return math.max(0, endsAt - Workspace:GetServerTimeNow())
 end
 
 local function secondsUntilGift(): number
@@ -120,10 +159,106 @@ local function buildItemCard(parent: Instance, item: Config.ShopItem, order: num
 	local description = Kit.label(card, item.Description, UDim2.new(1, -12, 0, 34), UDim2.fromOffset(6, 88), Kit.Colors.Text, 1)
 	description.TextXAlignment = Enum.TextXAlignment.Center
 	local buy = Kit.button(card, `R$ {item.PriceRobux}`, Kit.Colors.Green, UDim2.new(1, -16, 0, 40), UDim2.new(0, 8, 1, -48))
+	-- Time left on a running boost (boost cards only).
+	local timer = Kit.label(card, "", UDim2.new(1, -12, 0, 22), UDim2.new(0, 6, 1, -74), Color3.fromRGB(255, 240, 120), 2)
+	timer.TextXAlignment = Enum.TextXAlignment.Center
+	local entry: Card = { Item = item, Buy = buy, Timer = timer, Price = item.PriceRobux }
+	table.insert(cards, entry)
 	buy.Activated:Connect(function()
-		-- Robux purchases are added in the Monetization milestone.
-		UIController.Notify(`🛠 {item.Name} is coming soon!`, "info")
+		if item.Kind == "Pass" and player:GetAttribute(`Pass_{item.Key}`) == true then
+			UIController.Notify(`You already own {item.Name}!`, "info")
+			return
+		end
+		Sounds.play("Click")
+		-- The server checks it and opens Roblox's purchase window.
+		Net.event(Net.Names.ShopBuy):FireServer(item.Key)
 	end)
+	-- Show the real price from Roblox (the Config price is only a placeholder).
+	if item.Id ~= 0 then
+		task.spawn(function()
+			local infoType = if item.Kind == "Pass" then Enum.InfoType.GamePass else Enum.InfoType.Product
+			local ok, info = pcall(MarketplaceService.GetProductInfo, MarketplaceService, item.Id, infoType)
+			if ok and typeof(info) == "table" and typeof(info.PriceInRobux) == "number" then
+				entry.Price = info.PriceInRobux
+			end
+		end)
+	end
+end
+
+-- Owned passes, prices and boost timers on the cards.
+local function refreshCards()
+	for _, card in cards do
+		local item = card.Item
+		if item.Kind == "Pass" and player:GetAttribute(`Pass_{item.Key}`) == true then
+			Kit.setText(card.Buy, "OWNED ✓")
+			Kit.setColor(card.Buy, Kit.Colors.Grey)
+		else
+			Kit.setText(card.Buy, `R$ {card.Price}`)
+			Kit.setColor(card.Buy, Kit.Colors.Green)
+		end
+		local boost = BOOST_OF[item.Key]
+		local left = if boost then boostLeft(`Boost{boost}EndsAt`)
+			elseif item.Key == "ServerLuck" then boostLeft("ServerLuckEndsAt", true)
+			else 0
+		card.Timer.Text = if left > 0 then `⏳ {shortCountdown(left)} left` else ""
+	end
+end
+
+-- The boost timers under the HUD buttons.
+local function refreshHudBoosts()
+	for order, info in HUD_BOOSTS do
+		local left = boostLeft(info.Attribute, info.OnWorkspace)
+		local pill = hudPills[info.Attribute]
+		if left > 0 then
+			if not pill then
+				local frame = Instance.new("Frame")
+				frame.LayoutOrder = order
+				frame.Size = UDim2.fromOffset(170, 34)
+				frame.BackgroundColor3 = info.Color
+				frame.Parent = Hud.Boosts
+				Kit.corner(frame, 10)
+				Kit.stroke(frame, Kit.Colors.Outline, 3)
+				local label = Kit.label(frame, "", UDim2.new(1, -12, 1, -6), UDim2.fromOffset(6, 3), Kit.Colors.Text, 2)
+				label.TextXAlignment = Enum.TextXAlignment.Center
+				hudPills[info.Attribute] = label
+				pill = label
+			end
+			(pill :: TextLabel).Text = `{info.Text}  {shortCountdown(left)}`
+		elseif pill then
+			(pill.Parent :: Instance):Destroy()
+			hudPills[info.Attribute] = nil
+		end
+	end
+end
+
+local function onPurchaseThanks(icon: unknown, name: unknown)
+	Sounds.play("Purchase")
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if root and root:IsA("BasePart") then
+		Effects.confetti(root.Position + Vector3.new(0, 4, 0), 80)
+		Effects.burst(root.Position + Vector3.new(0, 2, 0), Color3.fromRGB(255, 215, 70), 40)
+	end
+	if typeof(icon) == "string" and typeof(name) == "string" then
+		UIController.Notify(`{icon} {name}: thank you for your support!`, "purchase")
+	end
+	refreshCards()
+end
+
+-- A gold [👑 VIP] tag in front of VIP players' chat messages.
+local function setUpVipChatTag()
+	if TextChatService.ChatVersion ~= Enum.ChatVersion.TextChatService then
+		return
+	end
+	TextChatService.OnIncomingMessage = function(message: TextChatMessage)
+		local properties = Instance.new("TextChatMessageProperties")
+		local source = message.TextSource
+		local sender = if source then Players:GetPlayerByUserId(source.UserId) else nil
+		if sender and sender:GetAttribute("Pass_VIP") == true then
+			properties.PrefixText = `<font color="#FFC83C">[👑 VIP]</font> {message.PrefixText}`
+		end
+		return properties
+	end
 end
 
 local function buildItemsPage(page: Frame, tab: string)
@@ -187,11 +322,22 @@ function ShopController.Start()
 		while true do
 			if window.IsOpen() then
 				refreshGift()
+				refreshCards()
 			end
+			refreshHudBoosts()
 			task.wait(1)
 		end
 	end)
 	player:GetAttributeChangedSignal("DailyGiftAt"):Connect(refreshGift)
+	player.AttributeChanged:Connect(function(name: string)
+		if string.sub(name, 1, 5) == "Pass_" or string.sub(name, 1, 5) == "Boost" then
+			refreshCards()
+			refreshHudBoosts()
+		end
+	end)
+	Net.event(Net.Names.PurchaseThanks).OnClientEvent:Connect(onPurchaseThanks)
+	setUpVipChatTag()
+	refreshCards()
 end
 
 return ShopController

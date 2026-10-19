@@ -55,7 +55,8 @@ Net.Names = {
 	DailyGiftClaim = "DailyGiftClaim", -- client -> server: claim the free daily gift
 	PlotUpgraded = "PlotUpgraded", -- server -> ALL clients: (position) sparkle where a pad / the second floor appeared
 	FishLeveledUp = "FishLeveledUp", -- server -> ALL clients: (position, rarity) sparkle when a fish levels up
-	ShopBuy = "ShopBuy", -- client -> server: (itemKey) buy a Robux item (Monetization milestone)
+	ShopBuy = "ShopBuy", -- client -> server: (itemKey) asks to buy a Robux item (the server opens the purchase window)
+	PurchaseThanks = "PurchaseThanks", -- server -> buyer: (icon, name) after a purchase, for the thank-you effect
 }
 
 local function getFolder(): Folder

@@ -38,6 +38,7 @@ local SERVICES: { Types.Service } = {
 	require(Services.EggService),
 	require(Services.BotService),
 	require(Services.RewardService), -- Index rewards and the Daily Gift
+	require(Services.MonetizationService), -- Robux passes, boosts and products
 	require(Services.ShowcaseService), -- Studio-only preview commands
 	-- Last: it loads saved data INTO the services above.
 	require(Services.DataService),

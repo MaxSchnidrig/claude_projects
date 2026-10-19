@@ -1080,11 +1080,13 @@ function Config.PetSellValue(baseIncome: number, level: number): number
 end
 
 ---------------------------------------------------------------------------
--- SHOP (the 🛒 Shop button)
--- Only Robux items, plus the free Daily Gift. The Robux items are wired up
--- in the Monetization milestone; until then they show "Coming soon".
--- Id = the game pass / developer product ID from the Creator Dashboard
--- (0 = not created yet). PriceRobux is only shown to players.
+-- SHOP (the 🛒 Shop button): Robux items, plus the free Daily Gift.
+-- Id = the game pass / developer product ID from the Creator Dashboard.
+--   0 = not created yet: in the live game the button says "Coming soon";
+--   in Studio clicking it SIMULATES the purchase (free, nothing is charged)
+--   so you can test every item. See README "Monetization setup".
+-- PriceRobux is only what the button shows until the real price loads.
+-- What each item does is in Config.Monetization below.
 ---------------------------------------------------------------------------
 export type ShopItem = {
 	Key: string, -- internal name (used in code and saves)
@@ -1092,32 +1094,69 @@ export type ShopItem = {
 	Description: string,
 	Icon: string, -- an emoji
 	Tab: string, -- "Passes", "Boosts" or "Cash"
-	Kind: string, -- "Pass" (buy once) or "Product" (buy again and again)
+	Kind: string, -- "Pass" (game pass, buy once) or "Product" (developer product, buy again and again)
 	PriceRobux: number,
 	Id: number,
 	Color: Color3, -- card color
 }
 local shopItems: { ShopItem } = {
+	-- Game passes (buy once, forever)
 	{ Key = "DoubleMoney", Name = "2x Money", Description = "All your fish earn double, forever!", Icon = "💰", Tab = "Passes", Kind = "Pass", PriceRobux = 199, Id = 0, Color = Color3.fromRGB(70, 190, 90) },
-	{ Key = "DoubleSpeed", Name = "2x Speed", Description = "Twice the Speed from every treadmill!", Icon = "👟", Tab = "Passes", Kind = "Pass", PriceRobux = 249, Id = 0, Color = Color3.fromRGB(60, 150, 240) },
-	{ Key = "VIP", Name = "VIP", Description = "VIP tag, extra pad and a little more luck.", Icon = "👑", Tab = "Passes", Kind = "Pass", PriceRobux = 299, Id = 0, Color = Color3.fromRGB(240, 180, 40) },
-	{ Key = "Skins", Name = "Skins Pass", Description = "Unlock cool treadmill and pad skins.", Icon = "🎨", Tab = "Passes", Kind = "Pass", PriceRobux = 149, Id = 0, Color = Color3.fromRGB(200, 90, 230) },
-	{ Key = "MorePads", Name = "+2 Pads", Description = "Two extra pads on your plot.", Icon = "🟩", Tab = "Passes", Kind = "Pass", PriceRobux = 179, Id = 0, Color = Color3.fromRGB(80, 200, 150) },
-	{ Key = "AutoCollect", Name = "Auto Collect", Description = "Money goes straight to you.", Icon = "🧲", Tab = "Passes", Kind = "Pass", PriceRobux = 129, Id = 0, Color = Color3.fromRGB(240, 110, 80) },
-	{ Key = "FastHatch", Name = "Faster Hatching", Description = "Eggs hatch twice as fast.", Icon = "⏩", Tab = "Passes", Kind = "Pass", PriceRobux = 149, Id = 0, Color = Color3.fromRGB(90, 120, 240) },
-	{ Key = "Lucky", Name = "Lucky Pass", Description = "Better odds for rare fish.", Icon = "🍀", Tab = "Passes", Kind = "Pass", PriceRobux = 249, Id = 0, Color = Color3.fromRGB(60, 200, 90) },
+	{ Key = "DoubleSpeed", Name = "2x Speed", Description = "Twice the Speed from your treadmill, forever!", Icon = "👟", Tab = "Passes", Kind = "Pass", PriceRobux = 249, Id = 0, Color = Color3.fromRGB(60, 150, 240) },
+	{ Key = "VIP", Name = "VIP", Description = "👑 VIP tag, gold chat name, +25% money and Speed.", Icon = "👑", Tab = "Passes", Kind = "Pass", PriceRobux = 299, Id = 0, Color = Color3.fromRGB(240, 180, 40) },
+	{ Key = "Lucky", Name = "Lucky Pass", Description = "Rarer fish hatch more often, forever!", Icon = "🍀", Tab = "Passes", Kind = "Pass", PriceRobux = 249, Id = 0, Color = Color3.fromRGB(60, 200, 90) },
+	{ Key = "FastHatch", Name = "Faster Hatching", Description = "Your eggs hatch twice as fast.", Icon = "⏩", Tab = "Passes", Kind = "Pass", PriceRobux = 149, Id = 0, Color = Color3.fromRGB(90, 120, 240) },
+	{ Key = "AutoCollect", Name = "Auto Collect", Description = "Money goes straight to you, no walking to the pad.", Icon = "🧲", Tab = "Passes", Kind = "Pass", PriceRobux = 129, Id = 0, Color = Color3.fromRGB(240, 110, 80) },
+	-- Boosts (developer products, buy as often as you like)
 	{ Key = "Money15", Name = "2x Money (15 min)", Description = "Double money for 15 minutes. Stacks!", Icon = "💸", Tab = "Boosts", Kind = "Product", PriceRobux = 39, Id = 0, Color = Color3.fromRGB(70, 190, 90) },
+	{ Key = "Speed15", Name = "2x Speed (15 min)", Description = "Double treadmill Speed for 15 minutes. Stacks!", Icon = "⚡", Tab = "Boosts", Kind = "Product", PriceRobux = 39, Id = 0, Color = Color3.fromRGB(60, 150, 240) },
 	{ Key = "Luck15", Name = "2x Luck (15 min)", Description = "Double luck for 15 minutes. Stacks!", Icon = "🍀", Tab = "Boosts", Kind = "Product", PriceRobux = 39, Id = 0, Color = Color3.fromRGB(60, 200, 90) },
-	{ Key = "InstantHatch", Name = "Instant Hatch", Description = "All eggs on your pads are READY now.", Icon = "🥚", Tab = "Boosts", Kind = "Product", PriceRobux = 29, Id = 0, Color = Color3.fromRGB(240, 90, 90) },
-	{ Key = "ServerLuck", Name = "Server Luck", Description = "Luck boost for EVERYONE in the server!", Icon = "🌟", Tab = "Boosts", Kind = "Product", PriceRobux = 99, Id = 0, Color = Color3.fromRGB(240, 200, 60) },
-	{ Key = "BotFreeze", Name = "Shark Freeze", Description = "Freeze every shark for 30 seconds.", Icon = "🧊", Tab = "Boosts", Kind = "Product", PriceRobux = 49, Id = 0, Color = Color3.fromRGB(110, 200, 250) },
-	{ Key = "CashSmall", Name = "Pile of Cash", Description = "A pile of money (grows with your progress).", Icon = "💵", Tab = "Cash", Kind = "Product", PriceRobux = 25, Id = 0, Color = Color3.fromRGB(70, 190, 90) },
-	{ Key = "CashMedium", Name = "Bag of Cash", Description = "A bag of money (grows with your progress).", Icon = "💰", Tab = "Cash", Kind = "Product", PriceRobux = 79, Id = 0, Color = Color3.fromRGB(60, 170, 80) },
-	{ Key = "CashLarge", Name = "Vault of Cash", Description = "A vault of money (grows with your progress).", Icon = "🏦", Tab = "Cash", Kind = "Product", PriceRobux = 199, Id = 0, Color = Color3.fromRGB(50, 150, 70) },
+	{ Key = "InstantHatch", Name = "Instant Hatch", Description = "All eggs on your pads hatch right now.", Icon = "🥚", Tab = "Boosts", Kind = "Product", PriceRobux = 29, Id = 0, Color = Color3.fromRGB(240, 90, 90) },
+	{ Key = "ServerLuck", Name = "Server Luck", Description = "2x luck for EVERYONE in the server for 15 min!", Icon = "🌟", Tab = "Boosts", Kind = "Product", PriceRobux = 99, Id = 0, Color = Color3.fromRGB(240, 200, 60) },
+	{ Key = "BotFreeze", Name = "Shark Freeze", Description = "Freeze every shark for 30 seconds!", Icon = "🧊", Tab = "Boosts", Kind = "Product", PriceRobux = 49, Id = 0, Color = Color3.fromRGB(110, 200, 250) },
+	-- Cash (developer products; the amount grows with your income)
+	{ Key = "CashSmall", Name = "Pile of Cash", Description = "10 minutes of your income.", Icon = "💵", Tab = "Cash", Kind = "Product", PriceRobux = 25, Id = 0, Color = Color3.fromRGB(70, 190, 90) },
+	{ Key = "CashMedium", Name = "Bag of Cash", Description = "45 minutes of your income.", Icon = "💰", Tab = "Cash", Kind = "Product", PriceRobux = 79, Id = 0, Color = Color3.fromRGB(60, 170, 80) },
+	{ Key = "CashLarge", Name = "Vault of Cash", Description = "2.5 hours of your income!", Icon = "🏦", Tab = "Cash", Kind = "Product", PriceRobux = 199, Id = 0, Color = Color3.fromRGB(50, 150, 70) },
 }
 Config.Shop = {
 	Tabs = { "Daily", "Passes", "Boosts", "Cash" },
 	Items = shopItems,
+}
+
+function Config.ShopItem(key: string): ShopItem?
+	for _, item in shopItems do
+		if item.Key == key then
+			return item
+		end
+	end
+	return nil
+end
+
+---------------------------------------------------------------------------
+-- MONETIZATION: what every Robux item does.
+-- LUCK: rarer fish (one or two rarity steps above the egg, see
+-- Config.Hatching) are LuckX times as likely. Luck bonuses ADD UP:
+-- luck = 1 + Lucky pass + 2x Luck boost + Server Luck (max 1 + 0.5 + 1 + 1 = 3.5).
+-- Boost timers only count down while you play, and are saved.
+---------------------------------------------------------------------------
+Config.Monetization = {
+	DoubleMoney = 2, -- income multiplier
+	DoubleSpeed = 2, -- treadmill Speed multiplier
+	VipMoney = 1.25, -- VIP income multiplier
+	VipSpeed = 1.25, -- VIP treadmill Speed multiplier
+	LuckyPassLuck = 0.5, -- +50% luck
+	FastHatchMultiplier = 0.5, -- hatch time x0.5 (twice as fast)
+	BoostMinutes = 15, -- each 2x Money / Speed / Luck purchase adds this many minutes
+	BoostMoney = 2,
+	BoostSpeed = 2,
+	BoostLuck = 1, -- +100% luck
+	MaxBoostMinutes = 24 * 60, -- a boost timer can't go past this
+	ServerLuckMinutes = 15,
+	ServerLuck = 1, -- +100% luck for everyone
+	FreezeSeconds = 30, -- Shark Freeze
+	CashMinutes = { CashSmall = 10, CashMedium = 45, CashLarge = 150 } :: { [string]: number },
+	CashMinimum = { CashSmall = 1_000, CashMedium = 5_000, CashLarge = 25_000 } :: { [string]: number },
 }
 
 ---------------------------------------------------------------------------
