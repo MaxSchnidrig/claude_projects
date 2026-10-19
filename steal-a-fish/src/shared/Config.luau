@@ -1138,43 +1138,120 @@ Config.DailyGift = {
 
 ---------------------------------------------------------------------------
 -- INDEX (the 📖 Index button): every fish you've ever hatched is "found".
--- Each newly found fish has a small reward to claim, and finding all 8 fish
--- of a zone unlocks a bigger zone reward.
+-- Rewards GROW WITH YOUR PROGRESS, so they always feel big: they're paid in
+-- "minutes of your current income" and "minutes on your current treadmill".
+--   NEW FISH:  FishIncomeMinutes of income + FishSpeedMinutes of treadmill,
+--              times the rarity bonus (+RarityBonusPerTier per tier above
+--              Common: Common 1x ... Secret 2.08x). Never less than the
+--              minimums (based on the fish itself), so early players get
+--              something good too.
+--   ZONE DONE: all 8 fish of a zone found -> ZoneIncomeMinutes of income,
+--              ZoneSpeedMinutes of treadmill, a free egg from that zone
+--              (the rarest rarity that's at least ZoneEggMinShare common
+--              there), and a PERMANENT +ZoneIncomeBonus to all fish income
+--              (stacks per completed zone, saved).
+-- SPEED CAP: in this game a few minutes of training already moves you a
+-- big part of the way to the next zone, so Speed rewards are also capped
+-- at a share of YOUR current zone gap (the Speed between the sign you've
+-- passed and the next sign): one fish at most FishSpeedMaxGapShare of it
+-- (x rarity bonus, so at most ~17%), a zone at most ZoneSpeedMaxGapShare.
+-- No single claim ever skips a zone; the treadmill stays the main way to
+-- get faster.
+-- Balance: a whole zone (8 fish + completion) is worth about 1.5 hours of
+-- income and roughly one zone gap of Speed, spread over the many hatches
+-- it takes to find all 8 fish.
 ---------------------------------------------------------------------------
 Config.Index = {
-	FishCashSeconds = 60, -- cash reward = this many seconds of the fish's income
-	FishSpeedBase = 150, -- Speed reward for a zone-1 fish (grows deeper and rarer)
-	ZoneCashSeconds = 300, -- zone reward = this many seconds of ALL 8 fish's income together
-	ZoneSpeedBase = 1500, -- Speed reward for completing zone 1 (grows deeper)
-	SpeedGrowthPerZone = 1.2, -- each deeper zone's Speed rewards are this much bigger
+	FishIncomeMinutes = 5, -- a new fish = 5 minutes of your income (x rarity bonus)
+	FishSpeedMinutes = 2, -- ...and 2 minutes of your treadmill (x rarity bonus)
+	RarityBonusPerTier = 0.12, -- Common 1x, Rare 1.24x, Legendary 1.48x ... Secret 2.08x
+	FishMinimumIncomeSeconds = 120, -- minimum cash = the fish's own income for this long (x rarity bonus)
+	FishMinimumSpeed = 100, -- minimum Speed (x rarity bonus)
+	ZoneIncomeMinutes = 40, -- completing a zone = 40 minutes of your income
+	ZoneSpeedMinutes = 10, -- ...and 10 minutes of your treadmill
+	ZoneMinimumIncomeSeconds = 600, -- minimum cash = all 8 fish's income together for this long
+	ZoneMinimumSpeed = 1500,
+	FishSpeedMaxGapShare = 0.08, -- one fish: at most 8% of your current zone gap (x rarity bonus)
+	ZoneSpeedMaxGapShare = 0.35, -- a zone: at most 35% of your current zone gap
+	ZoneIncomeBonus = 0.10, -- +10% total fish income per completed zone
+	ZoneEggMinShare = 0.10, -- zone egg = the rarest rarity with at least a 10% share of that zone's eggs
+	FullHotbarEggCashMinutes = 10, -- hotbar full? this much income instead of the egg
 }
 
--- What finding a fish gives: (cash, speed).
-function Config.IndexFishReward(fish: FishConfig): (number, number)
-	local index = Config.Index
+local function rarityBonus(rarity: string): number
 	local rank = 1
-	for i, info in Config.Rarities do
-		if info.Name == fish.Rarity then
-			rank = i
+	for index, info in Config.Rarities do
+		if info.Name == rarity then
+			rank = index
 		end
 	end
-	local cash = math.floor(fish.Income * index.FishCashSeconds + 0.5)
-	local speed = math.floor(index.FishSpeedBase * index.SpeedGrowthPerZone ^ (fish.Zone - 1) * (1 + (rank - 1) * 0.25) + 0.5)
-	return cash, speed
+	return 1 + (rank - 1) * Config.Index.RarityBonusPerTier
 end
 
--- What completing a zone gives: (cash, speed).
-function Config.IndexZoneReward(zoneIndex: number): (number, number)
-	local index = Config.Index
-	local total = 0
-	for _, fish in Config.Fish do
-		if fish.Zone == zoneIndex then
-			total += fish.Income
+-- The Speed between the last zone sign you've passed and the next one.
+function Config.IndexSpeedGap(speedStat: number): number
+	local previous = 0
+	local lastGap = 0
+	for _, shark in Config.Sharks do
+		local needed = shark.SpeedStatNeeded or 0
+		if needed > previous then
+			lastGap = needed - previous
+			if needed > speedStat then
+				return lastGap
+			end
+			previous = needed
 		end
 	end
-	local cash = math.floor(total * index.ZoneCashSeconds + 0.5)
-	local speed = math.floor(index.ZoneSpeedBase * index.SpeedGrowthPerZone ^ (zoneIndex - 1) + 0.5)
-	return cash, speed
+	return lastGap -- past the last sign: use the last gap
+end
+
+-- What finding a fish gives: (cash, speed). income = the player's money per
+-- second, speedPerSecond = what their treadmill gives per second,
+-- speedStat = their Speed (for the cap).
+function Config.IndexFishReward(fish: FishConfig, income: number, speedPerSecond: number, speedStat: number): (number, number)
+	local index = Config.Index
+	local bonus = rarityBonus(fish.Rarity)
+	local cash = math.max(income * index.FishIncomeMinutes * 60, fish.Income * index.FishMinimumIncomeSeconds) * bonus
+	local speed = math.min(speedPerSecond * index.FishSpeedMinutes * 60, Config.IndexSpeedGap(speedStat) * index.FishSpeedMaxGapShare)
+	speed = math.max(speed, index.FishMinimumSpeed) * bonus
+	return math.floor(cash + 0.5), math.floor(speed + 0.5)
+end
+
+-- The free egg's rarity for completing a zone.
+function Config.IndexZoneEggRarity(zoneIndex: number): string
+	local zone = Config.Zones[zoneIndex]
+	local total = 0
+	for _, weight in zone.EggWeights do
+		total += weight
+	end
+	local best = "Common"
+	for _, info in Config.Rarities do
+		local weight = zone.EggWeights[info.Name] or 0
+		if total > 0 and weight / total >= Config.Index.ZoneEggMinShare then
+			best = info.Name -- rarities are in order, so the last match is the rarest
+		end
+	end
+	return best
+end
+
+-- What completing a zone gives: (cash, speed, egg rarity).
+function Config.IndexZoneReward(zoneIndex: number, income: number, speedPerSecond: number, speedStat: number): (number, number, string)
+	local index = Config.Index
+	local fishIncome = 0
+	for _, fish in Config.Fish do
+		if fish.Zone == zoneIndex then
+			fishIncome += fish.Income
+		end
+	end
+	local cash = math.max(income * index.ZoneIncomeMinutes * 60, fishIncome * index.ZoneMinimumIncomeSeconds)
+	local speed = math.min(speedPerSecond * index.ZoneSpeedMinutes * 60, Config.IndexSpeedGap(speedStat) * index.ZoneSpeedMaxGapShare)
+	speed = math.max(speed, index.ZoneMinimumSpeed)
+	return math.floor(cash + 0.5), math.floor(speed + 0.5), Config.IndexZoneEggRarity(zoneIndex)
+end
+
+-- The permanent income multiplier from completed zones.
+function Config.IndexIncomeMultiplier(completedZones: number): number
+	return 1 + completedZones * Config.Index.ZoneIncomeBonus
 end
 
 ---------------------------------------------------------------------------

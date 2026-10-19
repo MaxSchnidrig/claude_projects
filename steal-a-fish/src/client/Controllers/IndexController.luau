@@ -11,7 +11,11 @@
 	  - Found fish show their picture and name; not-found fish are a black
 	    silhouette with "???". Card colors match the fish's rarity.
 	  - A newly found fish has a reward (cash + Speed) to claim; a green dot
-	    marks it. Finding all 8 fish of a zone unlocks the zone reward.
+	    marks it. Finding all 8 fish of a zone unlocks the zone reward (cash,
+	    Speed, a free egg and a permanent income bonus).
+	  - Rewards grow with your progress (minutes of YOUR income and treadmill),
+	    so the shown amounts update every second while the window is open.
+	  - Claiming plays a coin burst, a sound and a big popup ("IndexRewarded").
 	  - The red badge on the Index button = how many rewards are waiting
 	    (new fish + completed zones). It disappears when everything is
 	    claimed, and updates the moment a new fish hatches.
@@ -20,14 +24,18 @@
 	only ASKS the server ("IndexClaim").
 ]]
 
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Constants = require(ReplicatedStorage.Shared.Constants)
 local Fish = require(ReplicatedStorage.Shared.Fish)
 local Format = require(ReplicatedStorage.Shared.Format)
 local Net = require(ReplicatedStorage.Shared.Net)
 local Rarity = require(ReplicatedStorage.Shared.Rarity)
 local FishPicture = require(script.Parent.Parent.Ui.FishPicture)
+local Effects = require(script.Parent.Parent.Ui.Effects)
 local Hud = require(script.Parent.Parent.Ui.Hud)
 local Kit = require(script.Parent.Parent.Ui.Kit)
 local Sounds = require(script.Parent.Parent.Ui.Sounds)
@@ -37,6 +45,10 @@ IndexController.Name = "IndexController"
 
 -- Not-found fish keep their rarity color, just darker.
 local NOT_FOUND_DARKEN = 0.45
+local GOLD = Color3.fromRGB(255, 215, 70)
+local POPUP_HOLD = 1.8 -- seconds the claim popup stays before floating away
+
+local player = Players.LocalPlayer
 
 type IndexData = { Found: { [string]: boolean }, Claimed: { [string]: boolean }, ZonesClaimed: { [number]: boolean } }
 
@@ -54,6 +66,7 @@ local previewName: TextLabel
 local previewInfo: TextLabel
 local previewReward: TextLabel
 local previewClaim: TextButton
+local bonusLabel: TextLabel
 local currentZone = 1
 local selected: Config.FishConfig? = nil
 
@@ -88,8 +101,59 @@ local function waitingRewards(): number
 	return count
 end
 
-local function rewardText(cash: number, speed: number): string
-	return `+${Format.short(cash)}   +⚡{Format.short(speed)}`
+local function rewardText(cash: number, speed: number, egg: string?): string
+	local text = `+${Format.short(cash)}   +⚡{Format.short(speed)}`
+	if egg then
+		text ..= `   +1 {egg} Egg`
+	end
+	return text
+end
+
+-- Your progress right now: (money per second, treadmill Speed per second,
+-- Speed stat). The server keeps them as player attributes, so we show the
+-- exact reward.
+local function rates(): (number, number, number)
+	local income = player:GetAttribute(Constants.Attributes.Income)
+	local speedPerSecond = player:GetAttribute("TrainingPerSecond")
+	if typeof(speedPerSecond) ~= "number" then
+		local tier = Config.Treadmill.Tiers[(player:GetAttribute(Constants.Attributes.TreadmillTier) :: number?) or 1]
+		speedPerSecond = if tier then tier.Gain / Config.Treadmill.GainInterval else 0
+	end
+	local speedStat = player:GetAttribute(Constants.Attributes.SpeedStat)
+	return if typeof(income) == "number" then income else 0,
+		speedPerSecond :: number,
+		if typeof(speedStat) == "number" then speedStat else 0
+end
+
+local function bonusPercent(value: number): number
+	return math.floor(value * 100 + 0.5)
+end
+
+-- The reward texts (they change with your progress, so they're refreshed
+-- every second while the window is open, without rebuilding the pictures).
+local function updateRewards()
+	local income, speedPerSecond, speedStat = rates()
+	local fish = selected
+	if fish then
+		local cash, speed = Config.IndexFishReward(fish, income, speedPerSecond, speedStat)
+		local found = data.Found[fish.Id] == true
+		local claimable = found and not data.Claimed[fish.Id]
+		previewReward.Text = rewardText(cash, speed)
+		previewReward.TextColor3 = if claimable then GOLD else Kit.Colors.SubText
+		Kit.setText(previewClaim, if claimable then `CLAIM  +${Format.short(cash)}  +⚡{Format.short(speed)}` elseif found then "Claimed ✓" else "")
+	end
+	local cash, speed, egg = Config.IndexZoneReward(currentZone, income, speedPerSecond, speedStat)
+	local bonus = bonusPercent(Config.Index.ZoneIncomeBonus)
+	if data.ZonesClaimed[currentZone] then
+		zoneRewardText.Text = `✓ Zone complete: +{bonus}% income forever`
+		zoneRewardText.TextColor3 = Kit.Colors.SubText
+	else
+		zoneRewardText.Text = `Complete: {rewardText(cash, speed, egg)}   +{bonus}% income forever`
+		zoneRewardText.TextColor3 = if zoneClaimable(currentZone) then GOLD else Kit.Colors.SubText
+	end
+	local total = player:GetAttribute("IndexBonus")
+	local totalBonus = if typeof(total) == "number" then bonusPercent(total) else 0
+	bonusLabel.Text = `📈 Index bonus: +{totalBonus}% income`
 end
 
 ---------------------------------------------------------------------------
@@ -134,12 +198,10 @@ local function drawPreview()
 		previewName.TextColor3 = Kit.Colors.Text
 		previewInfo.Text = `{fish.Rarity}\nNot found yet`
 	end
-	local cash, speed = Config.IndexFishReward(fish)
-	previewReward.Text = `Reward: {rewardText(cash, speed)}`
 	local claimable = found and not data.Claimed[fish.Id]
 	previewClaim.Visible = found
-	Kit.setText(previewClaim, if claimable then "CLAIM!" elseif found then "Claimed ✓" else "")
 	Kit.setColor(previewClaim, if claimable then Kit.Colors.Green else Kit.Colors.Grey)
+	updateRewards()
 end
 
 local function drawGrid()
@@ -191,8 +253,7 @@ local function drawGrid()
 	local count = foundCount(currentZone)
 	progressFill.Size = UDim2.fromScale(if total > 0 then count / total else 0, 1)
 	progressText.Text = `{count}/{total}`
-	local cash, speed = Config.IndexZoneReward(currentZone)
-	zoneRewardText.Text = `Complete: {rewardText(cash, speed)}`
+	updateRewards()
 	local claimable = zoneClaimable(currentZone)
 	Kit.setText(zoneClaim, if data.ZonesClaimed[currentZone] then "✓" else "CLAIM!")
 	Kit.setColor(zoneClaim, if claimable then Kit.Colors.Green else Kit.Colors.Grey)
@@ -325,7 +386,9 @@ function IndexController.Init()
 	previewName.TextXAlignment = Enum.TextXAlignment.Center
 	previewInfo = Kit.label(preview, "", UDim2.new(1, -16, 0, 56), UDim2.fromOffset(8, 228), Kit.Colors.Text, 2)
 	previewInfo.TextXAlignment = Enum.TextXAlignment.Center
-	previewReward = Kit.label(preview, "", UDim2.new(1, -16, 0, 26), UDim2.fromOffset(8, 290), Kit.Colors.SubText)
+	Kit.label(preview, "Reward", UDim2.new(1, -16, 0, 20), UDim2.fromOffset(8, 290), Kit.Colors.SubText).TextXAlignment =
+		Enum.TextXAlignment.Center
+	previewReward = Kit.label(preview, "", UDim2.new(1, -16, 0, 30), UDim2.fromOffset(8, 312), GOLD, 2)
 	previewReward.TextXAlignment = Enum.TextXAlignment.Center
 	previewClaim = Kit.button(preview, "CLAIM!", Kit.Colors.Green, UDim2.new(1, -24, 0, 54), UDim2.new(0, 12, 1, -66))
 	previewClaim.Activated:Connect(function()
@@ -334,6 +397,10 @@ function IndexController.Init()
 			Net.event(Net.Names.IndexClaim):FireServer("Fish", fish.Id)
 		end
 	end)
+
+	-- Your total Index income bonus, in the title bar.
+	bonusLabel = Kit.label(window.Frame:FindFirstChild("TitleBar") :: Frame, "", UDim2.fromOffset(330, 32), UDim2.new(1, -400, 0, 13), GOLD, 2)
+	bonusLabel.TextXAlignment = Enum.TextXAlignment.Right
 
 	-- Closing the Index throws its 3D pictures away (they're rebuilt on open).
 	window.Frame:GetPropertyChangedSignal("Visible"):Connect(function()
@@ -354,7 +421,140 @@ function IndexController.Init()
 	end)
 end
 
+---------------------------------------------------------------------------
+-- Claim effect: sound, coin burst, big popup
+---------------------------------------------------------------------------
+
+local popupGui: ScreenGui? = nil
+
+local function getPopupGui(): ScreenGui
+	if popupGui and popupGui.Parent then
+		return popupGui
+	end
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "IndexRewardPopup"
+	gui.ResetOnSpawn = false
+	gui.IgnoreGuiInset = true
+	gui.DisplayOrder = 50 -- above the windows
+	gui.Parent = player:WaitForChild("PlayerGui")
+	popupGui = gui
+	return gui
+end
+
+-- Coins that fly out of the popup and fade.
+local function coinBurst(parent: GuiObject, count: number)
+	for _ = 1, count do
+		local coin = Instance.new("TextLabel")
+		coin.BackgroundTransparency = 1
+		coin.Text = if math.random() < 0.7 then "🪙" else "💰"
+		coin.TextScaled = true
+		coin.AnchorPoint = Vector2.new(0.5, 0.5)
+		coin.Position = UDim2.fromScale(0.5, 0.5)
+		coin.Size = UDim2.fromOffset(36, 36)
+		coin.ZIndex = 0
+		coin.Parent = parent
+		local angle = math.random() * math.pi * 2
+		local distance = 160 + math.random() * 220
+		local info = TweenInfo.new(0.9 + math.random() * 0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		TweenService:Create(coin, info, {
+			Position = UDim2.new(0.5, math.cos(angle) * distance, 0.5, math.sin(angle) * distance * 0.6),
+			Rotation = math.random(-180, 180),
+			TextTransparency = 1,
+		}):Play()
+		task.delay(1.5, function()
+			coin:Destroy()
+		end)
+	end
+end
+
+local function showClaimEffect(cash: number, speed: number, eggs: { string }, bonusAdded: number)
+	Sounds.play("Claim")
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if root and root:IsA("BasePart") then
+		Effects.burst(root.Position + Vector3.new(0, 2, 0), GOLD, 50)
+		if #eggs > 0 or bonusAdded > 0 then
+			Effects.confetti(root.Position + Vector3.new(0, 4, 0), 70)
+		end
+	end
+
+	-- "+$1.2M  +⚡5K  +1 Epic Egg" (and the income bonus on a second line).
+	local text = `+${Format.short(cash)}   +⚡{Format.short(speed)}`
+	local counts: { [string]: number } = {}
+	local order: { string } = {}
+	for _, rarity in eggs do
+		if not counts[rarity] then
+			table.insert(order, rarity)
+		end
+		counts[rarity] = (counts[rarity] or 0) + 1
+	end
+	for _, rarity in order do
+		text ..= `   +{counts[rarity]} {rarity} Egg`
+	end
+
+	local holder = Instance.new("Frame")
+	holder.AnchorPoint = Vector2.new(0.5, 0.5)
+	holder.Position = UDim2.fromScale(0.5, 0.3)
+	holder.Size = UDim2.new(0.9, 0, 0, if bonusAdded > 0 then 120 else 76)
+	holder.BackgroundTransparency = 1
+	holder.Parent = getPopupGui()
+	local maxWidth = Instance.new("UISizeConstraint")
+	maxWidth.MaxSize = Vector2.new(760, math.huge)
+	maxWidth.Parent = holder
+	local scale = Instance.new("UIScale")
+	scale.Scale = 0.2
+	scale.Parent = holder
+	local main = Kit.label(holder, text, UDim2.new(1, 0, 0, 76), UDim2.new(), GOLD, 4)
+	main.TextXAlignment = Enum.TextXAlignment.Center
+	local labels = { main }
+	if bonusAdded > 0 then
+		local second = Kit.label(holder, `📈 +{bonusPercent(bonusAdded)}% income forever!`, UDim2.new(1, 0, 0, 40), UDim2.fromOffset(0, 80), Color3.fromRGB(120, 255, 140), 3)
+		second.TextXAlignment = Enum.TextXAlignment.Center
+		table.insert(labels, second)
+	end
+	coinBurst(holder, if #eggs > 0 or bonusAdded > 0 then 26 else 14)
+
+	-- Pop in with a bounce, hold, then float up and fade.
+	TweenService:Create(scale, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+	task.delay(POPUP_HOLD, function()
+		local fade = TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		TweenService:Create(holder, fade, { Position = UDim2.fromScale(0.5, 0.2) }):Play()
+		for _, label in labels do
+			TweenService:Create(label, fade, { TextTransparency = 1 }):Play()
+			local stroke = label:FindFirstChildOfClass("UIStroke")
+			if stroke then
+				TweenService:Create(stroke, fade, { Transparency = 1 }):Play()
+			end
+		end
+		task.wait(0.75)
+		holder:Destroy()
+	end)
+end
+
 function IndexController.Start()
+	Net.event(Net.Names.IndexRewarded).OnClientEvent:Connect(function(cash: unknown, speed: unknown, eggs: unknown, bonusAdded: unknown)
+		if typeof(cash) ~= "number" or typeof(speed) ~= "number" then
+			return
+		end
+		local eggList: { string } = {}
+		if typeof(eggs) == "table" then
+			for _, rarity in eggs :: { any } do
+				if typeof(rarity) == "string" then
+					table.insert(eggList, rarity)
+				end
+			end
+		end
+		showClaimEffect(cash, speed, eggList, if typeof(bonusAdded) == "number" then bonusAdded else 0)
+	end)
+	-- Rewards grow with your income and treadmill: keep the numbers fresh.
+	task.spawn(function()
+		while true do
+			task.wait(1)
+			if window.IsOpen() then
+				updateRewards()
+			end
+		end
+	end)
 	Net.event(Net.Names.IndexSync).OnClientEvent:Connect(function(incoming: unknown)
 		if typeof(incoming) ~= "table" then
 			return
