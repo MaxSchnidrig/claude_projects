@@ -469,16 +469,16 @@ Config.Eggs = {
 	-- (times normal) when they're READY. Rarer eggs get huge. They grow
 	-- upward from the pad, and may overlap neighbouring pads on purpose.
 	GrowByRarity = {
-		Common = 3,
-		Uncommon = 3.5,
-		Rare = 4,
-		Epic = 4.7,
-		Legendary = 5.5,
-		Mythic = 6.3,
-		Divine = 7.2,
-		Celestial = 8,
-		Cosmic = 9,
-		Secret = 10,
+		Common = 1.5,
+		Uncommon = 1.78,
+		Rare = 2.06,
+		Epic = 2.33,
+		Legendary = 2.61,
+		Mythic = 2.89,
+		Divine = 3.17,
+		Celestial = 3.44,
+		Cosmic = 3.72,
+		Secret = 4,
 	} :: { [string]: number },
 
 	-- CarrySpeedMultiplier: 1 = no slow-down. (0.9 would mean walking at 90% speed.)

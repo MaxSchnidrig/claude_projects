@@ -39,8 +39,12 @@ local TURN_SPEED = 0.45 -- slow turning
 local TURN_ANGLE = math.rad(22)
 
 -- The position the server gave each egg/pet, so our local animation always
--- starts from the right place. Weak keys: destroyed eggs/pets drop out.
-local basePivots: { [Instance]: CFrame } = setmetatable({}, { __mode = "k" }) :: any
+-- starts from the right place. It's remembered ON the instance (a local
+-- attribute, set once), never in a weak table: Roblox may forget weak-table
+-- entries at any time, and then we'd re-measure an already moved/grown egg.
+local BASE_PIVOT = "ClientBasePivot"
+local BASE_SIZE = "ClientBaseSize"
+local BASE_C0 = "ClientBaseC0"
 
 local revealGui: ScreenGui
 
@@ -50,12 +54,13 @@ local function formatTime(seconds: number): string
 end
 
 local function basePivot(item: PVInstance): CFrame
-	local base = basePivots[item]
-	if not base then
-		base = item:GetPivot()
-		basePivots[item] = base
+	local base = item:GetAttribute(BASE_PIVOT)
+	if typeof(base) == "CFrame" then
+		return base
 	end
-	return base
+	local pivot = item:GetPivot()
+	item:SetAttribute(BASE_PIVOT, pivot)
+	return pivot
 end
 
 ---------------------------------------------------------------------------
@@ -64,39 +69,86 @@ end
 -- its welds stretched, so the whole egg grows together.
 ---------------------------------------------------------------------------
 
+-- The ORIGINAL size of each part and joint offset of an egg is stored once,
+-- on the part/joint itself (local attributes). Sizes are always
+-- original x growth, so nothing can ever grow twice.
 type EggParts = {
-	RootSize: Vector3,
 	Parts: { { Part: BasePart, Size: Vector3 } },
 	Joints: { { Joint: JointInstance, C0: CFrame } },
 	LabelOffset: Vector3?,
 	Scale: number,
 }
-local eggParts: { [BasePart]: EggParts } = setmetatable({}, { __mode = "k" }) :: any
+local eggParts: { [BasePart]: EggParts } = {}
+
+local function originalSize(part: BasePart): Vector3
+	local saved = part:GetAttribute(BASE_SIZE)
+	if typeof(saved) == "Vector3" then
+		return saved
+	end
+	part:SetAttribute(BASE_SIZE, part.Size)
+	return part.Size
+end
+
+local function originalC0(joint: JointInstance): CFrame
+	local saved = joint:GetAttribute(BASE_C0)
+	if typeof(saved) == "CFrame" then
+		return saved
+	end
+	joint:SetAttribute(BASE_C0, joint.C0)
+	return joint.C0
+end
 
 local function eggInfo(egg: BasePart): EggParts
 	local info = eggParts[egg]
 	if info then
 		return info
 	end
-	local newInfo: EggParts = { RootSize = egg.Size, Parts = {}, Joints = {}, LabelOffset = nil, Scale = 1 }
+	-- The egg's own size is simply Config.Eggs.Size (it never changes on the server).
+	if typeof(egg:GetAttribute(BASE_SIZE)) ~= "Vector3" then
+		egg:SetAttribute(BASE_SIZE, Config.Eggs.Size)
+	end
+	local newInfo: EggParts = { Parts = {}, Joints = {}, LabelOffset = nil, Scale = -1 }
 	for _, item in egg:GetDescendants() do
 		if item:IsA("BasePart") then
-			table.insert(newInfo.Parts, { Part = item, Size = item.Size })
+			table.insert(newInfo.Parts, { Part = item, Size = originalSize(item) })
 		elseif item:IsA("JointInstance") then
-			table.insert(newInfo.Joints, { Joint = item, C0 = item.C0 })
+			table.insert(newInfo.Joints, { Joint = item, C0 = originalC0(item) })
 		end
 	end
 	local label = egg:FindFirstChild("Label")
 	if label and label:IsA("BillboardGui") then
-		newInfo.LabelOffset = label.StudsOffsetWorldSpace
+		local saved = label:GetAttribute(BASE_SIZE)
+		if typeof(saved) ~= "Vector3" then
+			saved = label.StudsOffsetWorldSpace
+			label:SetAttribute(BASE_SIZE, saved)
+		end
+		newInfo.LabelOffset = saved :: Vector3
 	end
 	eggParts[egg] = newInfo
+	-- Forget it when the egg is gone (hatched or removed). If more parts
+	-- arrive over the network, build the list again (the ORIGINAL sizes are
+	-- stored on the parts, so rebuilding never grows anything twice).
+	local connections: { RBXScriptConnection } = {}
+	local function forget()
+		if eggParts[egg] == newInfo then
+			eggParts[egg] = nil
+		end
+		for _, connection in connections do
+			connection:Disconnect()
+		end
+	end
+	table.insert(connections, egg.Destroying:Connect(forget))
+	table.insert(connections, egg.DescendantAdded:Connect(function(item)
+		if item:IsA("BasePart") or item:IsA("JointInstance") then
+			forget()
+		end
+	end))
 	return newInfo
 end
 
 local function setEggScale(egg: BasePart, info: EggParts, scale: number)
 	info.Scale = scale
-	egg.Size = info.RootSize * scale
+	egg.Size = Config.Eggs.Size * scale
 	for _, entry in info.Parts do
 		entry.Part.Size = entry.Size * scale
 	end
@@ -106,7 +158,7 @@ local function setEggScale(egg: BasePart, info: EggParts, scale: number)
 	local label = egg:FindFirstChild("Label")
 	if info.LabelOffset and label and label:IsA("BillboardGui") then
 		-- Keep the name label just above the (bigger) egg.
-		label.StudsOffsetWorldSpace = info.LabelOffset + Vector3.new(0, info.RootSize.Y * (scale - 1), 0)
+		label.StudsOffsetWorldSpace = info.LabelOffset + Vector3.new(0, Config.Eggs.Size.Y * (scale - 1), 0)
 	end
 end
 
@@ -116,7 +168,8 @@ local function eggGrowth(egg: BasePart, remaining: number, ready: boolean): numb
 	local maxSize = if typeof(rarity) == "string" then Config.Eggs.GrowByRarity[rarity] or 1 else 1
 	local duration = egg:GetAttribute("HatchDuration")
 	local progress = if ready then 1 elseif typeof(duration) == "number" and duration > 0 then 1 - math.clamp(remaining / duration, 0, 1) else 0
-	return 1 + (maxSize - 1) * progress
+	-- Never bigger than the rarity's maximum.
+	return math.clamp(1 + (maxSize - 1) * progress, 1, math.max(maxSize, 1))
 end
 
 local function updateEgg(egg: BasePart, now: number, time: number)
@@ -146,7 +199,7 @@ local function updateEgg(egg: BasePart, now: number, time: number)
 		setEggScale(egg, info, scale)
 	end
 	-- Grow upward: the bottom stays where it was, the middle rises.
-	local base = basePivot(egg) * CFrame.new(0, info.RootSize.Y * (info.Scale - 1) / 2, 0)
+	local base = basePivot(egg) * CFrame.new(0, Config.Eggs.Size.Y * (info.Scale - 1) / 2, 0)
 	if ready then
 		-- Bouncing happily, waiting for its owner.
 		local hop = math.abs(math.sin(time * 5)) * 0.8 * info.Scale
