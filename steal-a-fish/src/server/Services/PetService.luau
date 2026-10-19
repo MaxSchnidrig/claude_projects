@@ -72,7 +72,8 @@ export type PadItem = {
 	Kind: "Egg" | "Pet",
 	Rarity: string,
 	Zone: number, -- eggs: the zone it was stolen from; pets: the fish's zone
-	PetName: string?, -- pets only
+	PetName: string?, -- pets only: the fish's fixed Id (saved)
+	DisplayName: string?, -- pets only: the name players see
 	Income: number, -- pets only: money per second at level 1 (0 for eggs)
 	Level: number, -- pets only (pet upgrades come later)
 	Instance: Instance, -- the egg Part or the pet Model
@@ -190,8 +191,11 @@ local function placeEgg(player: Player, plot: Types.PlotInfo, padIndex: number, 
 	part.CFrame = eggCFrameOnPad(pad)
 	part:SetAttribute("PadIndex", padIndex)
 
-	local endsAt = serverNow() + (secondsLeft or hatchSeconds(player, rarity))
+	local fullTime = hatchSeconds(player, rarity)
+	local endsAt = serverNow() + (secondsLeft or fullTime)
 	part:SetAttribute(Constants.Attributes.HatchEndsAt, endsAt)
+	-- The client grows the egg by how far along it is (HatchEndsAt / HatchDuration).
+	part:SetAttribute("HatchDuration", math.max(fullTime, secondsLeft or 0, 0.1))
 	-- The client fills in the countdown ("0:35") on the Subtitle line.
 	makeLabel(part, `{rarity} Egg`, Rarity.color(rarity), "", 2.8)
 	CollectionService:AddTag(part, Constants.Tags.HatchingEgg)
@@ -244,7 +248,8 @@ local function refreshPet(plot: Types.PlotInfo, padIndex: number)
 	local maxLevel = Config.Upgrades.PetLevel.MaxLevel
 
 	-- The client's Pets window reads these.
-	model:SetAttribute(Constants.Attributes.PetName, item.PetName)
+	model:SetAttribute(Constants.Attributes.PetName, item.DisplayName)
+	model:SetAttribute("FishId", item.PetName)
 	model:SetAttribute(Constants.Attributes.BaseIncome, item.Income)
 	model:SetAttribute(Constants.Attributes.Level, item.Level)
 
@@ -259,7 +264,7 @@ local function refreshPet(plot: Types.PlotInfo, padIndex: number)
 		local income = Config.PetIncome(item.Income, item.Level)
 		if item.Level >= maxLevel then
 			upgrade.ActionText = "Max level"
-			upgrade.ObjectText = `{item.PetName or "Pet"}  Lv {item.Level}  •  ${Format.short(income)}/s`
+			upgrade.ObjectText = `{item.DisplayName or "Pet"}  Lv {item.Level}  •  ${Format.short(income)}/s`
 		else
 			-- Show what the upgrade gives: "Lv 5 → 6: $120/s → $134/s"
 			local nextIncome = Config.PetIncome(item.Income, item.Level + 1)
@@ -331,7 +336,8 @@ local function placePet(plot: Types.PlotInfo, padIndex: number, pet: Config.Fish
 		Kind = "Pet",
 		Rarity = pet.Rarity,
 		Zone = pet.Zone,
-		PetName = pet.Name,
+		PetName = pet.Id,
+		DisplayName = pet.Name,
 		Income = pet.Income,
 		Level = level,
 		Instance = model,
@@ -407,8 +413,14 @@ local function hatch(plot: Types.PlotInfo, padIndex: number, egg: PadItem)
 		if Config.Debug then
 			print(`[{Config.GameName}] {owner.Name} hatched {pet.Rarity} {pet.Name} from a {egg.Rarity} Egg (zone {egg.Zone})`)
 		end
-		PetService.PetHatched:Fire(owner, pet.Name, pet.Rarity)
+		PetService.PetHatched:Fire(owner, pet.Id, pet.Rarity)
 	end
+end
+
+-- How much bigger (in studs, from its middle) a fully grown egg reaches.
+local function eggReach(rarity: string): number
+	local grow = Config.Eggs.GrowByRarity[rarity] or 1
+	return (grow - 1) * math.max(Config.Eggs.Size.X, Config.Eggs.Size.Y)
 end
 
 -- An egg's timer finished: it glows, says READY and gets a "Hatch" prompt.
@@ -432,7 +444,9 @@ local function markReady(plot: Types.PlotInfo, padIndex: number, item: PadItem)
 	prompt.ActionText = "Hatch"
 	prompt.ObjectText = `{item.Rarity} Egg`
 	prompt.HoldDuration = Config.Eggs.HatchHoldDuration
-	prompt.MaxActivationDistance = 10
+	-- The egg has grown (up to Config.Eggs.GrowByRarity), so the prompt
+	-- reaches farther: you can hatch it standing next to it.
+	prompt.MaxActivationDistance = 10 + eggReach(item.Rarity)
 	prompt.RequiresLineOfSight = false
 	-- Same tag as the pet prompts: only the owner sees it.
 	prompt:SetAttribute(Constants.Attributes.OwnerUserId, if plot.Owner then plot.Owner.UserId else 0)
@@ -445,7 +459,7 @@ local function markReady(plot: Types.PlotInfo, padIndex: number, item: PadItem)
 		end
 		local character = player.Character
 		local root = character and character:FindFirstChild("HumanoidRootPart")
-		if not (root and root:IsA("BasePart")) or (root.Position - egg.Position).Magnitude > 15 then
+		if not (root and root:IsA("BasePart")) or (root.Position - egg.Position).Magnitude > 15 + eggReach(item.Rarity) then
 			return
 		end
 		hatch(plot, padIndex, item)

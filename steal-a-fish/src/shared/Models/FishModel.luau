@@ -698,13 +698,13 @@ function FishModel.create(fish: Fish, cframe: CFrame, preview: boolean?): Model
 	root.Parent = model
 	model.PrimaryPart = root
 
-	if not Assets.decorate(root, fish.Name) then
+	if not (Assets.decorate(root, fish.Name) or Assets.decorate(root, fish.Id)) then
 		local scale = FishModel.scale(fish.Rarity)
 		local b = Voxel.new(model, root, scale)
 		table.clear(fins)
 		local anatomy = buildShape(b, fish)
 		buildFace(b, anatomy)
-		buildPattern(b, anatomy, fish, Random.new(nameSeed(fish.Name)))
+		buildPattern(b, anatomy, fish, Random.new(nameSeed(fish.Id)))
 		buildFeature(b, anatomy, fish, model)
 		if not preview then
 			Voxel.rarityEffects(anatomy.EffectPart, fish.Rarity, anatomy.Radius * scale)

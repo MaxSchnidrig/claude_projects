@@ -164,18 +164,18 @@ local function handlePetAction(player: Player, plot: Types.PlotInfo, padIndex: n
 
 	if action == "Upgrade" then
 		if item.Level >= Config.Upgrades.PetLevel.MaxLevel then
-			notify(player, `{item.PetName} is already at max level!`, "warning")
+			notify(player, `{item.DisplayName} is already at max level!`, "warning")
 			return
 		end
 		local price = Config.PetUpgradePrice(item.Income, item.Level)
 		if pay(player, price) then
 			PetService.SetPetLevel(plot, padIndex, item.Level + 1)
 			local income = Config.PetIncome(item.Income, item.Level)
-			notify(player, `⬆ {item.PetName} is now level {item.Level}! ({money(income)}/s)`, "purchase")
+			notify(player, `⬆ {item.DisplayName} is now level {item.Level}! ({money(income)}/s)`, "purchase")
 		end
 	elseif action == "Sell" then
 		local value = Config.PetSellValue(item.Income, item.Level)
-		local name = item.PetName or "pet"
+		local name = item.DisplayName or "pet"
 		PetService.RemovePet(plot, padIndex)
 		EconomyService.AddMoney(player, value)
 		notify(player, `💰 Sold {name} for {money(value)}`, "purchase")

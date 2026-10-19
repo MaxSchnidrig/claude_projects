@@ -58,6 +58,67 @@ local function basePivot(item: PVInstance): CFrame
 	return base
 end
 
+---------------------------------------------------------------------------
+-- Growing eggs: while an egg counts down it grows (Config.Eggs.GrowByRarity),
+-- upward from the pad. Only on screen: every part of the egg is resized and
+-- its welds stretched, so the whole egg grows together.
+---------------------------------------------------------------------------
+
+type EggParts = {
+	RootSize: Vector3,
+	Parts: { { Part: BasePart, Size: Vector3 } },
+	Joints: { { Joint: JointInstance, C0: CFrame } },
+	LabelOffset: Vector3?,
+	Scale: number,
+}
+local eggParts: { [BasePart]: EggParts } = setmetatable({}, { __mode = "k" }) :: any
+
+local function eggInfo(egg: BasePart): EggParts
+	local info = eggParts[egg]
+	if info then
+		return info
+	end
+	local newInfo: EggParts = { RootSize = egg.Size, Parts = {}, Joints = {}, LabelOffset = nil, Scale = 1 }
+	for _, item in egg:GetDescendants() do
+		if item:IsA("BasePart") then
+			table.insert(newInfo.Parts, { Part = item, Size = item.Size })
+		elseif item:IsA("JointInstance") then
+			table.insert(newInfo.Joints, { Joint = item, C0 = item.C0 })
+		end
+	end
+	local label = egg:FindFirstChild("Label")
+	if label and label:IsA("BillboardGui") then
+		newInfo.LabelOffset = label.StudsOffsetWorldSpace
+	end
+	eggParts[egg] = newInfo
+	return newInfo
+end
+
+local function setEggScale(egg: BasePart, info: EggParts, scale: number)
+	info.Scale = scale
+	egg.Size = info.RootSize * scale
+	for _, entry in info.Parts do
+		entry.Part.Size = entry.Size * scale
+	end
+	for _, entry in info.Joints do
+		entry.Joint.C0 = entry.C0.Rotation + entry.C0.Position * scale
+	end
+	local label = egg:FindFirstChild("Label")
+	if info.LabelOffset and label and label:IsA("BillboardGui") then
+		-- Keep the name label just above the (bigger) egg.
+		label.StudsOffsetWorldSpace = info.LabelOffset + Vector3.new(0, info.RootSize.Y * (scale - 1), 0)
+	end
+end
+
+-- How big an egg should be right now (1 = normal).
+local function eggGrowth(egg: BasePart, remaining: number, ready: boolean): number
+	local rarity = egg:GetAttribute("Rarity")
+	local maxSize = if typeof(rarity) == "string" then Config.Eggs.GrowByRarity[rarity] or 1 else 1
+	local duration = egg:GetAttribute("HatchDuration")
+	local progress = if ready then 1 elseif typeof(duration) == "number" and duration > 0 then 1 - math.clamp(remaining / duration, 0, 1) else 0
+	return 1 + (maxSize - 1) * progress
+end
+
 local function updateEgg(egg: BasePart, now: number, time: number)
 	local endsAt = egg:GetAttribute(Constants.Attributes.HatchEndsAt)
 	if typeof(endsAt) ~= "number" then
@@ -78,10 +139,17 @@ local function updateEgg(egg: BasePart, now: number, time: number)
 		end
 	end
 
-	local base = basePivot(egg)
+	-- Grow (only resize when it changed noticeably, to keep things fast).
+	local info = eggInfo(egg)
+	local scale = eggGrowth(egg, remaining, ready)
+	if math.abs(scale - info.Scale) > 0.004 then
+		setEggScale(egg, info, scale)
+	end
+	-- Grow upward: the bottom stays where it was, the middle rises.
+	local base = basePivot(egg) * CFrame.new(0, info.RootSize.Y * (info.Scale - 1) / 2, 0)
 	if ready then
 		-- Bouncing happily, waiting for its owner.
-		local hop = math.abs(math.sin(time * 5)) * 0.8
+		local hop = math.abs(math.sin(time * 5)) * 0.8 * info.Scale
 		local angle = math.sin(time * 10) * 0.12
 		egg.CFrame = base * CFrame.new(0, hop, 0) * CFrame.Angles(0, 0, angle)
 	elseif remaining < WIGGLE_SECONDS then
@@ -89,6 +157,8 @@ local function updateEgg(egg: BasePart, now: number, time: number)
 		local strength = 1 - math.max(remaining, 0) / WIGGLE_SECONDS
 		local angle = math.sin(time * 30) * 0.25 * strength
 		egg.CFrame = base * CFrame.Angles(0, 0, angle)
+	else
+		egg.CFrame = base
 	end
 end
 
@@ -207,7 +277,8 @@ function PetController.Start()
 		local time = os.clock()
 
 		for _, egg in CollectionService:GetTagged(Constants.Tags.HatchingEgg) do
-			if egg:IsA("BasePart") and (egg.Position - cameraPosition).Magnitude < ANIMATE_DISTANCE then
+			-- Growing eggs can be huge, so they're updated from farther away.
+			if egg:IsA("BasePart") and (basePivot(egg).Position - cameraPosition).Magnitude < ANIMATE_DISTANCE * 2.5 then
 				updateEgg(egg, now, time)
 			end
 		end

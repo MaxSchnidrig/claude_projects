@@ -70,8 +70,10 @@ end
 local function setKeys(list: { string }): { [string]: boolean }
 	local result: { [string]: boolean } = {}
 	for _, name in list do
-		if Fish.byName(name) then
-			result[name] = true
+		-- Stored by fish Id (old saves used the same text, so nothing changes).
+		local fish = Fish.byName(name)
+		if fish then
+			result[fish.Id] = true
 		end
 	end
 	return result
@@ -111,14 +113,15 @@ end
 -- Index
 ---------------------------------------------------------------------------
 
-local function discover(player: Player, fishName: string, quiet: boolean?)
+local function discover(player: Player, fishKey: string, quiet: boolean?)
 	local state = states[player]
-	if not state or state.Found[fishName] or not Fish.byName(fishName) then
+	local fish = Fish.byName(fishKey)
+	if not (state and fish) or state.Found[fish.Id] then
 		return
 	end
-	state.Found[fishName] = true
+	state.Found[fish.Id] = true
 	if not quiet then
-		notify(player, `📖 New fish in your Index: {fishName}! Open the Index to claim a reward.`, "epic")
+		notify(player, `📖 New fish in your Index: {fish.Name}! Open the Index to claim a reward.`, "epic")
 		sync(player)
 	end
 end
@@ -129,7 +132,7 @@ local function zoneComplete(state: State, zoneIndex: number): boolean
 		return false
 	end
 	for _, fish in list do
-		if not state.Found[fish.Name] then
+		if not state.Found[fish.Id] then
 			return false
 		end
 	end
@@ -145,12 +148,12 @@ local function pay(player: Player, cash: number, speed: number)
 	end
 end
 
-local function claimFish(player: Player, state: State, fishName: string): boolean
-	local fish = Fish.byName(fishName)
-	if not (fish and state.Found[fishName]) or state.Claimed[fishName] then
+local function claimFish(player: Player, state: State, fishKey: string): boolean
+	local fish = Fish.byName(fishKey)
+	if not (fish and state.Found[fish.Id]) or state.Claimed[fish.Id] then
 		return false
 	end
-	state.Claimed[fishName] = true
+	state.Claimed[fish.Id] = true
 	local cash, speed = Config.IndexFishReward(fish)
 	pay(player, cash, speed)
 	return true
@@ -179,7 +182,7 @@ local function onClaim(player: Player, kind: unknown, value: unknown)
 		if claimFish(player, state, value) then
 			local fish = Fish.byName(value) :: Config.FishConfig
 			local cash, speed = Config.IndexFishReward(fish)
-			notify(player, `📖 {value}: +${Format.short(cash)} and +⚡{Format.short(speed)}`, "purchase")
+			notify(player, `📖 {fish.Name}: +${Format.short(cash)} and +⚡{Format.short(speed)}`, "purchase")
 		end
 	elseif kind == "Zone" and typeof(value) == "number" then
 		claimZone(player, state, math.floor(value))
@@ -338,7 +341,7 @@ function RewardService.Start()
 		local zoneIndex = tonumber(args[1])
 		for _, fish in Config.Fish do
 			if zoneIndex == nil or fish.Zone == zoneIndex then
-				discover(player, fish.Name, true)
+				discover(player, fish.Id, true)
 			end
 		end
 		sync(player)

@@ -60,7 +60,7 @@ local selected: Config.FishConfig? = nil
 local function foundCount(zoneIndex: number): number
 	local count = 0
 	for _, fish in Fish.inZone(zoneIndex) do
-		if data.Found[fish.Name] then
+		if data.Found[fish.Id] then
 			count += 1
 		end
 	end
@@ -122,7 +122,7 @@ local function drawPreview()
 		previewClaim.Visible = false
 		return
 	end
-	local found = data.Found[fish.Name] == true
+	local found = data.Found[fish.Id] == true
 	local holder = preview:FindFirstChild("PictureHolder") :: Frame
 	FishPicture.create(holder, fish, UDim2.fromScale(1, 1), UDim2.new(), not found)
 	if found then
@@ -136,7 +136,7 @@ local function drawPreview()
 	end
 	local cash, speed = Config.IndexFishReward(fish)
 	previewReward.Text = `Reward: {rewardText(cash, speed)}`
-	local claimable = found and not data.Claimed[fish.Name]
+	local claimable = found and not data.Claimed[fish.Id]
 	previewClaim.Visible = found
 	Kit.setText(previewClaim, if claimable then "CLAIM!" elseif found then "Claimed ✓" else "")
 	Kit.setColor(previewClaim, if claimable then Kit.Colors.Green else Kit.Colors.Grey)
@@ -145,7 +145,7 @@ end
 local function drawGrid()
 	clearChildren(grid)
 	for order, fish in Fish.inZone(currentZone) do
-		local found = data.Found[fish.Name] == true
+		local found = data.Found[fish.Id] == true
 		local card = Instance.new("TextButton")
 		card.LayoutOrder = order
 		card.Text = ""
@@ -166,7 +166,7 @@ local function drawGrid()
 		sizeLimit.MaxTextSize = 18
 		sizeLimit.MinTextSize = 6
 		sizeLimit.Parent = name
-		if found and not data.Claimed[fish.Name] then
+		if found and not data.Claimed[fish.Id] then
 			-- Green dot: a reward is waiting.
 			local dot = Instance.new("Frame")
 			dot.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -330,8 +330,8 @@ function IndexController.Init()
 	previewClaim = Kit.button(preview, "CLAIM!", Kit.Colors.Green, UDim2.new(1, -24, 0, 54), UDim2.new(0, 12, 1, -66))
 	previewClaim.Activated:Connect(function()
 		local fish = selected
-		if fish and data.Found[fish.Name] and not data.Claimed[fish.Name] then
-			Net.event(Net.Names.IndexClaim):FireServer("Fish", fish.Name)
+		if fish and data.Found[fish.Id] and not data.Claimed[fish.Id] then
+			Net.event(Net.Names.IndexClaim):FireServer("Fish", fish.Id)
 		end
 	end)
 
@@ -383,8 +383,9 @@ function IndexController.Start()
 	-- A fish you just hatched counts right away (the server's IndexSync
 	-- confirms it a moment later), so the badge updates instantly.
 	Net.event(Net.Names.HatchReveal).OnClientEvent:Connect(function(petName: unknown)
-		if typeof(petName) == "string" and Fish.byName(petName) and not data.Found[petName] then
-			data.Found[petName] = true
+		local fish = if typeof(petName) == "string" then Fish.byName(petName) else nil
+		if fish and not data.Found[fish.Id] then
+			data.Found[fish.Id] = true
 			redraw()
 		end
 	end)

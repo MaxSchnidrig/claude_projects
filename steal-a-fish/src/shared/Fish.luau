@@ -6,7 +6,7 @@
 	the same odds the server uses, for example in an odds window later).
 
 	Usage:
-		Fish.byName("Pinchy Crab")           -> FishConfig?
+		Fish.byName("Pinchy Crab")           -> FishConfig?  (by Id, or by display Name)
 		Fish.inZone(3)                       -> { FishConfig }  (that zone's 8 fish)
 		Fish.ofRarity("Epic")                -> { FishConfig }
 		Fish.hatchChances("Rare", 2)         -> { { Fish = ..., Chance = 0.35 }, ... }  (chances add up to 1)
@@ -50,12 +50,17 @@ local LEGACY_PETS: { [string]: string } = {
 	["The Deep One"] = "Secret",
 }
 
+local byId: { [string]: Config.FishConfig } = {}
 local byName: { [string]: Config.FishConfig } = {}
 local byZone: { [number]: { Config.FishConfig } } = {}
 for _, fish in Config.Fish do
+	if byId[fish.Id] then
+		warn(`[{Config.GameName}] Two fish have the Id "{fish.Id}" in Config.Fish. Ids must be unique.`)
+	end
 	if byName[fish.Name] then
 		warn(`[{Config.GameName}] Two fish are called "{fish.Name}" in Config.Fish. Names must be unique.`)
 	end
+	byId[fish.Id] = fish
 	byName[fish.Name] = fish
 	local list = byZone[fish.Zone]
 	if not list then
@@ -70,8 +75,14 @@ for zoneIndex, zone in Config.Zones do
 	end
 end
 
+-- Find a fish by its Id (what saves and the Index store) or, if that
+-- fails, by its display Name.
 function Fish.byName(name: string): Config.FishConfig?
-	return byName[name]
+	return byId[name] or byName[name]
+end
+
+function Fish.byId(id: string): Config.FishConfig?
+	return byId[id]
 end
 
 function Fish.inZone(zoneIndex: number): { Config.FishConfig }
