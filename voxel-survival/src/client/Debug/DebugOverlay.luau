@@ -6,6 +6,7 @@
 -- Pair it with the MicroProfiler (Ctrl+F6) and View > Stats in Studio.
 
 local Players = game:GetService("Players")
+local Stats = game:GetService("Stats")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -21,6 +22,17 @@ local PartsBackend = require(script.Parent.Parent.Render.PartsBackend)
 local CollisionBuilder = require(script.Parent.Parent.Render.CollisionBuilder)
 
 local BS = Config.BLOCK_SIZE
+
+-- Engine-reported memory for a developer memory tag, or nil if unavailable.
+local function tagMb(tagName: string): number?
+	local ok, mb = pcall(function()
+		return Stats:GetMemoryUsageMbForTag((Enum.DeveloperMemoryTag :: any)[tagName])
+	end)
+	return if ok then mb else nil
+end
+local function fmtMb(mb: number?): string
+	return if mb then string.format("%.1f MB", mb) else "n/a"
+end
 
 local DebugOverlay = {}
 
@@ -96,17 +108,24 @@ function DebugOverlay.init()
 		local sched = (ClientWorld :: any).scheduler
 		local genAvg = if ws.generated > 0 then ws.genTime / ws.generated * 1000 else 0
 		local meshAvg = if rs.sectionsMeshed > 0 then rs.meshTime / rs.sectionsMeshed * 1000 else 0
-		local backend = ChunkRenderer.backend .. if ChunkRenderer.editableDisabled then " (EditableMesh failed -> parts)" else ""
+		local backend = ChunkRenderer.backend .. if ChunkRenderer.isDegraded() then " (DEGRADED: mostly Parts)" else ""
+		local cap = if es.bakeMode == "live"
+			then (if es.learnedCap then tostring(es.learnedCap) else "?")
+			else tostring(Config.MAX_LIVE_EDITABLE)
 
 		label.Text = table.concat({
 			`{GameInfo.TITLE} {GameInfo.VERSION}   {string.format("%.0f", fps)} fps   [F3 hide, F4 switch backend]`,
 			`pos {posText}   biome {biomeText}`,
-			`render distance {ClientWorld.getRenderDistance()}{if ClientWorld.isMobile() then " (mobile)" else ""}   backend {backend}`,
+			`render distance {ClientWorld.effectiveRenderDistance()}/{ClientWorld.getRenderDistance()}{if ClientWorld.isMobile() then " (mobile)" else ""}   backend {backend}`,
 			`chunks loaded {ws.loaded}   waiting: gen {ws.pendingGen}, mesh {ws.pendingMesh} sections`,
 			string.format("gen %.2f ms/chunk avg (%d)   mesh %.2f ms/section avg (%d)", genAvg, ws.generated, meshAvg, rs.sectionsMeshed),
 			string.format("scheduler last step %.2f ms", if sched then sched.stats.lastStepTime * 1000 else 0),
+			`EditableMesh mode {es.bakeMode}   live {es.liveEditable}/{cap} (peak {es.peakLiveEditable})   est. {string.format("%.0f", es.liveBytesEst / 1024)} KB   budget hits {es.budgetHits}`,
 			`MeshParts {es.meshParts}   triangles {es.triangles}   uploads {es.uploadsInFlight} in flight / {es.uploadsQueued} queued`,
-			`render Parts {PartsBackend.stats.parts}   collision Parts {CollisionBuilder.stats.parts}   fallbacks {rs.fallbacks}`,
+			`sections: {rs.sectionsEditable} mesh, {rs.sectionsParts} parts   fallbacks {rs.fallbacks}   demotions {rs.demotions}`,
+			`render Parts {PartsBackend.stats.parts}   collision Parts {CollisionBuilder.stats.parts}`,
+			`memory: GraphicsMeshParts {fmtMb(tagMb("GraphicsMeshParts"))}   GraphicsParts {fmtMb(tagMb("GraphicsParts"))}   total {string.format("%.0f MB", Stats:GetTotalMemoryUsageMb())}`,
+			if es.bakeError ~= "" then `bake unavailable: {es.bakeError}` else "",
 			if es.lastError ~= "" then `last EditableMesh error: {es.lastError}` else "",
 		}, "\n")
 	end)

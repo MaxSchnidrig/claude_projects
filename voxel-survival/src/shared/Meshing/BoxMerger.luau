@@ -5,7 +5,9 @@
 --   * the Parts render backend: one Part per merged box of exposed blocks of one type
 --
 -- `keyOf(id, paddedIndex)` returns 0 to skip a cell, otherwise a group key; only cells with the
--- same key merge. Output is a flat list of 7 numbers per box: x, y, z, sx, sy, sz, key
+-- same key merge. A key of -1 is a WILDCARD: the cell never starts a box, but any box may grow
+-- through it. Used for buried blocks that can never be seen, which lets visible boxes extend into
+-- the ground and cuts Part counts a lot. Output is a flat list of 7 numbers per box: x, y, z, sx, sy, sz, key
 -- (section-local block units).
 
 local Shared = script.Parent.Parent
@@ -25,6 +27,9 @@ local function li(x: number, y: number, z: number): number
 	return x + z * SS + y * SS * SS + 1
 end
 
+local WILDCARD = -1
+BoxMerger.WILDCARD = WILDCARD
+
 function BoxMerger.merge(padded: buffer, keyOf: (id: number, p: number) -> number): ({ number }, number)
 	-- Resolve keys once.
 	for y = 0, SS - 1 do
@@ -43,10 +48,13 @@ function BoxMerger.merge(padded: buffer, keyOf: (id: number, p: number) -> numbe
 		for z = 0, SS - 1 do
 			for x = 0, SS - 1 do
 				local key = keys[li(x, y, z)]
-				if key ~= 0 then
+				if key > 0 then
 					-- grow along x
 					local sx = 1
-					while x + sx < SS and keys[li(x + sx, y, z)] == key do
+					local function fits(k: number): boolean
+						return k == key or k == WILDCARD
+					end
+					while x + sx < SS and fits(keys[li(x + sx, y, z)]) do
 						sx += 1
 					end
 					-- grow along z
@@ -54,7 +62,7 @@ function BoxMerger.merge(padded: buffer, keyOf: (id: number, p: number) -> numbe
 					local ok = true
 					while z + sz < SS and ok do
 						for t = 0, sx - 1 do
-							if keys[li(x + t, y, z + sz)] ~= key then
+							if not fits(keys[li(x + t, y, z + sz)]) then
 								ok = false
 								break
 							end
@@ -69,7 +77,7 @@ function BoxMerger.merge(padded: buffer, keyOf: (id: number, p: number) -> numbe
 					while y + sy < SS and ok do
 						for tz = 0, sz - 1 do
 							for tx = 0, sx - 1 do
-								if keys[li(x + tx, y + sy, z + tz)] ~= key then
+								if not fits(keys[li(x + tx, y + sy, z + tz)]) then
 									ok = false
 									break
 								end

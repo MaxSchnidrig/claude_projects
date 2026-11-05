@@ -27,7 +27,19 @@ Config.SERVER_CHUNK_RADIUS = 3 -- chunks the server keeps generated around each 
 Config.FRAME_BUDGET_MS_DESKTOP = 4
 Config.FRAME_BUDGET_MS_MOBILE = 2.5
 Config.FRAME_BUDGET_MS_SERVER = 6
-Config.MAX_MESH_UPLOADS_IN_FLIGHT = 4 -- concurrent CreateMeshPartAsync calls
+Config.MAX_MESH_UPLOADS_IN_FLIGHT = 3 -- concurrent mesh uploads (bake + CreateMeshPartAsync)
+-- EditableMeshes alive at the same time. On live clients the editable memory budget is small
+-- (forum reports: ~8 meshes), so meshes are baked to static content and destroyed right after
+-- upload; this caps how many exist while waiting/uploading.
+Config.MAX_LIVE_EDITABLE = 4
+-- How long a section that fell back to Parts waits before trying EditableMesh again (seconds).
+Config.EDITABLE_RETRY_SECONDS = 10
+-- Render distance cap while degraded to Parts (Parts backend selected, or EditableMesh can't be
+-- baked and its live budget is exhausted). Parts are ~15x more instances than meshes.
+Config.PARTS_RENDER_DISTANCE = 4
+-- In Parts mode, sections entirely below the surface (cave interiors, ~44% of all Parts) are only
+-- built within this many chunks of the player.
+Config.PARTS_CAVE_RADIUS = 2
 
 -- Rendering ---------------------------------------------------------------------------------
 -- "editable" = greedy mesh -> EditableMesh -> MeshPart (primary)

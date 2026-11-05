@@ -34,6 +34,7 @@ type Rec = {
 	data: ChunkData.Chunk?,
 	generating: boolean,
 	diffsReady: boolean,
+	minSurface: number, -- lowest generated surface height in the chunk (for cave culling)
 	sections: { ChunkRenderer.Section },
 }
 
@@ -51,6 +52,17 @@ local scheduler: Scheduler.Scheduler
 local pendingLoad: { number } = {}
 local pendingUnload: { number } = {}
 local worldReadySent = false
+local lastFogDistance = -1
+
+-- Fog hides chunk pop-in at the render-distance edge. (Ignored by Roblox if an Atmosphere
+-- object exists; phase 4's day/night system takes this over.)
+local function applyFog(rd: number)
+	lastFogDistance = rd
+	local edge = (rd - 0.5) * CS * BS
+	Lighting.FogEnd = edge
+	Lighting.FogStart = edge * 0.55
+	Lighting.FogColor = Color3.fromRGB(170, 200, 235)
+end
 local anchoredByUs = false
 
 -- Chunk offsets sorted by distance, covering the largest radius we ever need.
@@ -78,6 +90,7 @@ local function getRec(cx: number, cz: number): Rec
 			data = nil,
 			generating = false,
 			diffsReady = false,
+			minSurface = 0,
 			sections = ChunkRenderer.newSections(cx, cz),
 		}
 		chunks[key] = rec
@@ -118,20 +131,41 @@ local function generateJob(rec: Rec): () -> ()
 		ClientWorld.stats.generated += 1
 		rec.generating = false
 		if chunks[rec.key] == rec then
+			local minH = math.huge
+			for i = 0, CS * CS - 1 do
+				minH = math.min(minH, buffer.readu8(chunk.heights, i))
+			end
+			rec.minSurface = minH
 			rec.data = chunk
 			table.insert(pendingLoad, rec.key)
 		end
 	end
 end
 
-local function renderJob(rec: Rec, section: ChunkRenderer.Section): () -> ()
+local function renderJob(rec: Rec, section: ChunkRenderer.Section, mode: string): () -> ()
 	section.renderDirty = false -- claim it so the picker doesn't hand it out twice
 	return function()
 		if section.alive and rec.data then
-			ChunkRenderer.renderSection(section, rec.data, neighbors(rec))
+			ChunkRenderer.renderSection(section, rec.data, neighbors(rec), mode)
 		end
 	end
 end
+
+-- Parts-mode cave culling: a section entirely under the surface, farther than
+-- PARTS_CAVE_RADIUS chunks, is skipped (it can only be seen from inside the caves).
+local function hiddenCaveSection(rec: Rec, s: ChunkRenderer.Section, d2: number): boolean
+	return (s.sy + 1) * SS <= rec.minSurface - 2 and d2 > Config.PARTS_CAVE_RADIUS ^ 2
+end
+
+-- Render distance actually used for meshing: smaller while the world is mostly Parts, because
+-- Parts cost ~15x more instances than meshes. Chunk data still loads to the full distance.
+local function effectiveRenderDistance(): number
+	if ChunkRenderer.isDegraded() then
+		return math.min(renderDistance, Config.PARTS_RENDER_DISTANCE)
+	end
+	return renderDistance
+end
+ClientWorld.effectiveRenderDistance = effectiveRenderDistance
 
 local function collisionJob(rec: Rec, section: ChunkRenderer.Section): () -> ()
 	section.collisionDirty = false
@@ -159,8 +193,9 @@ local function pickJob(): (() -> ())?
 		end
 	end
 	-- 2. nearest-first generation and meshing
-	local genLimit = (renderDistance + 1.5) ^ 2
-	local meshLimit = (renderDistance + 0.5) ^ 2
+	local rd = effectiveRenderDistance()
+	local genLimit = (rd + 1.5) ^ 2
+	local meshLimit = (rd + 0.5) ^ 2
 	for _, o in offsets do
 		if o.d2 > genLimit then
 			break
@@ -173,7 +208,13 @@ local function pickJob(): (() -> ())?
 		elseif o.d2 <= meshLimit and rec.diffsReady and neighborsReady(rec) then
 			for _, s in rec.sections do
 				if s.renderDirty then
-					return renderJob(rec, s)
+					-- Nearest sections are asked first, so they get EditableMesh slots first.
+					local mode = ChunkRenderer.chooseBackend(s)
+					if mode == "parts" and hiddenCaveSection(rec, s, o.d2) then
+						-- skip: invisible from the surface, not worth ~150 Parts
+					elseif mode ~= "wait" then
+						return renderJob(rec, s, mode)
+					end
 				end
 			end
 		end
@@ -196,6 +237,12 @@ local function refresh()
 	local pos = playerPosition()
 	centerX = math.floor(pos.X / BS) // CS
 	centerZ = math.floor(pos.Z / BS) // CS
+	ChunkRenderer.setCenter(centerX, centerZ)
+	local rd = effectiveRenderDistance()
+	if rd ~= lastFogDistance then
+		applyFog(rd)
+	end
+	local renderKeep = (rd + 0.5) ^ 2
 
 	local unloadLimit = (renderDistance + Config.UNLOAD_MARGIN + 0.5) ^ 2
 	local collisionKeep = Config.COLLISION_RADIUS + 1
@@ -217,7 +264,16 @@ local function refresh()
 				pendingGen += 1
 			end
 			local farForCollision = math.abs(dx) > collisionKeep or math.abs(dz) > collisionKeep
+			local farForRender = dx * dx + dz * dz > renderKeep
+			if not farForRender then
+				ChunkRenderer.refreshRetries(rec.sections)
+			end
 			for _, s in rec.sections do
+				if s.render and (farForRender
+					or (s.render.kind == "parts" and hiddenCaveSection(rec, s, dx * dx + dz * dz)))
+				then
+					ChunkRenderer.clearRender(s) -- out of (degraded) range, or culled cave section
+				end
 				if farForCollision and s.collision then
 					ChunkRenderer.clearCollision(s)
 				end
@@ -372,20 +428,9 @@ function ClientWorld.init()
 			renderDistance = math.clamp(math.floor(rd), Config.RENDER_DISTANCE_MIN, Config.RENDER_DISTANCE_MAX)
 		end
 	end
-	-- Fog hides chunk pop-in at the render-distance edge. (Ignored by Roblox if an Atmosphere
-	-- object exists; phase 4's day/night system takes this over.)
-	local function applyFog()
-		local edge = (renderDistance - 0.5) * CS * BS
-		Lighting.FogEnd = edge
-		Lighting.FogStart = edge * 0.55
-		Lighting.FogColor = Color3.fromRGB(170, 200, 235)
-	end
 	applyRenderDistance()
-	applyFog()
-	player:GetAttributeChangedSignal("RenderDistance"):Connect(function()
-		applyRenderDistance()
-		applyFog()
-	end)
+	applyFog(effectiveRenderDistance())
+	player:GetAttributeChangedSignal("RenderDistance"):Connect(applyRenderDistance)
 
 	ChunkRenderer.init()
 	Remotes.get("ChunkDiffs").OnClientEvent:Connect(onDiffs)

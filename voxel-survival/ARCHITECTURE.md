@@ -101,8 +101,12 @@ Instance counts per chunk, and for render distance 6 (137 chunks):
 | A. 1 Part per block | 20,684 | 2,833,681 | engine |
 | A2. 1 Part per exposed block | 1,040 | 142,533 | engine |
 | B. 1 Part per visible face (culled) | 1,497 | 205,135 | ~3,000 |
-| C. Greedy Parts per block type (**fallback**) | 295 | 40,373 | engine |
-| D. Greedy EditableMesh, 1 MeshPart / texture (**primary**) | **18** | **2,477** | **~1,340** |
+| C. Greedy Parts per block type | 295 | 40,373 | engine |
+| C2. C + buried blocks as wildcards (**fallback**) | 253 | 34,627 | engine |
+| D. Greedy EditableMesh, 1 MeshPart / texture | 18 | 2,477 | ~1,340 |
+| D2. Greedy EditableMesh, 1 MeshPart / material (**primary**) | **6** | **784** | **~1,340** |
+
+In Parts mode, cave sections entirely below the surface are culled beyond 2 chunks. Those sections hold about 44% of all Parts.
 
 Collision boxes near the player are about 215 per chunk, for 9 chunks only (~1,900 Parts).
 
@@ -116,6 +120,21 @@ Collision boxes near the player are about 215 per chunk, for 9 chunks only (~1,9
 Of 288 sections, about 20% are empty sky and about 13% are buried (no visible face). Both are skipped after a quick check.
 
 **Time-slicing:** every job yields at checkpoints, inside generation per row of columns and inside meshing per face direction. The per-frame budget is 4 ms on desktop and 2.5 ms on mobile. A full RD 6 load is about 3 s of CPU, spread over frames, nearest chunks first.
+
+### EditableMesh memory budget (found in Phase 1 Studio test)
+Roblox gives clients a small "editable memory budget". Studio-in-edit and servers are unlimited. Forum reports put the live client limit at about 8 meshes, with no fixed count: `CreateEditableMesh` simply returns nil once the budget is used. Phase 1 kept every EditableMesh alive for as long as its MeshPart existed, so the budget was gone after 8 MeshParts. That was a design flaw, not a leak.
+
+**Fix (Phase 1.1):**
+1. Build the EditableMesh.
+2. `AssetService:CreateDataModelContentAsync` bakes it into static content.
+3. `CreateMeshPartAsync(staticContent)` makes the MeshPart.
+4. The EditableMesh is destroyed immediately.
+
+Only meshes in flight now count (cap `MAX_LIVE_EDITABLE` = 4).
+
+- **Live mode:** if baking is unavailable, the MeshPart must keep its EditableMesh alive. The renderer learns the device cap and gives mesh slots to the nearest sections (a nearer section demotes the farthest one to Parts). It also reduces render distance to `PARTS_RENDER_DISTANCE`.
+- **Fallback is per section:** a failed section becomes Parts and retries after 10 s.
+- **Fewer, larger meshes:** with vertex colours, all opaque textures of a section share one mesh, giving about 1–2 MeshParts per section instead of one per texture. Phase 7 textures will need either per-texture meshes or an atlas. An atlas can't tile across a merged quad, so it would mean un-merged quads: about 2.2× more triangles, but still 6 MeshParts per chunk.
 
 **Tradeoffs:**
 - **D (EditableMesh)** has the fewest instances and draw calls by far. Costs:
@@ -181,7 +200,7 @@ Values follow the classic formula. Speeds are in blocks/s; at 3 studs per block,
   - merges writes to the same key, respecting the 6 s per-key limit;
   - flushes every 60 s, on unload, and in `BindToClose`.
 
-## 9. Original equivalents: **names pending your approval**
+## 9. Original equivalents: **approved** (designs must read clearly original)
 
 | Gameplay role | Proposal | Notes |
 |---|---|---|

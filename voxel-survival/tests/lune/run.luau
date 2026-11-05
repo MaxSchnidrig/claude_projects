@@ -275,6 +275,57 @@ test("box merger covers every solid cell exactly once on real terrain", function
 	eq(covered, solid, "box volume vs solid cells")
 end)
 
+test("wildcard merging: covers every visible block once, never air/water", function()
+	local OFFS = BoxMerger.NEIGHBOR_OFFSETS
+	local isOpaque, isLiquid = BlockRegistry.isOpaque, BlockRegistry.isLiquid
+	local function partKey(padded: buffer, id: number, p: number): number
+		for i = 1, 6 do
+			local n = buffer.readu8(padded, p + OFFS[i])
+			if n == 0 or (not isOpaque[n + 1] and n ~= id and not (isLiquid[id + 1] and isLiquid[n + 1])) then
+				return id
+			end
+		end
+		return if isOpaque[id + 1] then BoxMerger.WILDCARD else 0
+	end
+	local c = ChunkData.new(0, 0)
+	TerrainGen.generate(TerrainGen.new(SEED), c)
+	local padded = buffer.create(SectionSampler.VOLUME)
+	for sy = 2, 5 do
+		SectionSampler.fill(padded, c, {}, sy)
+		local boxes, n = BoxMerger.merge(padded, function(id, p)
+			return partKey(padded, id, p)
+		end)
+		local cover = {}
+		for b = 0, n - 1 do
+			local o = b * 7
+			for y = boxes[o + 2], boxes[o + 2] + boxes[o + 5] - 1 do
+				for z = boxes[o + 3], boxes[o + 3] + boxes[o + 6] - 1 do
+					for x = boxes[o + 1], boxes[o + 1] + boxes[o + 4] - 1 do
+						local k = x + z * 16 + y * 256
+						assert(not cover[k], "cell covered twice")
+						cover[k] = boxes[o + 7]
+					end
+				end
+			end
+		end
+		for y = 0, 15 do
+			for z = 0, 15 do
+				for x = 0, 15 do
+					local p = (x + 1) + (z + 1) * 18 + (y + 1) * 324
+					local id = buffer.readu8(padded, p)
+					local key = if id == 0 then 0 else partKey(padded, id, p)
+					local k = x + z * 16 + y * 256
+					if key > 0 then
+						eq(cover[k], id, "visible block must be in a box of its own type")
+					elseif key == 0 then
+						assert(cover[k] == nil, "box covers air/non-wildcard cell")
+					end
+				end
+			end
+		end
+	end
+end)
+
 print(`\n{passed} passed, {failed} failed`)
 if failed > 0 then
 	process.exit(1)

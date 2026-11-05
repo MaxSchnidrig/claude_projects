@@ -128,6 +128,14 @@ local function bench(label: string)
 	local maxMesh = 0
 	local classes = {}
 	local totalBlocks = 0
+	local partWild = 0
+	local materialGroups = 0
+	-- same grouping rule as EditableMeshBackend: transparency/material, from Config.TEXTURE_STYLE
+	local Config = Loader.require("src/shared/Config")
+	local function texMaterial(tex: number): string
+		local o = Config.TEXTURE_STYLE[M.BlockRegistry.textureKeys[tex]] or {}
+		return `{o.transparency or 0}:{o.neon and "neon" or "plastic"}`
+	end
 	for cz = 1, AREA - 2 do
 		for cx = 1, AREA - 2 do
 			local c = chunks[cx .. "," .. cz]
@@ -165,6 +173,16 @@ local function bench(label: string)
 					end
 					return 0
 				end)
+				-- ...and with buried opaque blocks as wildcards (current Parts backend)
+				local _, nWild = M.BoxMerger.merge(padded, function(id, p)
+					for i = 1, 6 do
+						if not isOpaque[buffer.readu8(padded, p + offs[i]) + 1] then
+							return id
+						end
+					end
+					return if isOpaque[id + 1] then M.BoxMerger.WILDCARD else 0
+				end)
+				partWild += nWild
 				local eTime = os.clock()
 				tSample += b - a
 				tMesh += cTime - b
@@ -176,10 +194,15 @@ local function bench(label: string)
 				collisionBoxes += nBoxes
 				partBoxes += nParts
 				local g = 0
-				for _ in r.groups do
+				local mats = {}
+				for tex in r.groups do
 					g += 1
+					mats[texMaterial(tex)] = true
 				end
 				groups += g
+				for _ in mats do
+					materialGroups += 1
+				end
 				if r.quadCount > 0 then
 					nonEmpty += 1
 				end
@@ -206,6 +229,8 @@ local function bench(label: string)
 		partBoxes = partBoxes,
 		chunkCount = (AREA - 2) * (AREA - 2),
 		totalBlocks = totalBlocks,
+		partWild = partWild,
+		materialGroups = materialGroups,
 		blocksExposed = blocksExposed,
 	}
 end
@@ -232,7 +257,9 @@ row("A. 1 Part per block (every block)", perChunk(r.totalBlocks), nil)
 row("A2. 1 Part per exposed block only", perChunk(r.blocksExposed), nil)
 row("B. 1 Part per visible face (culled)", perChunk(r.faces), perChunk(r.faces) * 2)
 row("C. greedy Parts per block type", perChunk(r.partBoxes), nil)
+row("C2. greedy Parts + buried wildcards", perChunk(r.partWild), nil)
 row("D. greedy EditableMesh, 1 MeshPart/texture", perChunk(r.groups), perChunk(r.quads) * 2)
+row("D2. greedy EditableMesh, 1 MeshPart/material", perChunk(r.materialGroups), perChunk(r.quads) * 2)
 print(string.format("  collision boxes (only near player)       %10.0f", perChunk(r.collisionBoxes)))
 print(string.format("  faces before merge %.0f, quads after merge %.0f per chunk (%.1fx reduction)",
 	perChunk(r.faces), perChunk(r.quads), r.faces / math.max(r.quads, 1)))

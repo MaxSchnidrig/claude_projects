@@ -1,7 +1,8 @@
 --!strict
 -- Fallback render backend: greedy-merged Parts. One Part per merged box of *exposed* blocks of
--- the same type (blocks with at least one non-opaque neighbour). Works on every device and
--- needs no EditableMesh, at the cost of ~15x more instances (see ARCHITECTURE.md).
+-- the same type (blocks with at least one non-opaque neighbour). Boxes may also grow through
+-- buried blocks (wildcards), which are never visible. Works on every device and needs no
+-- EditableMesh, at the cost of many more instances than meshes (see ARCHITECTURE.md).
 -- Each box shows its block's top colour on all sides.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -22,15 +23,21 @@ export type Handle = { parts: { BasePart } }
 local Backend = {}
 Backend.stats = { parts = 0 }
 
+-- Merge key for one cell: its block id if any face is visible, WILDCARD if it's an opaque block
+-- buried on all 6 sides (never seen, so any box may cover it), else 0 (skip).
+function Backend.partKey(padded: buffer, id: number, p: number): number
+	for i = 1, 6 do
+		local n = buffer.readu8(padded, p + OFFS[i])
+		if n == 0 or (not isOpaque[n + 1] and n ~= id and not (isLiquid[id + 1] and isLiquid[n + 1])) then
+			return id
+		end
+	end
+	return if isOpaque[id + 1] then BoxMerger.WILDCARD else 0
+end
+
 function Backend.build(padded: buffer, originStuds: Vector3, folder: Instance): Handle
 	local boxes, count = BoxMerger.merge(padded, function(id: number, p: number): number
-		for i = 1, 6 do
-			local n = buffer.readu8(padded, p + OFFS[i])
-			if n == 0 or (not isOpaque[n + 1] and n ~= id and not (isLiquid[id + 1] and isLiquid[n + 1])) then
-				return id
-			end
-		end
-		return 0
+		return Backend.partKey(padded, id, p)
 	end)
 	local handle: Handle = { parts = table.create(count) }
 	for b = 0, count - 1 do
