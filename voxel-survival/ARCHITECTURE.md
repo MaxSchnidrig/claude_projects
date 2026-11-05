@@ -172,7 +172,7 @@ Phase 2 server validation for break and place:
 |---|---|
 | Avatar | `CreateHumanoidModelFromDescription(desc, R6)` with all body-part packages cleared (plain box limbs), the R6 head mesh switched to a 1.5-stud cube, and accessories removed. Clothing, body colours and face are kept. R6 has no scaling, so every hitbox is 2 studs wide and 5 tall: it fits 2-block-tall and 1-block-wide gaps, never 1-block-tall gaps. Climbing is disabled so block walls can't be climbed |
 | Movement | Walk 13 studs/s, sprint 16.8 (Left Ctrl, forward only, slight FOV kick), jump height 3.6 studs (1.2 blocks) |
-| Camera | Scriptable camera; first person by default with the mouse locked; F5 cycles first → behind → front. The body turns to the look yaw. Third-person cameras are pulled in front of terrain |
+| Camera | Scriptable camera; first person by default with the mouse locked; V cycles first → behind → front (F5 is taken by Studio on macOS). The body turns to the look yaw. Third-person cameras are pulled in front of terrain |
 | Targeting | Voxel raycast from the eye (root + 1.6 studs) along the look direction, reach 4.5 blocks, using the client's block data. A thin dark SelectionBox outlines the target |
 | Mining | `breakSeconds = ceil(1 / (speed / hardness / (30 or 100))) / 20`, slowed 5× airborne or under water; a 0.25 s cooldown between blocks. The client predicts; the server checks elapsed ≥ 80% of the on-ground time − 0.1 s, the same tool held, reach and line of sight |
 | Placing | Against the targeted face, into air or liquid, never overlapping a character, repeats every 0.2 s while held |

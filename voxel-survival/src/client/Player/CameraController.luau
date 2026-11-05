@@ -1,6 +1,6 @@
 --!strict
 -- Custom camera: first person by default with the mouse locked to the screen centre, and a key
--- (Config.KEY_CAMERA, default F5) that cycles: first person -> third person behind -> third
+-- (Config.KEY_CAMERA, default V) that cycles: first person -> third person behind -> third
 -- person in front (looking back at the player). The mouse stays locked in every mode.
 --
 -- The camera is Scriptable, so Roblox's default camera scripts stay out of the way. The body

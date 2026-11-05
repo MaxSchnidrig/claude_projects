@@ -65,12 +65,11 @@ Build a place file without Studio: `rojo build -o rocraft.rbxl`.
 | Left mouse (hold) | Mine the targeted block |
 | Right mouse (hold) | Place the held block (repeats) |
 | 1–9 / mouse wheel | Select hotbar slot |
-| F5 | Camera: first person → behind → front (`Config.KEY_CAMERA`) |
+| V | Camera: first person → behind → front (`Config.KEY_CAMERA`) |
 | Gamepad | R2 mine, L2 place, R1/L1 hotbar, L3 sprint, right stick look |
 | Touch | Drag to look, "Mine"/"Place" buttons, tap a slot |
 
 In Studio you spawn with a test kit (pickaxes of each tier, blocks) from `Config.STUDIO_STARTER_KIT`; live servers start empty.
-Studio may grab F5 while play-testing; if so, change `Config.KEY_CAMERA` (e.g. to `"V"`).
 
 ### Debug keys
 | Key | Action |
