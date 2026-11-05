@@ -1,0 +1,88 @@
+--!strict
+-- Block data. Adding a block = adding one entry here (plus a texture colour in TexturePalette).
+--
+-- IDs ARE PERMANENT: saved worlds store block IDs, so never renumber or reuse an ID.
+-- Leave gaps instead of deleting.
+--
+-- Fields:
+--   id          permanent numeric ID (1..255, 0 is air)
+--   key         internal string key (snake_case)
+--   name        display name
+--   hardness    seconds-scale hardness (same scale as classic voxel-survival games); -1 = unbreakable
+--   tool        preferred tool type: "pickaxe" | "axe" | "shovel" | "hoe" | "shears" | nil
+--   minTier     tool tier needed to get a drop: 0 hand, 1 wood/gold, 2 stone, 3 iron, 4 diamond
+--   drop        item key dropped when harvested (nil = drops itself; false = drops nothing)
+--   dropMin/dropMax  drop count range (default 1)
+--   textures    { all = key } or { top = , side = , bottom = }
+--   solid       blocks movement (default true)
+--   transparent light/vision passes through; neighbours' faces stay visible (default false)
+--   liquid      fluid block (default false)
+--   cullSelf    hide faces between two blocks of this same type (glass, water) (default true)
+
+export type BlockDefInput = {
+	id: number,
+	key: string,
+	name: string,
+	hardness: number,
+	tool: string?,
+	minTier: number?,
+	drop: (string | boolean)?,
+	dropMin: number?,
+	dropMax: number?,
+	textures: { [string]: string },
+	solid: boolean?,
+	transparent: boolean?,
+	liquid: boolean?,
+	cullSelf: boolean?,
+}
+
+local defs: { BlockDefInput } = {
+	-- Terrain ---------------------------------------------------------------------------------
+	{ id = 1, key = "stone", name = "Stone", hardness = 1.5, tool = "pickaxe", minTier = 1, drop = "cobblestone", textures = { all = "stone" } },
+	{ id = 2, key = "grass_block", name = "Grass Block", hardness = 0.6, tool = "shovel", drop = "dirt", textures = { top = "grass_top", side = "grass_side", bottom = "dirt" } },
+	{ id = 3, key = "dirt", name = "Dirt", hardness = 0.5, tool = "shovel", textures = { all = "dirt" } },
+	{ id = 4, key = "cobblestone", name = "Cobblestone", hardness = 2.0, tool = "pickaxe", minTier = 1, textures = { all = "cobblestone" } },
+	{ id = 5, key = "bedrock", name = "Bedrock", hardness = -1, drop = false, textures = { all = "bedrock" } },
+	{ id = 6, key = "sand", name = "Sand", hardness = 0.5, tool = "shovel", textures = { all = "sand" } },
+	{ id = 7, key = "gravel", name = "Gravel", hardness = 0.6, tool = "shovel", textures = { all = "gravel" } },
+	{ id = 8, key = "sandstone", name = "Sandstone", hardness = 0.8, tool = "pickaxe", minTier = 1, textures = { top = "sandstone_top", side = "sandstone_side", bottom = "sandstone_top" } },
+	{ id = 9, key = "water", name = "Water", hardness = 100, drop = false, textures = { all = "water" }, solid = false, transparent = true, liquid = true },
+	{ id = 10, key = "lava", name = "Lava", hardness = 100, drop = false, textures = { all = "lava" }, solid = false, transparent = true, liquid = true },
+	{ id = 28, key = "snow_block", name = "Snow Block", hardness = 0.2, tool = "shovel", minTier = 1, drop = "snowball", dropMin = 4, dropMax = 4, textures = { all = "snow" } },
+	{ id = 29, key = "ice", name = "Ice", hardness = 0.5, tool = "pickaxe", drop = false, textures = { all = "ice" }, transparent = true },
+	{ id = 30, key = "clay", name = "Clay", hardness = 0.6, tool = "shovel", drop = "clay_ball", dropMin = 4, dropMax = 4, textures = { all = "clay" } },
+	{ id = 38, key = "snowy_grass_block", name = "Snowy Grass Block", hardness = 0.6, tool = "shovel", drop = "dirt", textures = { top = "snow", side = "snowy_grass_side", bottom = "dirt" } },
+
+	-- Wood ------------------------------------------------------------------------------------
+	{ id = 11, key = "oak_log", name = "Oak Log", hardness = 2.0, tool = "axe", textures = { top = "oak_log_top", side = "oak_log", bottom = "oak_log_top" } },
+	{ id = 12, key = "oak_leaves", name = "Oak Leaves", hardness = 0.2, tool = "hoe", drop = false, textures = { all = "oak_leaves" } },
+	{ id = 13, key = "oak_planks", name = "Oak Planks", hardness = 2.0, tool = "axe", textures = { all = "oak_planks" } },
+	{ id = 14, key = "birch_log", name = "Birch Log", hardness = 2.0, tool = "axe", textures = { top = "birch_log_top", side = "birch_log", bottom = "birch_log_top" } },
+	{ id = 15, key = "birch_leaves", name = "Birch Leaves", hardness = 0.2, tool = "hoe", drop = false, textures = { all = "birch_leaves" } },
+	{ id = 16, key = "birch_planks", name = "Birch Planks", hardness = 2.0, tool = "axe", textures = { all = "birch_planks" } },
+	{ id = 17, key = "spruce_log", name = "Spruce Log", hardness = 2.0, tool = "axe", textures = { top = "spruce_log_top", side = "spruce_log", bottom = "spruce_log_top" } },
+	{ id = 18, key = "spruce_leaves", name = "Spruce Leaves", hardness = 0.2, tool = "hoe", drop = false, textures = { all = "spruce_leaves" } },
+	{ id = 19, key = "spruce_planks", name = "Spruce Planks", hardness = 2.0, tool = "axe", textures = { all = "spruce_planks" } },
+
+	-- Ores ------------------------------------------------------------------------------------
+	{ id = 20, key = "coal_ore", name = "Coal Ore", hardness = 3.0, tool = "pickaxe", minTier = 1, drop = "coal", textures = { all = "coal_ore" } },
+	{ id = 21, key = "iron_ore", name = "Iron Ore", hardness = 3.0, tool = "pickaxe", minTier = 2, drop = "raw_iron", textures = { all = "iron_ore" } },
+	{ id = 22, key = "copper_ore", name = "Copper Ore", hardness = 3.0, tool = "pickaxe", minTier = 2, drop = "raw_copper", dropMin = 2, dropMax = 5, textures = { all = "copper_ore" } },
+	{ id = 23, key = "gold_ore", name = "Gold Ore", hardness = 3.0, tool = "pickaxe", minTier = 3, drop = "raw_gold", textures = { all = "gold_ore" } },
+	{ id = 24, key = "diamond_ore", name = "Diamond Ore", hardness = 3.0, tool = "pickaxe", minTier = 3, drop = "diamond", textures = { all = "diamond_ore" } },
+	{ id = 25, key = "emerald_ore", name = "Emerald Ore", hardness = 3.0, tool = "pickaxe", minTier = 3, drop = "emerald", textures = { all = "emerald_ore" } },
+	{ id = 26, key = "lapis_ore", name = "Lapis Ore", hardness = 3.0, tool = "pickaxe", minTier = 2, drop = "lapis_lazuli", dropMin = 4, dropMax = 9, textures = { all = "lapis_ore" } },
+	-- Power-wire ore (our original equivalent of the classic signal-dust ore). Name pending approval.
+	{ id = 27, key = "volt_ore", name = "Volt Ore", hardness = 3.0, tool = "pickaxe", minTier = 3, drop = "volt_dust", dropMin = 4, dropMax = 5, textures = { all = "volt_ore" } },
+
+	-- Crafted / utility (used from phase 2-3 onward) -----------------------------------------
+	{ id = 31, key = "glass", name = "Glass", hardness = 0.3, drop = false, textures = { all = "glass" }, transparent = true },
+	{ id = 32, key = "obsidian", name = "Obsidian", hardness = 50, tool = "pickaxe", minTier = 4, textures = { all = "obsidian" } },
+	{ id = 33, key = "crafting_table", name = "Crafting Table", hardness = 2.5, tool = "axe", textures = { top = "crafting_table_top", side = "crafting_table_side", bottom = "oak_planks" } },
+	{ id = 34, key = "furnace", name = "Furnace", hardness = 3.5, tool = "pickaxe", minTier = 1, textures = { top = "furnace_top", side = "furnace_side", bottom = "furnace_top" } },
+	{ id = 35, key = "chest", name = "Chest", hardness = 2.5, tool = "axe", textures = { all = "chest" } },
+	{ id = 36, key = "tnt", name = "TNT", hardness = 0, textures = { top = "tnt_top", side = "tnt_side", bottom = "tnt_top" } },
+	{ id = 37, key = "white_wool", name = "White Wool", hardness = 0.8, tool = "shears", textures = { all = "white_wool" } },
+}
+
+return defs
