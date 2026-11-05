@@ -4,12 +4,23 @@
 --   ChunkRequest  C -> S  { load = {chunkKey...}, unload = {chunkKey...} }
 --   ChunkDiffs    S -> C  { {chunkKey, packedDiffs}, ... }   (reply to load requests)
 --   WorldReady    C -> S  ()  client has collision around the spawn point
---   BlockChanged  S -> C  (x, y, z, id)                      (phase 2)
+--   BlockChanged  S -> C  (x, y, z, id)        authoritative block state (also corrects predictions)
+--   BlockAction   C -> S  (action, x, y, z)    "start" | "cancel" | "finish" | "place"
+--   InventorySync S -> C  { slots = {stack|false ...}, selected = n }
+--   SelectSlot    C -> S  (n)                  hotbar slot 1..9
 
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local NAMES = { "ChunkRequest", "ChunkDiffs", "WorldReady", "BlockChanged" }
+local NAMES = {
+	"ChunkRequest",
+	"ChunkDiffs",
+	"WorldReady",
+	"BlockChanged",
+	"BlockAction",
+	"InventorySync",
+	"SelectSlot",
+}
 
 local Remotes = {}
 

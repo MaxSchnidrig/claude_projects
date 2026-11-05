@@ -41,6 +41,8 @@ export type Section = {
 	collision: { BasePart }?,
 	forceParts: boolean, -- this section fell back to Parts
 	retryAt: number, -- os.clock() after which it may try EditableMesh again
+	failCount: number, -- consecutive EditableMesh failures (retry delay doubles each time)
+	culled: boolean, -- skipped by Parts-mode cave culling; ClientWorld re-dirties it when needed
 	alive: boolean,
 }
 
@@ -103,6 +105,8 @@ function ChunkRenderer.newSections(cx: number, cz: number): { Section }
 			collision = nil,
 			forceParts = false,
 			retryAt = 0,
+			failCount = 0,
+			culled = false,
 			alive = true,
 		})
 	end
@@ -141,7 +145,8 @@ end
 
 local function fallBackToParts(section: Section)
 	section.forceParts = true
-	section.retryAt = os.clock() + Config.EDITABLE_RETRY_SECONDS
+	section.failCount += 1
+	section.retryAt = os.clock() + Config.EDITABLE_RETRY_SECONDS * 2 ^ math.min(section.failCount - 1, 5)
 	section.renderDirty = true
 	ChunkRenderer.stats.fallbacks += 1
 end
@@ -227,6 +232,7 @@ function ChunkRenderer.renderSection(section: Section, chunk: any, neighbors: Se
 				end
 				return
 			end
+			section.failCount = 0
 			replaceRender(section, { kind = "editable", handle = handle })
 		end)
 	else

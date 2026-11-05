@@ -40,6 +40,8 @@ type Rec = {
 
 local ClientWorld = {}
 ClientWorld.stats = { generated = 0, genTime = 0, loaded = 0, pendingGen = 0, pendingMesh = 0 }
+-- Average milliseconds per frame spent in our Heartbeat work (for the overlay).
+ClientWorld.profile = { refresh = 0, scheduler = 0, other = 0, total = 0 }
 
 local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 local renderDistance = if isMobile then Config.RENDER_DISTANCE_MOBILE else Config.RENDER_DISTANCE_DESKTOP
@@ -211,7 +213,10 @@ local function pickJob(): (() -> ())?
 					-- Nearest sections are asked first, so they get EditableMesh slots first.
 					local mode = ChunkRenderer.chooseBackend(s)
 					if mode == "parts" and hiddenCaveSection(rec, s, o.d2) then
-						-- skip: invisible from the surface, not worth ~150 Parts
+						-- skip: invisible from the surface, not worth ~150 Parts. Parked until
+						-- refresh() sees the player come close (so it isn't rescanned every frame).
+						s.renderDirty = false
+						s.culled = true
 					elseif mode ~= "wait" then
 						return renderJob(rec, s, mode)
 					end
@@ -269,6 +274,10 @@ local function refresh()
 				ChunkRenderer.refreshRetries(rec.sections)
 			end
 			for _, s in rec.sections do
+				if s.culled and not hiddenCaveSection(rec, s, dx * dx + dz * dz) then
+					s.culled = false
+					s.renderDirty = true
+				end
 				if s.render and (farForRender
 					or (s.render.kind == "parts" and hiddenCaveSection(rec, s, dx * dx + dz * dz)))
 				then
@@ -434,22 +443,40 @@ function ClientWorld.init()
 
 	ChunkRenderer.init()
 	Remotes.get("ChunkDiffs").OnClientEvent:Connect(onDiffs)
+	-- Authoritative block changes (other players' edits, and confirmations/corrections of ours).
+	Remotes.get("BlockChanged").OnClientEvent:Connect(function(x: any, y: any, z: any, id: any)
+		if typeof(x) == "number" and typeof(y) == "number" and typeof(z) == "number" and typeof(id) == "number" then
+			if ClientWorld.getBlock(x, y, z) ~= id then
+				ClientWorld.setBlock(x, y, z, id)
+			end
+		end
+	end)
 
 	local budget = if isMobile then Config.FRAME_BUDGET_MS_MOBILE else Config.FRAME_BUDGET_MS_DESKTOP
 	scheduler = Scheduler.new(budget, pickJob)
 	ClientWorld.scheduler = scheduler
 
 	local acc = math.huge
+	local prof = ClientWorld.profile
 	RunService.Heartbeat:Connect(function(dt)
+		local t0 = os.clock()
 		acc += dt
 		if acc >= 0.25 then
 			acc = 0
 			refresh()
 		end
+		local t1 = os.clock()
 		scheduler:step()
+		local t2 = os.clock()
 		ChunkRenderer.pump()
 		safetyAnchor()
 		checkWorldReady()
+		local t3 = os.clock()
+		-- exponential moving averages (ms) for the F3 overlay
+		prof.refresh = prof.refresh * 0.9 + (t1 - t0) * 100
+		prof.scheduler = prof.scheduler * 0.9 + (t2 - t1) * 100
+		prof.other = prof.other * 0.9 + (t3 - t2) * 100
+		prof.total = prof.total * 0.9 + (t3 - t0) * 100
 	end)
 end
 
@@ -502,6 +529,7 @@ function ClientWorld.remeshAll()
 	for _, rec in chunks do
 		for _, s in rec.sections do
 			s.renderDirty = true
+			s.culled = false
 			ChunkRenderer.resetForceParts(s)
 		end
 	end

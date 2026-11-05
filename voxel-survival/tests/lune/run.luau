@@ -326,6 +326,70 @@ test("wildcard merging: covers every visible block once, never air/water", funct
 	end
 end)
 
+print("Items / mining / raycast")
+local ItemRegistry = Loader.require("src/shared/Items/ItemRegistry")
+local Mining = Loader.require("src/shared/Gameplay/Mining")
+local VoxelRaycast = Loader.require("src/shared/World/VoxelRaycast")
+test("every block drop is an item; tools generated", function()
+	assert(ItemRegistry.get("diamond_pickaxe").tool.tier == 4)
+	assert(ItemRegistry.get("golden_axe").tool.speed == 12)
+	assert(ItemRegistry.get("stone").block == BlockRegistry.id("stone"))
+	assert(ItemRegistry.get("water") == nil, "fluids are not items")
+end)
+test("break times match classic reference values", function()
+	local id = BlockRegistry.id
+	local cases = {
+		{ "dirt", nil, 0.75 },
+		{ "stone", nil, 7.5 }, -- wrong tool and not harvestable by hand
+		{ "stone", "wooden_pickaxe", 1.15 },
+		{ "stone", "diamond_pickaxe", 0.3 },
+		{ "oak_log", nil, 3.0 },
+		{ "oak_log", "iron_axe", 0.5 },
+		{ "obsidian", "diamond_pickaxe", 9.4 },
+		{ "iron_ore", "stone_pickaxe", 1.15 },
+		{ "diamond_ore", "stone_pickaxe", 3.75 }, -- right kind, tier too low: slow, no drop
+		{ "oak_leaves", "shears", 0 }, -- instant
+	}
+	for _, c in cases do
+		local t = Mining.breakSeconds(id(c[1]), c[2])
+		assert(math.abs(t - c[3]) < 1e-6, `{c[1]} with {c[2] or "hand"}: expected {c[3]}, got {t}`)
+	end
+	eq(Mining.breakSeconds(id("tnt"), nil), 0)
+	eq(Mining.breakSeconds(id("bedrock"), "diamond_pickaxe"), math.huge)
+	assert(math.abs(Mining.breakSeconds(id("dirt"), nil, { airborne = true }) - 3.75) < 1e-6)
+end)
+test("harvest tiers", function()
+	local id = BlockRegistry.id
+	assert(Mining.canHarvest(id("dirt"), nil))
+	assert(not Mining.canHarvest(id("stone"), nil))
+	assert(Mining.canHarvest(id("stone"), "wooden_pickaxe"))
+	assert(not Mining.canHarvest(id("iron_ore"), "wooden_pickaxe"))
+	assert(Mining.canHarvest(id("iron_ore"), "stone_pickaxe"))
+	assert(not Mining.canHarvest(id("diamond_ore"), "golden_pickaxe"))
+	assert(Mining.canHarvest(id("diamond_ore"), "iron_pickaxe"))
+	assert(not Mining.canHarvest(id("obsidian"), "iron_pickaxe"))
+	assert(not Mining.canHarvest(id("stone"), "diamond_axe"), "wrong tool kind")
+end)
+test("voxel raycast hits the right block and face", function()
+	local solid = { ["5,2,0"] = 1, ["0,0,7"] = 1 }
+	local function get(x, y, z)
+		return solid[x .. "," .. y .. "," .. z] or 0
+	end
+	local function stops(id2)
+		return id2 ~= 0
+	end
+	local h = VoxelRaycast.cast(get, 0.5, 2.5, 0.5, 1, 0, 0, 10, stops)
+	assert(h, "expected a hit")
+	eq(h.x, 5); eq(h.y, 2); eq(h.z, 0); eq(h.nx, -1); eq(h.ny, 0)
+	assert(math.abs(h.distance - 4.5) < 1e-9)
+	local h2 = VoxelRaycast.cast(get, 0.5, 0.5, 0.5, 0, 0, 1, 10, stops)
+	assert(h2 and h2.z == 7 and h2.nz == -1)
+	eq(VoxelRaycast.cast(get, 0.5, 2.5, 0.5, 1, 0, 0, 4, stops), nil) -- out of reach
+	-- diagonal ray must not skip through an edge
+	local h3 = VoxelRaycast.cast(get, 3.5, 0.5, 0.5, 0.6, 0.6, 0, 10, stops)
+	assert(h3 and h3.x == 5 and h3.y == 2, "diagonal hit")
+end)
+
 print(`\n{passed} passed, {failed} failed`)
 if failed > 0 then
 	process.exit(1)

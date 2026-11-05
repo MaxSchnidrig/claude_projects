@@ -20,6 +20,12 @@ local ChunkRenderer = require(script.Parent.Parent.Render.ChunkRenderer)
 local EditableMeshBackend = require(script.Parent.Parent.Render.EditableMeshBackend)
 local PartsBackend = require(script.Parent.Parent.Render.PartsBackend)
 local CollisionBuilder = require(script.Parent.Parent.Render.CollisionBuilder)
+local BlockInteraction = require(script.Parent.Parent.Interaction.BlockInteraction)
+local InventoryClient = require(script.Parent.Parent.Player.InventoryClient)
+local CameraController = require(script.Parent.Parent.Player.CameraController)
+local BlockRegistry = require(Shared.Blocks.BlockRegistry)
+local ItemRegistry = require(Shared.Items.ItemRegistry)
+local Mining = require(Shared.Gameplay.Mining)
 
 local BS = Config.BLOCK_SIZE
 
@@ -35,6 +41,21 @@ local function fmtMb(mb: number?): string
 end
 
 local DebugOverlay = {}
+
+-- "target Stone (12 64 -3)  1.15 s with Wooden Pickaxe, drops"
+local function targetLine(): string
+	local hit = BlockInteraction.target
+	local held = InventoryClient.heldItem()
+	local heldName = if held and ItemRegistry.get(held) then (ItemRegistry.get(held) :: any).name else "hand"
+	if not hit then
+		return `target -   holding {heldName}`
+	end
+	local def = BlockRegistry.get(hit.id)
+	local t = Mining.breakSeconds(hit.id, held)
+	local tText = if t == math.huge then "unbreakable" else string.format("%.2f s", t)
+	local drops = if Mining.canHarvest(hit.id, held) then "drops" else "no drop"
+	return `target {if def then def.name else "?"} ({hit.x} {hit.y} {hit.z})   {tText} with {heldName}, {drops}`
+end
 
 function DebugOverlay.init()
 	local gui = Instance.new("ScreenGui")
@@ -105,7 +126,11 @@ function DebugOverlay.init()
 		local ws = ClientWorld.stats
 		local rs = ChunkRenderer.stats
 		local es = EditableMeshBackend.stats
-		local sched = (ClientWorld :: any).scheduler
+		local prof = ClientWorld.profile
+		local reasons = {}
+		for reason, n in es.failReasons do
+			table.insert(reasons, `{n}x {reason}`)
+		end
 		local genAvg = if ws.generated > 0 then ws.genTime / ws.generated * 1000 else 0
 		local meshAvg = if rs.sectionsMeshed > 0 then rs.meshTime / rs.sectionsMeshed * 1000 else 0
 		local backend = ChunkRenderer.backend .. if ChunkRenderer.isDegraded() then " (DEGRADED: mostly Parts)" else ""
@@ -115,18 +140,21 @@ function DebugOverlay.init()
 
 		label.Text = table.concat({
 			`{GameInfo.TITLE} {GameInfo.VERSION}   {string.format("%.0f", fps)} fps   [F3 hide, F4 switch backend]`,
-			`pos {posText}   biome {biomeText}`,
+			`pos {posText}   biome {biomeText}   camera {CameraController.mode}`,
+			targetLine(),
 			`render distance {ClientWorld.effectiveRenderDistance()}/{ClientWorld.getRenderDistance()}{if ClientWorld.isMobile() then " (mobile)" else ""}   backend {backend}`,
 			`chunks loaded {ws.loaded}   waiting: gen {ws.pendingGen}, mesh {ws.pendingMesh} sections`,
 			string.format("gen %.2f ms/chunk avg (%d)   mesh %.2f ms/section avg (%d)", genAvg, ws.generated, meshAvg, rs.sectionsMeshed),
-			string.format("scheduler last step %.2f ms", if sched then sched.stats.lastStepTime * 1000 else 0),
+			string.format("our script time/frame: %.2f ms (refresh %.2f, scheduler %.2f, other %.2f)   frame %.1f ms",
+				prof.total, prof.refresh, prof.scheduler, prof.other, 1000 / math.max(fps, 1)),
 			`EditableMesh mode {es.bakeMode}   live {es.liveEditable}/{cap} (peak {es.peakLiveEditable})   est. {string.format("%.0f", es.liveBytesEst / 1024)} KB   budget hits {es.budgetHits}`,
 			`MeshParts {es.meshParts}   triangles {es.triangles}   uploads {es.uploadsInFlight} in flight / {es.uploadsQueued} queued`,
 			`sections: {rs.sectionsEditable} mesh, {rs.sectionsParts} parts   fallbacks {rs.fallbacks}   demotions {rs.demotions}`,
 			`render Parts {PartsBackend.stats.parts}   collision Parts {CollisionBuilder.stats.parts}`,
 			`memory: GraphicsMeshParts {fmtMb(tagMb("GraphicsMeshParts"))}   GraphicsParts {fmtMb(tagMb("GraphicsParts"))}   total {string.format("%.0f MB", Stats:GetTotalMemoryUsageMb())}`,
 			if es.bakeError ~= "" then `bake unavailable: {es.bakeError}` else "",
-			if es.lastError ~= "" then `last EditableMesh error: {es.lastError}` else "",
+			`mesh upload retries {es.uploadRetries}   failures {es.failures}`,
+			if #reasons > 0 then "failure reasons: " .. table.concat(reasons, " | ") else "",
 		}, "\n")
 	end)
 end

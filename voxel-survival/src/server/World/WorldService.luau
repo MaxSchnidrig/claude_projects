@@ -146,4 +146,30 @@ function WorldService.getChunkSync(cx: number, cz: number): ChunkData.Chunk
 	return chunk
 end
 
+-- Block at world block coordinates (generates the chunk if needed). 0 outside the world.
+function WorldService.getBlock(wx: number, wy: number, wz: number): number
+	if wy < 0 or wy >= Config.WORLD_HEIGHT then
+		return 0
+	end
+	local cx, cz, lx, lz = ChunkData.worldToChunk(wx, wz)
+	return ChunkData.get(WorldService.getChunkSync(cx, cz), lx, wy, lz)
+end
+
+-- Authoritative block write. Records the edit as a diff so it survives chunk unloads (and, in
+-- phase 6, saving). Returns the chunk key so callers can notify subscribers.
+function WorldService.setBlock(wx: number, wy: number, wz: number, id: number): number
+	local cx, cz, lx, lz = ChunkData.worldToChunk(wx, wz)
+	local chunk = WorldService.getChunkSync(cx, cz)
+	local key = ChunkData.key(cx, cz)
+	ChunkData.set(chunk, lx, wy, lz, id)
+	local d = diffs[key]
+	if not d then
+		d = {}
+		diffs[key] = d
+		chunk.diffs = d
+	end
+	d[ChunkData.index(lx, wy, lz)] = id
+	return key
+end
+
 return WorldService

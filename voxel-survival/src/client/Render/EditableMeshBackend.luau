@@ -65,6 +65,7 @@ Backend.stats = {
 	-- "unknown" until the first upload, then "static" (baking works) or "live" (it doesn't)
 	bakeMode = "unknown",
 	bakeError = "",
+	uploadRetries = 0,
 	-- live mode: how many live meshes fit before CreateEditableMesh returned nil
 	learnedCap = nil :: number?,
 }
@@ -368,35 +369,42 @@ function Backend.destroy(handle: Handle)
 	handle.liveBytes = 0
 end
 
--- Turn an EditableMesh into a MeshPart. Returns (part, error, baked).
-local function upload(em: any): (MeshPart?, string?, boolean)
+-- Failure bookkeeping: every distinct reason is counted and printed to Output once, so silent
+-- fallbacks can't hide (Phase 1.1 test showed many Parts sections with no visible error).
+Backend.stats.failReasons = {} :: { [string]: number }
+local function noteFailure(reason: string)
+	local key = string.sub(reason, 1, 120)
+	local reasons = Backend.stats.failReasons
+	if not reasons[key] then
+		warn(`[EditableMeshBackend] mesh upload failed: {reason}`)
+	end
+	reasons[key] = (reasons[key] or 0) + 1
+end
+
+-- One attempt to turn an EditableMesh into a MeshPart. Returns (part, error, apiMissing).
+local function attempt(em: any): (MeshPart?, string?, boolean)
 	local s = Backend.stats
 	if s.bakeMode ~= "live" then
 		local ok, res, content = pcall(function()
 			return AssetService:CreateDataModelContentAsync(Content.fromObject(em))
 		end)
-		if ok and res == Enum.CreateContentResult.Success then
-			local ok2, part = pcall(function()
-				return AssetService:CreateMeshPartAsync(content, MESH_OPTIONS)
-			end)
-			if ok2 and part then
-				s.bakeMode = "static"
-				return part :: MeshPart, nil, true
-			end
-			return nil, `CreateMeshPartAsync(baked): {part}`, true
+		if not ok then
+			-- The baking API itself is missing or not allowed here.
+			return nil, `CreateDataModelContentAsync error: {res}`, true
 		end
-		if ok then
-			-- The API works but refused this one (e.g. StorageLimitExceeded): fail just this
-			-- mesh; the section falls back to Parts and retries later.
+		if res ~= Enum.CreateContentResult.Success then
+			-- The API works but refused this one (e.g. StorageLimitExceeded).
 			s.bakeError = `CreateDataModelContentAsync returned {res}`
-			return nil, s.bakeError, true
+			return nil, s.bakeError, false
 		end
-		-- The API itself is missing or erroring: switch to live mode for the rest of the session.
-		s.bakeError = tostring(res)
-		if s.bakeMode == "unknown" or s.bakeMode == "static" then
-			warn(`[EditableMeshBackend] baking unavailable ({s.bakeError}); using live EditableMeshes`)
+		local ok2, part = pcall(function()
+			return AssetService:CreateMeshPartAsync(content, MESH_OPTIONS)
+		end)
+		if ok2 and part then
+			s.bakeMode = "static"
+			return part :: MeshPart, nil, false
 		end
-		s.bakeMode = "live"
+		return nil, `CreateMeshPartAsync(baked) error: {part}`, false
 	end
 	local ok, part = pcall(function()
 		return AssetService:CreateMeshPartAsync(Content.fromObject(em), MESH_OPTIONS)
@@ -404,7 +412,35 @@ local function upload(em: any): (MeshPart?, string?, boolean)
 	if ok and part then
 		return part :: MeshPart, nil, false
 	end
-	return nil, tostring(part), false
+	return nil, `CreateMeshPartAsync(live) error: {part}`, false
+end
+
+local UPLOAD_ATTEMPTS = 3
+local RETRY_DELAYS = { 0.5, 1.5 }
+
+-- Turn an EditableMesh into a MeshPart, retrying transient failures (e.g. throttling).
+-- Returns (part, error, baked). `baked` = the MeshPart no longer needs the EditableMesh.
+local function upload(em: any): (MeshPart?, string?, boolean)
+	local s = Backend.stats
+	local lastErr = ""
+	for i = 1, UPLOAD_ATTEMPTS do
+		local part, err, apiMissing = attempt(em)
+		if part then
+			return part, nil, s.bakeMode == "static"
+		end
+		lastErr = err or "unknown"
+		noteFailure(lastErr)
+		if apiMissing and s.bakeMode ~= "live" then
+			s.bakeError = lastErr
+			warn(`[EditableMeshBackend] baking unavailable; using live EditableMeshes ({lastErr})`)
+			s.bakeMode = "live"
+			-- retry immediately in live mode (doesn't consume an attempt's delay)
+		elseif i < UPLOAD_ATTEMPTS then
+			s.uploadRetries += 1
+			task.wait(RETRY_DELAYS[i])
+		end
+	end
+	return nil, lastErr, s.bakeMode == "static"
 end
 
 -- Call every frame: starts queued uploads up to the concurrency cap.

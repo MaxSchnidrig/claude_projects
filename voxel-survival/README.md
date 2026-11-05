@@ -4,7 +4,7 @@ A voxel survival sandbox for Roblox, managed with [Rojo](https://rojo.space). Th
 mechanics follow the classic block-survival formula. All art, sounds, UI and every invented name
 are original to this project (see `ARCHITECTURE.md` → "Naming rules").
 
-**Status:** Phase 1 (terrain) complete. Next: Phase 2 (player interaction).
+**Status:** Phase 2 (player interaction) ready for Studio testing. Next: Phase 3 (inventory & crafting).
 
 ## Structure
 
@@ -17,18 +17,24 @@ voxel-survival/
 │   ├── shared/  -> ReplicatedStorage.Shared          pure, deterministic, used by both sides
 │   │   ├── Config, GameInfo
 │   │   ├── Blocks/    BlockDefs (data), TexturePalette, BlockRegistry (lookups)
-│   │   ├── World/     Noise, ChunkData, Biomes, TerrainGen, Features/{Ores,Trees}
+│   │   ├── Items/     ItemDefs (materials, tools), ItemRegistry (+ one item per block)
+│   │   ├── Gameplay/  Mining (classic break-time formula, harvest tiers)
+│   │   ├── World/     Noise, ChunkData, Biomes, TerrainGen, Features/{Ores,Trees}, VoxelRaycast
 │   │   ├── Meshing/   SectionSampler, GreedyMesher, BoxMerger
 │   │   ├── Net/       Remotes
 │   │   └── Util/      Hash (deterministic RNG), Scheduler (time-sliced jobs)
 │   ├── server/  -> ServerScriptService               authoritative world
 │   │   ├── Main.server.luau   the only server Script
 │   │   ├── World/     WorldService (chunks + diffs), ChunkStreamer (sends diffs)
-│   │   └── Player/    SpawnService
+│   │   ├── Interaction/ BlockActionService (validates break/place)
+│   │   └── Player/    SpawnService, AvatarService (blocky R6), InventoryService
 │   └── client/  -> StarterPlayer.StarterPlayerScripts  rendering, input, UI
 │       ├── Main.client.luau   the only client LocalScript
 │       ├── World/     ClientWorld (streaming, generation, job picking)
 │       ├── Render/    ChunkRenderer, EditableMeshBackend, PartsBackend, CollisionBuilder, RenderStyle
+│       ├── Player/    CameraController, MovementController, InventoryClient
+│       ├── Interaction/ BlockInteraction (targeting, mining, placing)
+│       ├── UI/        Hotbar, Crosshair
 │       └── Debug/     DebugOverlay
 └── tests/lune/          headless tests + benchmarks for the pure shared modules
 ```
@@ -49,6 +55,22 @@ Every system is a ModuleScript. There is exactly one bootstrap script per side.
 5. Press **Play**. Terrain streams in around you, and the character spawns once the ground under it has collision.
 
 Build a place file without Studio: `rojo build -o rocraft.rbxl`.
+
+### Controls
+| Input | Action |
+|---|---|
+| Mouse | Look (mouse is locked to the centre) |
+| WASD / Space | Move / jump (jump height 1.2 blocks) |
+| Left Ctrl (hold) | Sprint while moving forward |
+| Left mouse (hold) | Mine the targeted block |
+| Right mouse (hold) | Place the held block (repeats) |
+| 1–9 / mouse wheel | Select hotbar slot |
+| F5 | Camera: first person → behind → front (`Config.KEY_CAMERA`) |
+| Gamepad | R2 mine, L2 place, R1/L1 hotbar, L3 sprint, right stick look |
+| Touch | Drag to look, "Mine"/"Place" buttons, tap a slot |
+
+In Studio you spawn with a test kit (pickaxes of each tier, blocks) from `Config.STUDIO_STARTER_KIT`; live servers start empty.
+Studio may grab F5 while play-testing; if so, change `Config.KEY_CAMERA` (e.g. to `"V"`).
 
 ### Debug keys
 | Key | Action |

@@ -68,6 +68,44 @@ Config.FACE_SHADE = {
 	west = 0.7,
 }
 
+-- Player & interaction (phase 2) -----------------------------------------------------------
+Config.REACH = 4.5 -- blocks, from the eye (classic survival reach)
+Config.REACH_TOLERANCE = 1.0 -- extra blocks the server allows for latency/position error
+Config.BREAK_TIME_TOLERANCE = 0.8 -- server accepts a break after >= 80% of the expected time
+Config.BREAK_LATENCY_SLACK = 0.1 -- seconds of extra slack on top of that
+Config.BREAK_COOLDOWN = 0.25 -- seconds between finishing one block and starting the next
+Config.PLACE_REPEAT = 0.2 -- seconds between placements while right mouse is held
+Config.ACTIONS_PER_SECOND = 30 -- server rate limit for block actions
+Config.EYE_HEIGHT = 1.6 -- studs above HumanoidRootPart centre (feet + 4.6 studs ≈ 1.53 blocks)
+
+Config.WALK_SPEED = 13 -- studs/s (4.317 blocks/s)
+Config.SPRINT_SPEED = 16.8 -- studs/s (5.612 blocks/s)
+Config.JUMP_HEIGHT = 3.6 -- studs (1.2 blocks): clears 1-block steps, never 2
+Config.KEY_SPRINT = "LeftControl"
+Config.KEY_CAMERA = "F5" -- cycle first person -> third person behind -> third person front
+Config.MOUSE_SENSITIVITY = 0.2 -- degrees per pixel (multiplied by Roblox's own sensitivity setting)
+Config.TOUCH_SENSITIVITY = 0.25 -- degrees per pixel of touch drag
+Config.THIRD_PERSON_DISTANCE = 12 -- studs (4 blocks)
+
+-- Avatar: every player is a blocky R6 rig with a cube head, keeping clothing and body colours.
+Config.AVATAR_HEAD_SIZE = 1.5 -- studs, edge of the cube head
+Config.KEEP_ACCESSORIES = false -- hats/hair would poke through blocks and break the blocky look
+
+Config.HOTBAR_SLOTS = 9
+Config.INVENTORY_SLOTS = 36 -- 9 hotbar + 27 main (main inventory UI arrives in phase 3)
+-- Items given on spawn while testing in Studio (ignored in live games).
+Config.STUDIO_STARTER_KIT = {
+	{ "wooden_pickaxe", 1 },
+	{ "stone_pickaxe", 1 },
+	{ "iron_pickaxe", 1 },
+	{ "diamond_pickaxe", 1 },
+	{ "iron_shovel", 1 },
+	{ "iron_axe", 1 },
+	{ "oak_planks", 64 },
+	{ "cobblestone", 64 },
+	{ "glass", 64 },
+}
+
 -- Debug -------------------------------------------------------------------------------------
 -- KeyCode names (strings, so this module stays loadable in headless tests).
 Config.DEBUG_KEY_OVERLAY = "F3" -- toggle the performance overlay
