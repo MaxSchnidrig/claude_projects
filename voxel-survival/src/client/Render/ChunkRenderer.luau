@@ -22,7 +22,7 @@ local SectionSampler = require(Shared.Meshing.SectionSampler)
 local GreedyMesher = require(Shared.Meshing.GreedyMesher)
 local EditableMeshBackend = require(script.Parent.EditableMeshBackend)
 local PartsBackend = require(script.Parent.PartsBackend)
-local QuadPartsBackend = require(script.Parent.QuadPartsBackend)
+local LiveEditPool = require(script.Parent.LiveEditPool)
 local CollisionBuilder = require(script.Parent.CollisionBuilder)
 
 local BS = Config.BLOCK_SIZE
@@ -44,7 +44,8 @@ export type Section = {
 	retryAt: number, -- os.clock() after which it may try EditableMesh again
 	failCount: number, -- consecutive EditableMesh failures (retry delay doubles each time)
 	culled: boolean, -- skipped by Parts-mode cave culling; ClientWorld re-dirties it when needed
-	editPending: boolean, -- showing instant quad Parts after an edit; its mesh rebuild has priority
+	editPending: boolean, -- just edited: its mesh rebuild has priority
+	liveSlot: any?, -- LiveEditPool slot currently showing this section (instant edit)
 	editTime: number, -- os.clock() of that edit (to measure how long the hand-over takes)
 	alive: boolean,
 }
@@ -59,15 +60,13 @@ ChunkRenderer.stats = {
 	demotions = 0,
 	sectionsEditable = 0,
 	sectionsParts = 0,
-	sectionsQuads = 0, -- just-edited sections shown with instant quad Parts, awaiting their mesh
 	urgentBuilds = 0,
 	urgentTime = 0,
-	swaps = 0, -- quad Parts -> baked mesh hand-overs
+	swaps = 0, -- edit (live mesh) -> baked mesh hand-overs
 	swapTime = 0, -- total seconds from edit to the mesh being parented
 }
--- Debug (F6): keep the instant quad Parts instead of baking a mesh, to compare them to meshes.
+-- Debug (F6): keep edited sections on their live pool mesh instead of baking, to compare.
 ChunkRenderer.keepTemp = false
-local tempSections: { [Section]: boolean } = {}
 
 local paddedRender = buffer.create(SectionSampler.VOLUME)
 local paddedCollision = buffer.create(SectionSampler.VOLUME)
@@ -91,6 +90,7 @@ function ChunkRenderer.init()
 	collisionFolder.Name = "Collision"
 	collisionFolder.Parent = rootFolder
 	rootFolder.Parent = workspace
+	LiveEditPool.init(renderFolder)
 end
 
 function ChunkRenderer.setCenter(cx: number, cz: number)
@@ -120,6 +120,7 @@ function ChunkRenderer.newSections(cx: number, cz: number): { Section }
 			failCount = 0,
 			culled = false,
 			editPending = false,
+			liveSlot = nil,
 			editTime = 0,
 			alive = true,
 		})
@@ -134,12 +135,6 @@ local function destroyRender(section: Section, r: Render?)
 	if r.kind == "editable" then
 		ChunkRenderer.stats.sectionsEditable -= 1
 		EditableMeshBackend.destroy(r.handle)
-	elseif r.kind == "quads" then
-		ChunkRenderer.stats.sectionsQuads -= 1
-		QuadPartsBackend.destroy(r.handle)
-		if section.render == nil or section.render.kind ~= "quads" then
-			tempSections[section] = nil
-		end
 	else
 		ChunkRenderer.stats.sectionsParts -= 1
 		PartsBackend.destroy(r.handle)
@@ -157,9 +152,6 @@ local function replaceRender(section: Section, r: Render?, immediate: boolean?)
 	if r then
 		if r.kind == "editable" then
 			ChunkRenderer.stats.sectionsEditable += 1
-		elseif r.kind == "quads" then
-			ChunkRenderer.stats.sectionsQuads += 1
-			tempSections[section] = true
 		else
 			ChunkRenderer.stats.sectionsParts += 1
 		end
@@ -168,6 +160,33 @@ local function replaceRender(section: Section, r: Render?, immediate: boolean?)
 		task.delay(Config.RENDER_SWAP_OVERLAP, destroyRender, section, old)
 	else
 		destroyRender(section, old)
+	end
+end
+
+-- Give a section's live pool mesh back (immediately, or after the swap overlap).
+local function releaseLive(section: Section, afterOverlap: boolean?)
+	local slot = section.liveSlot
+	if not slot then
+		return
+	end
+	if afterOverlap then
+		LiveEditPool.releaseAfter(slot, Config.RENDER_SWAP_OVERLAP)
+	else
+		LiveEditPool.release(slot)
+	end
+end
+
+-- Hide the old baked parts of every group the live mesh now shows (same frame as the edit).
+local function hideCovered(r: Render?, uncovered: { [string]: boolean })
+	if not r then
+		return
+	end
+	local parts = r.handle.parts
+	local keys = r.handle.keys
+	for i, p in parts do
+		if not (keys and uncovered[keys[i]]) then
+			p.Parent = nil
+		end
 	end
 end
 
@@ -236,6 +255,7 @@ function ChunkRenderer.renderSection(section: Section, chunk: any, neighbors: Se
 	local class = GreedyMesher.classify(paddedRender)
 	if class ~= "mesh" then
 		replaceRender(section, nil)
+		releaseLive(section)
 		return
 	end
 
@@ -267,6 +287,8 @@ function ChunkRenderer.renderSection(section: Section, chunk: any, neighbors: Se
 				ChunkRenderer.stats.swapTime += os.clock() - section.editTime
 			end
 			replaceRender(section, { kind = "editable", handle = handle })
+			-- the baked mesh is parented: hand back the live mesh once it's surely drawing
+			releaseLive(section, true)
 		end, section.editPending)
 	else
 		local t = os.clock()
@@ -274,6 +296,7 @@ function ChunkRenderer.renderSection(section: Section, chunk: any, neighbors: Se
 		ChunkRenderer.stats.meshTime += os.clock() - t
 		ChunkRenderer.stats.sectionsMeshed += 1
 		replaceRender(section, { kind = "parts", handle = handle })
+		releaseLive(section)
 	end
 end
 
@@ -301,10 +324,11 @@ function ChunkRenderer.refreshRetries(sections: { Section })
 end
 
 -- Rebuild a just-edited section RIGHT NOW (same frame as the click), so a broken block vanishes
--- and a placed block appears instantly. Instant geometry: quad Parts (or Parts in Parts mode),
--- which draw immediately; the old geometry is removed in the same frame, so there's never a gap.
--- The section stays renderDirty so a background job bakes the real mesh, which then replaces the
--- quads after the usual overlap (Config.RENDER_SWAP_OVERLAP).
+-- and a placed block appears instantly: the new geometry is written into a live pooled
+-- EditableMesh (LiveEditPool) and the old baked parts it replaces are hidden in the same frame.
+-- A priority background job bakes the real mesh; once it's parented (plus the swap overlap) the
+-- live mesh goes back to the pool. With no free pool mesh, the old geometry simply stays until
+-- the bake (the earlier delayed swap). In Parts mode, Parts are rebuilt directly.
 function ChunkRenderer.renderUrgent(section: Section, chunk: any, neighbors: SectionSampler.Neighbors)
 	local t = os.clock()
 	section.version += 1 -- any in-flight mesh for the old contents is now stale
@@ -312,29 +336,37 @@ function ChunkRenderer.renderUrgent(section: Section, chunk: any, neighbors: Sec
 	local class = GreedyMesher.classify(paddedUrgent)
 	if class ~= "mesh" then
 		replaceRender(section, nil)
+		releaseLive(section)
 		section.renderDirty = false
 	elseif ChunkRenderer.chooseBackend(section) == "parts" then
 		local handle = PartsBackend.build(paddedUrgent, section.origin, renderFolder)
 		replaceRender(section, { kind = "parts", handle = handle }, true)
+		releaseLive(section)
 		section.renderDirty = false
 	else
-		local result = GreedyMesher.mesh(paddedUrgent)
-		local handle = QuadPartsBackend.build(result, paddedUrgent, section.origin, renderFolder)
-		replaceRender(section, { kind = "quads", handle = handle }, true)
 		section.editPending = true
 		section.editTime = os.clock()
-		-- bake the real mesh in the background (priority), unless the F6 debug toggle keeps quads
-		section.renderDirty = not ChunkRenderer.keepTemp
+		local slot = LiveEditPool.acquire(section)
+		if slot then
+			local result = GreedyMesher.mesh(paddedUrgent)
+			local uncovered = LiveEditPool.write(slot, section, result)
+			hideCovered(section.render, uncovered)
+			-- bake in the background (priority), unless the F6 debug toggle keeps the live mesh
+			section.renderDirty = not ChunkRenderer.keepTemp
+		else
+			-- pool exhausted: keep the old geometry until the priority bake replaces it
+			section.renderDirty = true
+		end
 	end
 	ChunkRenderer.stats.urgentBuilds += 1
 	ChunkRenderer.stats.urgentTime += os.clock() - t
 end
 
--- F6 debug toggle. Turning it off queues meshes for every section still showing quad Parts.
+-- F6 debug toggle. Turning it off queues bakes for every section still on a live pool mesh.
 function ChunkRenderer.setKeepTemp(on: boolean)
 	ChunkRenderer.keepTemp = on
 	if not on then
-		for s in tempSections do
+		for _, s in LiveEditPool.activeSections() do
 			if s.alive then
 				s.renderDirty = true
 			end
@@ -363,12 +395,14 @@ end
 
 function ChunkRenderer.clearRender(section: Section)
 	replaceRender(section, nil)
+	releaseLive(section)
 	section.renderDirty = true
 end
 
 function ChunkRenderer.destroySection(section: Section)
 	section.alive = false
 	replaceRender(section, nil)
+	releaseLive(section)
 	if section.collision then
 		CollisionBuilder.destroy(section.collision)
 		section.collision = nil

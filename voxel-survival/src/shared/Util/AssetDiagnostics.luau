@@ -37,6 +37,11 @@ local DESCRIPTION_FIELDS = {
 	"RunAnimation", "SwimAnimation", "WalkAnimation",
 }
 
+-- When this module first loaded (≈ when our scripts started), to tell apart errors that happen
+-- before any game code runs (place content, Studio itself).
+local scriptsStarted = DateTime.now().UnixTimestampMillis / 1000
+local loggedAt: { [string]: number } = {} -- asset id -> log timestamp (from log history)
+
 local unresolved: { [string]: boolean } = {}
 local reported: { [string]: boolean } = {}
 
@@ -91,7 +96,16 @@ end
 
 local function search(id: string): { string }
 	local found = {}
-	local roots: { Instance } = { workspace, game:GetService("ReplicatedStorage"), game:GetService("StarterPlayer"), game:GetService("Lighting") }
+	-- Scan every service we're allowed to read (the server can read more than the client).
+	local roots: { Instance } = {}
+	for _, service in game:GetChildren() do
+		local ok = pcall(function()
+			return service:GetChildren()
+		end)
+		if ok then
+			table.insert(roots, service)
+		end
+	end
 	for _, p in Players:GetPlayers() do
 		local gui = p:FindFirstChildOfClass("PlayerGui")
 		if gui then
@@ -125,10 +139,12 @@ local function search(id: string): { string }
 		end
 	end
 	for _, root in roots do
-		check(root)
-		for _, d in root:GetDescendants() do
-			check(d)
-		end
+		pcall(function()
+			check(root)
+			for _, d in root:GetDescendants() do
+				check(d)
+			end
+		end)
 	end
 	return found
 end
@@ -152,7 +168,16 @@ end
 
 local function describePhase(id: string): string
 	local p = phaseOf[id]
-	return if p then `; it was logged during: {p}` else "; it was not logged during any tagged step"
+	local text = if p then `; it was logged during: {p}` else "; it was not logged during any tagged step"
+	local t = loggedAt[id]
+	if t and math.abs(t - scriptsStarted) < 3600 then -- skip if the log clock isn't epoch seconds
+		if t < scriptsStarted - 0.05 then
+			text ..= string.format("; logged %.2f s BEFORE our scripts started (so it comes from the place file or Studio itself, not game code)", scriptsStarted - t)
+		else
+			text ..= string.format("; logged %.2f s after our scripts started", t - scriptsStarted)
+		end
+	end
+	return text
 end
 
 local function onMessage(message: string, timestamp: number?)
@@ -162,6 +187,10 @@ local function onMessage(message: string, timestamp: number?)
 	if string.find(message, "does not match", 1, true) or string.find(message, "failed", 1, true) then
 		local id = string.match(message, "rbxassetid://(%d+)") or string.match(message, "[?&]id=(%d+)")
 		if id then
+			local at = timestamp or now()
+			if not loggedAt[id] then
+				loggedAt[id] = at
+			end
 			local p = if timestamp then phaseAt(timestamp) else activePhase or phaseAt(now())
 			if p and not phaseOf[id] then
 				phaseOf[id] = p
@@ -189,7 +218,7 @@ function AssetDiagnostics.init()
 		end
 		local side = if RunService:IsServer() then "server" else "client"
 		for id in unresolved do
-			warn(`[AssetDiagnostics:{side}] rbxassetid://{id} is not referenced by any instance in workspace, characters, GUIs or shared folders; it is requested internally (engine/default asset){describePhase(id)}`)
+			warn(`[AssetDiagnostics:{side}] rbxassetid://{id} is not referenced by any instance in any readable service; it is requested internally (engine/default asset){describePhase(id)}`)
 		end
 	end)
 end

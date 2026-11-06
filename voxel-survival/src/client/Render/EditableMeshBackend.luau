@@ -44,6 +44,7 @@ local EST_BYTES_PER_TRIANGLE = 48
 
 export type Handle = {
 	parts: { BasePart },
+	keys: { string }, -- group key of each part (parallel to parts)
 	meshes: { any }, -- EditableMeshes kept alive (live mode only)
 	triangles: number,
 	liveBytes: number,
@@ -93,14 +94,14 @@ local function destroyEditable(em: any, liveBytes: number)
 end
 
 -- Can a new section start building right now without risking the budget?
--- `priority` (a just-edited section) may use a couple of extra slots so it never waits behind
--- background chunk loading.
+-- `priority` (a just-edited section) may use one extra slot so it never waits behind background
+-- chunk loading. (The LiveEditPool's meshes are budgeted separately.)
 function Backend.canStart(priority: boolean?): boolean
 	local s = Backend.stats
 	if s.bakeMode == "live" then
 		return s.learnedCap == nil or s.liveEditable < (s.learnedCap :: number)
 	end
-	return s.liveEditable < Config.MAX_LIVE_EDITABLE + (if priority then 2 else 0)
+	return s.liveEditable < Config.MAX_LIVE_EDITABLE + (if priority then 1 else 0)
 end
 
 -- True when meshes can't be baked and the live budget is exhausted: most sections end up as Parts.
@@ -125,7 +126,8 @@ local function appendQuads(
 	quads: { number },
 	center: Vector3,
 	normalIds: { [number]: number },
-	uvIds: { [number]: number }
+	uvIds: { [number]: number },
+	faceList: { number }? -- optional: collects the created face ids (live meshes remove them later)
 ): (number, number)
 	local style = RenderStyle.forTexture(tex)
 	local colorIds: { [number]: number } = {}
@@ -191,6 +193,10 @@ local function appendQuads(
 		em:SetFaceNormals(f2, { nId, nId, nId })
 		em:SetFaceColors(f1, { colId, colId, colId })
 		em:SetFaceColors(f2, { colId, colId, colId })
+		if faceList then
+			table.insert(faceList, f1)
+			table.insert(faceList, f2)
+		end
 		verts += 4
 		tris += 2
 	end
@@ -249,7 +255,7 @@ function Backend.build(
 		table.insert(byKey[k], tex)
 	end
 
-	type Built = { em: any, center: Vector3, tris: number, liveBytes: number, style: RenderStyle.Style }
+	type Built = { em: any, key: string, center: Vector3, tris: number, liveBytes: number, style: RenderStyle.Style }
 	local built: { Built } = {}
 	local budgetHit = false
 	local ok, err = pcall(function()
@@ -265,7 +271,7 @@ function Backend.build(
 			local normalIds, uvIds = {}, {}
 			local verts, tris = 0, 0
 			-- Register immediately so cleanup destroys it even if filling errors.
-			local entry: Built = { em = em, center = center, tris = 0, liveBytes = 0, style = RenderStyle.forTexture(texList[1]) }
+			local entry: Built = { em = em, key = k, center = center, tris = 0, liveBytes = 0, style = RenderStyle.forTexture(texList[1]) }
 			table.insert(built, entry)
 			for _, tex in texList do
 				local v, t = appendQuads(em, tex, result.groups[tex], center, normalIds, uvIds)
@@ -295,11 +301,11 @@ function Backend.build(
 		return
 	end
 	if #built == 0 then
-		onDone({ parts = {}, meshes = {}, triangles = 0, liveBytes = 0, counted = false }, nil, false)
+		onDone({ parts = {}, keys = {}, meshes = {}, triangles = 0, liveBytes = 0, counted = false }, nil, false)
 		return
 	end
 
-	local handle: Handle = { parts = {}, meshes = {}, triangles = 0, liveBytes = 0, counted = false }
+	local handle: Handle = { parts = {}, keys = {}, meshes = {}, triangles = 0, liveBytes = 0, counted = false }
 	local remaining = #built
 	local failed: string? = nil
 	for n, b in built do
@@ -320,6 +326,7 @@ function Backend.build(
 					part.Transparency = b.style.transparency
 					part.CFrame = CFrame.new(originStuds + b.center * BS)
 					table.insert(handle.parts, part)
+					table.insert(handle.keys, b.key)
 					handle.triangles += b.tris
 				else
 					failed = uploadErr or "mesh upload failed"
@@ -369,6 +376,7 @@ function Backend.destroy(handle: Handle)
 	end
 	Backend.stats.liveBytesEst -= handle.liveBytes
 	table.clear(handle.parts)
+	table.clear(handle.keys)
 	table.clear(handle.meshes)
 	handle.triangles = 0
 	handle.liveBytes = 0
@@ -447,6 +455,11 @@ local function upload(em: any): (MeshPart?, string?, boolean)
 	end
 	return nil, lastErr, s.bakeMode == "static"
 end
+
+-- Shared with LiveEditPool (instant edits write into live meshes with the same code).
+Backend.appendQuads = appendQuads
+Backend.groupKey = groupKey
+Backend.MESH_OPTIONS = MESH_OPTIONS
 
 -- Call every frame: starts queued uploads up to the concurrency cap.
 function Backend.pump()

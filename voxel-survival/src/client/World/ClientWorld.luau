@@ -197,7 +197,7 @@ local function pickJob(): (() -> ())?
 			end
 		end
 	end
-	-- 2. meshes for just-edited sections (they're showing temporary quad Parts)
+	-- 2. bakes for just-edited sections (they're on a live pool mesh, or waiting with old geometry)
 	local i = 1
 	while i <= #editQueue do
 		local e = editQueue[i]
@@ -582,13 +582,13 @@ function ClientWorld.biomeAt(wx: number, wz: number): number?
 	return buffer.readu8(data.biomes, lx + lz * CS)
 end
 
--- F6 debug toggle: keep instant quad Parts (no mesh hand-over) to compare them with meshes.
+-- F6 debug toggle: keep edited sections on their live pool mesh (no bake) to compare.
 function ClientWorld.setKeepTemp(on: boolean)
 	ChunkRenderer.setKeepTemp(on)
 	if not on then
 		for _, rec in chunks do
 			for _, s in rec.sections do
-				if s.alive and s.renderDirty and s.render and s.render.kind == "quads" then
+				if s.alive and s.renderDirty and s.liveSlot ~= nil then
 					table.insert(editQueue, { rec = rec, section = s })
 				end
 			end

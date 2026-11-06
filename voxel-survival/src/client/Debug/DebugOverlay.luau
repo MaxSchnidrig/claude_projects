@@ -20,6 +20,7 @@ local ChunkRenderer = require(script.Parent.Parent.Render.ChunkRenderer)
 local EditableMeshBackend = require(script.Parent.Parent.Render.EditableMeshBackend)
 local PartsBackend = require(script.Parent.Parent.Render.PartsBackend)
 local CollisionBuilder = require(script.Parent.Parent.Render.CollisionBuilder)
+local LiveEditPool = require(script.Parent.Parent.Render.LiveEditPool)
 local BlockInteraction = require(script.Parent.Parent.Interaction.BlockInteraction)
 local InventoryClient = require(script.Parent.Parent.Player.InventoryClient)
 local CameraController = require(script.Parent.Parent.Player.CameraController)
@@ -129,6 +130,7 @@ function DebugOverlay.init()
 		local rs = ChunkRenderer.stats
 		local es = EditableMeshBackend.stats
 		local prof = ClientWorld.profile
+		local ls = LiveEditPool.stats
 		local reasons = {}
 		for reason, n in es.failReasons do
 			table.insert(reasons, `{n}x {reason}`)
@@ -141,7 +143,7 @@ function DebugOverlay.init()
 			else tostring(Config.MAX_LIVE_EDITABLE)
 
 		label.Text = table.concat({
-			`{GameInfo.TITLE} {GameInfo.VERSION}   {string.format("%.0f", fps)} fps   [F3 hide, F4 backend, F6 keep edit quads]`,
+			`{GameInfo.TITLE} {GameInfo.VERSION}   {string.format("%.0f", fps)} fps   [F3 hide, F4 backend, F6 keep live edits]`,
 			`pos {posText}   biome {biomeText}   camera {CameraController.mode}`,
 			targetLine(),
 			`render distance {ClientWorld.effectiveRenderDistance()}/{ClientWorld.getRenderDistance()}{if ClientWorld.isMobile() then " (mobile)" else ""}   backend {backend}`,
@@ -152,9 +154,12 @@ function DebugOverlay.init()
 			`EditableMesh mode {es.bakeMode}   live {es.liveEditable}/{cap} (peak {es.peakLiveEditable})   est. {string.format("%.0f", es.liveBytesEst / 1024)} KB   budget hits {es.budgetHits}`,
 			`MeshParts {es.meshParts}   triangles {es.triangles}   uploads {es.uploadsInFlight} in flight / {es.uploadsQueued} queued`,
 			`sections: {rs.sectionsEditable} mesh, {rs.sectionsParts} parts   fallbacks {rs.fallbacks}   demotions {rs.demotions}`,
-			`render Parts {PartsBackend.stats.parts}   collision Parts {CollisionBuilder.stats.parts}   instant-edit sections {rs.sectionsQuads}`,
-			string.format("instant edit rebuild %.2f ms avg (%d)   quads->mesh hand-over %.2f s avg (%d)   F6 keep quads: %s",
-				if rs.urgentBuilds > 0 then rs.urgentTime / rs.urgentBuilds * 1000 else 0, rs.urgentBuilds,
+			`render Parts {PartsBackend.stats.parts}   collision Parts {CollisionBuilder.stats.parts}`,
+			string.format("live edit pool: %d slots (%d meshes), %d in use, no free slot %dx%s",
+				ls.slots, ls.meshes, ls.inUse, ls.noSlot, if ls.createError ~= "" then `, error: {ls.createError}` else ""),
+			string.format("instant edit %.2f ms avg (live write %.2f ms)   edit->baked hand-over %.2f s avg (%d)   F6 keep live: %s",
+				if rs.urgentBuilds > 0 then rs.urgentTime / rs.urgentBuilds * 1000 else 0,
+				if ls.writes > 0 then ls.writeTime / ls.writes * 1000 else 0,
 				if rs.swaps > 0 then rs.swapTime / rs.swaps else 0, rs.swaps,
 				if ChunkRenderer.keepTemp then "ON" else "off"),
 			`memory: GraphicsMeshParts {fmtMb(tagMb("GraphicsMeshParts"))}   GraphicsParts {fmtMb(tagMb("GraphicsParts"))}   total {string.format("%.0f MB", Stats:GetTotalMemoryUsageMb())}`,

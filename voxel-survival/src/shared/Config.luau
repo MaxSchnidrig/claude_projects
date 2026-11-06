@@ -31,7 +31,11 @@ Config.MAX_MESH_UPLOADS_IN_FLIGHT = 3 -- concurrent mesh uploads (bake + CreateM
 -- EditableMeshes alive at the same time. On live clients the editable memory budget is small
 -- (forum reports: ~8 meshes), so meshes are baked to static content and destroyed right after
 -- upload; this caps how many exist while waiting/uploading.
-Config.MAX_LIVE_EDITABLE = 4
+Config.MAX_LIVE_EDITABLE = 3
+-- Live EditableMeshes kept ready for instant block edits (LiveEditPool). Each slot holds 2 meshes
+-- (opaque terrain + water), so 2 slots = 4 meshes; with MAX_LIVE_EDITABLE + 1 priority bake that
+-- stays at 8, the budget level we've measured without failures. 0 disables instant live edits.
+Config.LIVE_EDIT_SLOTS = 2
 -- Seconds the old geometry of a rebuilt section stays visible after the new geometry is parented
 -- (prevents a see-through flash while the new MeshPart starts drawing). Raise if you still see it.
 Config.RENDER_SWAP_OVERLAP = 0.15
@@ -116,6 +120,6 @@ Config.STUDIO_STARTER_KIT = {
 -- KeyCode names (strings, so this module stays loadable in headless tests).
 Config.DEBUG_KEY_OVERLAY = "F3" -- toggle the performance overlay
 Config.DEBUG_KEY_BACKEND = "F4" -- switch render backend (A/B test)
-Config.DEBUG_KEY_KEEP_TEMP = "F6" -- keep the instant-edit quad Parts (compare them to meshes)
+Config.DEBUG_KEY_KEEP_TEMP = "F6" -- keep edited sections on their live mesh (compare to baked)
 
 return Config
