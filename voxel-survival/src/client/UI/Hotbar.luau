@@ -333,6 +333,7 @@ function Hotbar.init()
 		end
 	end)
 	step("health check running")
+	print(`[Hotbar] {table.concat(Hotbar.status.steps, " > ")}; parent = {gui.Parent and gui.Parent:GetFullName() or "nil"}`)
 end
 
 return Hotbar

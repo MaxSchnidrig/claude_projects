@@ -43,6 +43,7 @@ local function showOnScreen()
 end
 
 function Startup.run(side: string, steps: { Step })
+	local started: { string } = {}
 	for _, step in steps do
 		local t = os.clock()
 		local ok, err = xpcall(step.run, debug.traceback)
@@ -51,10 +52,15 @@ function Startup.run(side: string, steps: { Step })
 			warn(msg) -- full traceback in Output
 			table.insert(failures, `{step.name}: {string.split(tostring(err), "\n")[1]}`)
 			showOnScreen()
-		elseif os.clock() - t > 5 then
-			warn(string.format("[Startup:%s] %s took %.1f s to start", side, step.name, os.clock() - t))
+		else
+			table.insert(started, step.name)
+			if os.clock() - t > 5 then
+				warn(string.format("[Startup:%s] %s took %.1f s to start", side, step.name, os.clock() - t))
+			end
 		end
 	end
+	-- Always printed: proves which code is running and that every system started.
+	print(`[Startup:{side}] {#started}/{#steps} systems started: {table.concat(started, ", ")}`)
 end
 
 return Startup
