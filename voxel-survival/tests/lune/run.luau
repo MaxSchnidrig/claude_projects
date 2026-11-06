@@ -390,6 +390,98 @@ test("voxel raycast hits the right block and face", function()
 	assert(h3 and h3.x == 5 and h3.y == 2, "diagonal hit")
 end)
 
+print("Crafting / slots / furnace")
+local Crafting = Loader.require("src/shared/Items/Crafting")
+local SlotLogic = Loader.require("src/shared/Items/SlotLogic")
+local FurnaceLogic = Loader.require("src/shared/Items/FurnaceLogic")
+local function grid(w: number, rows: { string }, key: { [string]: string })
+	local g = {}
+	for r, row in rows do
+		for c = 1, #row do
+			local ch = string.sub(row, c, c)
+			if ch ~= " " then
+				g[(r - 1) * w + c] = { item = key[ch], count = 1 }
+			end
+		end
+	end
+	return g
+end
+test("shaped recipes match anywhere in the grid, mirrored, with tags", function()
+	local r = Crafting.match(grid(3, { "   ", " P ", " P " }, { P = "birch_planks" }), 3)
+	assert(r and r.item == "stick" and r.count == 4, "sticks from planks (offset in 3x3)")
+	r = Crafting.match(grid(3, { "CCC", " S ", " S " }, { C = "cobblestone", S = "stick" }), 3)
+	assert(r and r.item == "stone_pickaxe", "stone pickaxe")
+	r = Crafting.match(grid(3, { "II ", "SI ", "S  " }, { I = "iron_ingot", S = "stick" }), 3)
+	assert(r and r.item == "iron_axe", "mirrored iron axe")
+	r = Crafting.match(grid(3, { "I I", "SSS", "   " }, { I = "iron_ingot", S = "stick" }), 3)
+	assert(r == nil, "not a recipe")
+	r = Crafting.match(grid(3, { "MM ", "SM ", "S  " }, { M = "diamond", S = "stick" }), 3)
+	assert(r and r.item == "diamond_axe", "mirrored diamond axe")
+	r = Crafting.match(grid(3, { "MM ", "SM ", " S " }, { M = "diamond", S = "stick" }), 3)
+	assert(r == nil, "invalid (stick under wrong column)")
+	r = Crafting.match(grid(3, { "MM ", "MS ", " S " }, { M = "diamond", S = "stick" }), 3)
+	assert(r and r.item == "diamond_axe", "axe")
+	r = Crafting.match(grid(3, { " MM", " SM", " S " }, { M = "diamond", S = "stick" }), 3)
+	assert(r and r.item == "diamond_axe", "mirrored axe")
+	r = Crafting.match(grid(2, { "PP", "PP" }, { P = "oak_planks" }), 2)
+	assert(r and r.item == "crafting_table", "crafting table in 2x2")
+	r = Crafting.match(grid(3, { "PPP", "P P", "PPP" }, { P = "spruce_planks" }), 3)
+	assert(r and r.item == "chest", "chest")
+end)
+test("shapeless recipes and smelting/fuel tables", function()
+	local r = Crafting.match(grid(2, { " ", " L" }, { L = "spruce_log" }), 2)
+	assert(r and r.item == "spruce_planks" and r.count == 4)
+	eq(Crafting.smeltResult("raw_iron"), "iron_ingot")
+	eq(Crafting.fuelSeconds("coal"), 80)
+	eq(Crafting.fuelSeconds("dirt"), 0)
+end)
+test("slot clicks follow classic rules", function()
+	local slots = { [1] = { item = "dirt", count = 10 }, [2] = { item = "dirt", count = 60 }, [3] = { item = "stone", count = 5 } }
+	local cur = SlotLogic.rightClick(slots, 1, nil) -- half of 10
+	eq(cur.count, 5); eq(slots[1].count, 5)
+	cur = SlotLogic.leftClick(slots, 2, cur) -- merge into 60: 4 fit
+	eq(slots[2].count, 64); eq(cur.count, 1)
+	cur = SlotLogic.rightClick(slots, 4, cur) -- place one into empty slot
+	eq(slots[4].count, 1); eq(cur, nil)
+	cur = SlotLogic.leftClick(slots, 3, nil) -- pick up stone
+	cur = SlotLogic.leftClick(slots, 1, cur) -- swap with dirt
+	eq(slots[1].item, "stone"); eq(cur.item, "dirt")
+	-- tools never stack
+	local t = { [1] = { item = "iron_pickaxe", count = 1, durability = 250 } }
+	local c2 = SlotLogic.leftClick(t, 1, { item = "iron_pickaxe", count = 1, durability = 250 })
+	eq(t[1].count, 1); assert(c2 and c2.count == 1)
+end)
+test("quickMove merges first, then fills empty slots, keeps leftovers", function()
+	local inv = { [10] = { item = "dirt", count = 62 }, [11] = { item = "stone", count = 64 } }
+	local src = { [1] = { item = "dirt", count = 70 } }
+	local moved = SlotLogic.quickMove(src, 1, { { slots = inv, lo = 10, hi = 12 } })
+	assert(moved)
+	eq(inv[10].count, 64); eq(inv[12].count, 64); eq(src[1].count, 4)
+end)
+test("furnace smelts with fuel, classic timings", function()
+	local st = FurnaceLogic.new()
+	st.slots[1] = { item = "raw_iron", count = 10 }
+	st.slots[2] = { item = "coal", count = 2 }
+	for _ = 1, 25 do
+		FurnaceLogic.step(st, 1) -- 25 s
+	end
+	eq(st.slots[3].count, 2) -- 10 s per item
+	eq(st.slots[2].count, 1) -- one coal lit
+	for _ = 1, 200 do
+		FurnaceLogic.step(st, 1)
+	end
+	eq(st.slots[3].count, 10) -- 2 coal = 160 s = 16 items, but only 10 input
+	eq(st.slots[1], nil)
+	-- planks as fuel: 15 s = 1.5 items
+	local p = FurnaceLogic.new()
+	p.slots[1] = { item = "sand", count = 5 }
+	p.slots[2] = { item = "oak_planks", count = 1 }
+	for _ = 1, 40 do
+		FurnaceLogic.step(p, 1)
+	end
+	eq(p.slots[3].item, "glass"); eq(p.slots[3].count, 1)
+end)
+
 print(`\n{passed} passed, {failed} failed`)
 if failed > 0 then
 	process.exit(1)

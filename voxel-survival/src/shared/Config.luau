@@ -102,6 +102,15 @@ Config.KEEP_ACCESSORIES = false -- hats/hair would poke through blocks and break
 -- (to track down "asset type does not match" errors).
 Config.DEBUG_AVATAR = false
 
+Config.KEY_INVENTORY = "E" -- open/close the inventory (and close any container)
+Config.KEY_DROP = "Q" -- drop one of the held item (Ctrl+Q: the whole stack)
+Config.ITEM_PICKUP_RADIUS = 1.6 -- blocks, from the player's centre to a dropped item
+Config.ITEM_PICKUP_DELAY = 0.5 -- seconds before a mined drop can be picked up
+Config.ITEM_DROP_PICKUP_DELAY = 2 -- seconds before an item you threw can be picked up again
+Config.ITEM_DESPAWN_SECONDS = 300
+Config.MAX_ITEM_ENTITIES = 400
+Config.CONTAINER_REACH = 6 -- blocks: further away and an open container window closes
+
 Config.HOTBAR_SLOTS = 9
 Config.INVENTORY_SLOTS = 36 -- 9 hotbar + 27 main (main inventory UI arrives in phase 3)
 -- Items given on spawn while testing in Studio (ignored in live games).

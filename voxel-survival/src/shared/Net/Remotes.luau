@@ -8,6 +8,7 @@
 --   BlockAction   C -> S  (action, x, y, z)    "start" | "cancel" | "finish" | "place"
 --   InventorySync S -> C  { slots = {stack|false ...}, selected = n }
 --   SelectSlot    C -> S  (n)                  hotbar slot 1..9
+--   InventoryAction C -> S { type = "click" | "open" | "openInventory" | "close" | "drop" | "dropCursor", ... }
 
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -20,6 +21,7 @@ local NAMES = {
 	"BlockAction",
 	"InventorySync",
 	"SelectSlot",
+	"InventoryAction",
 }
 
 local Remotes = {}

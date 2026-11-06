@@ -24,6 +24,12 @@ Startup.run("server", {
 	{ name = "ChunkStreamer", run = function()
 		require(server.World.ChunkStreamer).init()
 	end },
+	{ name = "ItemEntityService", run = function()
+		require(server.World.ItemEntityService).init()
+	end },
+	{ name = "BlockEntityService", run = function()
+		require(server.World.BlockEntityService).init()
+	end },
 	{ name = "InventoryService", run = function()
 		require(server.Player.InventoryService).init()
 	end },

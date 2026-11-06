@@ -38,6 +38,9 @@ Startup.run("client", {
 	system("Crosshair", function()
 		return client.UI.Crosshair
 	end),
+	system("InventoryUI", function()
+		return client.UI.InventoryUI
+	end),
 	system("MovementController", function()
 		return client.Player.MovementController
 	end),
@@ -50,6 +53,9 @@ Startup.run("client", {
 	end),
 	system("BlockInteraction", function()
 		return client.Interaction.BlockInteraction
+	end),
+	system("ItemEntityVisuals", function()
+		return client.World.ItemEntityVisuals
 	end),
 	system("DebugOverlay", function()
 		return client.Debug.DebugOverlay

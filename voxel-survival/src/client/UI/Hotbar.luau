@@ -16,6 +16,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local ItemRegistry = require(Shared.Items.ItemRegistry)
 local InventoryClient = require(script.Parent.Parent.Player.InventoryClient)
+local ItemIcon = require(script.Parent.ItemIcon)
 
 local SLOT = 50
 local GAP = 4
@@ -34,8 +35,6 @@ Hotbar.status = {
 	absSize = Vector2.zero,
 	viewport = Vector2.zero,
 	parentName = "nil",
-	removedCount = 0, -- times the GUI was found outside PlayerGui
-	rebuiltCount = 0,
 	lastProblem = "",
 }
 local startTime = os.clock()
@@ -47,76 +46,6 @@ type SlotUI = { frame: TextButton, stroke: UIStroke, icon: Frame, count: TextLab
 local slots: { SlotUI } = {}
 local nameLabel: TextLabel
 
-local function rgb(c: { number }): Color3
-	return Color3.fromRGB(c[1], c[2], c[3])
-end
-
-local function clearIcon(icon: Frame)
-	for _, c in icon:GetChildren() do
-		c:Destroy()
-	end
-	icon.BackgroundTransparency = 1
-end
-
-local function drawIcon(icon: Frame, itemKey: string)
-	clearIcon(icon)
-	local def = ItemRegistry.get(itemKey)
-	if not def then
-		return
-	end
-	local color = rgb(def.color)
-	if def.block then
-		icon.BackgroundTransparency = 0
-		icon.BackgroundColor3 = color
-		local shade = Instance.new("Frame") -- darker lower third suggests a block's side face
-		shade.BorderSizePixel = 0
-		shade.BackgroundColor3 = Color3.new(0, 0, 0)
-		shade.BackgroundTransparency = 0.7
-		shade.Size = UDim2.fromScale(1, 0.35)
-		shade.Position = UDim2.fromScale(0, 0.65)
-		shade.Parent = icon
-		local stroke = Instance.new("UIStroke")
-		stroke.Color = Color3.new(0, 0, 0)
-		stroke.Transparency = 0.5
-		stroke.Parent = icon
-	elseif def.tool then
-		local handle = Instance.new("Frame")
-		handle.BorderSizePixel = 0
-		handle.BackgroundColor3 = Color3.fromRGB(120, 88, 50)
-		handle.AnchorPoint = Vector2.new(0.5, 0.5)
-		handle.Position = UDim2.fromScale(0.5, 0.55)
-		handle.Size = UDim2.fromScale(0.16, 0.95)
-		handle.Rotation = 45
-		handle.Parent = icon
-		local head = Instance.new("Frame")
-		head.BorderSizePixel = 0
-		head.BackgroundColor3 = color
-		head.AnchorPoint = Vector2.new(0.5, 0.5)
-		head.Position = UDim2.fromScale(0.68, 0.32)
-		local kind = def.tool.kind
-		head.Size = if kind == "pickaxe" then UDim2.fromScale(0.85, 0.2)
-			elseif kind == "axe" then UDim2.fromScale(0.42, 0.42)
-			elseif kind == "shovel" then UDim2.fromScale(0.3, 0.42)
-			else UDim2.fromScale(0.5, 0.18)
-		head.Rotation = if kind == "pickaxe" then -45 else 45
-		head.Parent = icon
-		local stroke = Instance.new("UIStroke")
-		stroke.Color = Color3.new(0, 0, 0)
-		stroke.Transparency = 0.4
-		stroke.Parent = head
-	else
-		icon.BackgroundTransparency = 0
-		icon.BackgroundColor3 = color
-		local corner = Instance.new("UICorner")
-		corner.CornerRadius = UDim.new(0.5, 0)
-		corner.Parent = icon
-		local stroke = Instance.new("UIStroke")
-		stroke.Color = Color3.new(0, 0, 0)
-		stroke.Transparency = 0.5
-		stroke.Parent = icon
-	end
-end
-
 local shownItems: { [number]: string? } = {}
 
 local function refresh(selectionChanged: boolean)
@@ -126,9 +55,9 @@ local function refresh(selectionChanged: boolean)
 		if shownItems[i] ~= key then
 			shownItems[i] = key
 			if key then
-				drawIcon(ui.icon, key)
+				ItemIcon.draw(ui.icon, key)
 			else
-				clearIcon(ui.icon)
+				ItemIcon.clear(ui.icon)
 			end
 		end
 		ui.count.Text = if stack and stack.count > 1 then tostring(stack.count) else ""
@@ -256,7 +185,7 @@ local function buildGui()
 	step("gui built")
 end
 
--- Is the GUI where it should be and actually on screen? Restores it if not.
+-- Samples where the GUI is and whether it's on screen (shown in F3).
 local function healthCheck(playerGui: Instance)
 	local st = Hotbar.status
 	local alive = gui ~= nil and bar ~= nil
@@ -269,25 +198,6 @@ local function healthCheck(playerGui: Instance)
 	st.viewport = workspace.CurrentCamera.ViewportSize
 	st.onScreen = st.absSize.X > 0 and st.absPos.X + st.absSize.X > 0 and st.absPos.Y + st.absSize.Y > 0
 		and st.absPos.X < st.viewport.X and st.absPos.Y < st.viewport.Y
-	if not st.parented then
-		st.removedCount += 1
-		st.lastProblem = string.format("GUI was under '%s' at %.1fs; rebuilt", st.parentName, os.clock() - startTime)
-		warn(`[Hotbar] {st.lastProblem}`)
-		if gui then
-			pcall(function()
-				gui:Destroy()
-			end)
-		end
-		buildGui()
-		gui.Parent = playerGui
-		st.rebuiltCount += 1
-		refresh(true)
-	elseif not st.enabled or not st.visible then
-		st.lastProblem = string.format("GUI hidden (Enabled=%s, Visible=%s) at %.1fs; re-shown", tostring(st.enabled), tostring(st.visible), os.clock() - startTime)
-		warn(`[Hotbar] {st.lastProblem}`)
-		gui.Enabled = true
-		bar.Visible = true
-	end
 end
 
 function Hotbar.init()
@@ -325,7 +235,7 @@ function Hotbar.init()
 	gui.Parent = playerGui
 	step("parented")
 
-	-- Check twice a second that the GUI is still in PlayerGui, enabled and on screen.
+	-- Sample the GUI's state twice a second for the F3 overlay.
 	task.spawn(function()
 		while true do
 			task.wait(0.5)
@@ -333,7 +243,6 @@ function Hotbar.init()
 		end
 	end)
 	step("health check running")
-	print(`[Hotbar] {table.concat(Hotbar.status.steps, " > ")}; parent = {gui.Parent and gui.Parent:GetFullName() or "nil"}`)
 end
 
 return Hotbar

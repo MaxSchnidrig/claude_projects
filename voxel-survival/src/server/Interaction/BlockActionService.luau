@@ -21,6 +21,8 @@ local ChunkData = require(Shared.World.ChunkData)
 local WorldService = require(script.Parent.Parent.World.WorldService)
 local ChunkStreamer = require(script.Parent.Parent.World.ChunkStreamer)
 local InventoryService = require(script.Parent.Parent.Player.InventoryService)
+local ItemEntityService = require(script.Parent.Parent.World.ItemEntityService)
+local BlockEntityService = require(script.Parent.Parent.World.BlockEntityService)
 
 local BS = Config.BLOCK_SIZE
 local H = Config.WORLD_HEIGHT
@@ -188,12 +190,17 @@ local function finishBreak(player: Player, st: PState, x: number, y: number, z: 
 	end
 	st.pending = nil
 
-	-- Apply: block -> air, drops into the inventory, tool wear.
+	-- Apply: block -> air, the drop pops out as an item entity, tool wear.
 	local key = WorldService.setBlock(x, y, z, AIR)
+	local center = Vector3.new(x + 0.5, y + 0.5, z + 0.5) * BS
 	local def = BlockRegistry.get(id)
 	if def and def.drop and Mining.canHarvest(id, item) then
 		local count = if def.dropMax > def.dropMin then math.random(def.dropMin, def.dropMax) else def.dropMin
-		InventoryService.add(player, def.drop, count)
+		ItemEntityService.spawn({ item = def.drop, count = count }, center)
+	end
+	if BlockEntityService.kindOf(id) then
+		-- chest / furnace contents spill out
+		ItemEntityService.spawnAround(BlockEntityService.remove(x, y, z), center)
 	end
 	if Mining.usesDurability(id, item) then
 		InventoryService.damageSelectedTool(player, 1)
@@ -239,6 +246,10 @@ local function place(player: Player, x: number, y: number, z: number)
 		return correct(player, x, y, z, "no item")
 	end
 	local key = WorldService.setBlock(x, y, z, item.block)
+	local kind = BlockEntityService.kindOf(item.block)
+	if kind then
+		BlockEntityService.ensure(x, y, z, kind)
+	end
 	BlockActionService.stats.accepted += 1
 	broadcast(key, x, y, z, item.block, player)
 end

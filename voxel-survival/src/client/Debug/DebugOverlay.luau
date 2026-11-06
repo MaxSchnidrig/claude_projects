@@ -54,9 +54,9 @@ local function hotbarLines(): string
 	local st = Hotbar.status
 	return table.concat({
 		`hotbar steps: {table.concat(st.steps, " > ")}`,
-		string.format("hotbar: in PlayerGui %s (parent %s), enabled %s, visible %s, on screen %s at %d,%d size %dx%d (screen %dx%d), rebuilt %d",
+		string.format("hotbar: in PlayerGui %s (parent %s), enabled %s, visible %s, on screen %s at %d,%d size %dx%d (screen %dx%d)",
 			yes(st.parented), st.parentName, yes(st.enabled), yes(st.visible), yes(st.onScreen),
-			st.absPos.X, st.absPos.Y, st.absSize.X, st.absSize.Y, st.viewport.X, st.viewport.Y, st.rebuiltCount),
+			st.absPos.X, st.absPos.Y, st.absSize.X, st.absSize.Y, st.viewport.X, st.viewport.Y),
 		`inventory: {InventoryClient.syncCount} syncs from server, {InventoryClient.itemCount} items, selected slot {InventoryClient.selected}` ..
 			(if st.lastProblem ~= "" then `   last hotbar problem: {st.lastProblem}` else ""),
 	}, "\n")

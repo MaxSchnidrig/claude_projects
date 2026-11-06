@@ -27,6 +27,12 @@ local InventoryClient = require(script.Parent.Parent.Player.InventoryClient)
 
 local BS = Config.BLOCK_SIZE
 local AIR = 0
+-- Right-clicking these opens their window instead of placing (hold Shift to place against them).
+local INTERACTABLE = {
+	[BlockRegistry.id("crafting_table")] = true,
+	[BlockRegistry.id("furnace")] = true,
+	[BlockRegistry.id("chest")] = true,
+}
 local isLiquid = BlockRegistry.isLiquid
 
 local BlockInteraction = {}
@@ -133,6 +139,15 @@ end
 
 local function update(dt: number)
 	local now = os.clock()
+	if InventoryClient.uiOpen then
+		-- a window is open: no mining/placing, no highlight
+		breakHeld, placeHeld = false, false
+		if mining then
+			cancelMining()
+		end
+		selection.Visible = false
+		return
+	end
 	local eye, look = CameraController.getEyeAndLook()
 	local hit: VoxelRaycast.Hit? = nil
 	if eye then
@@ -229,6 +244,11 @@ local function makeTouchButtons()
 		breakHeld = false
 	end)
 	button("Place", UDim2.new(1, -120, 1, -130), function()
+		local hit = BlockInteraction.target
+		if hit and INTERACTABLE[hit.id] then
+			InventoryClient.openBlock(hit.x, hit.y, hit.z)
+			return
+		end
 		placeHeld = true
 		nextPlaceAt = 0
 	end, function()
@@ -240,16 +260,26 @@ end
 function BlockInteraction.init()
 	makeVisuals()
 
+	local keyDrop = (Enum.KeyCode :: any)[Config.KEY_DROP]
 	UserInputService.InputBegan:Connect(function(input, processed)
-		if processed then
+		if processed or InventoryClient.uiOpen then
 			return
 		end
 		local t = input.UserInputType
 		if t == Enum.UserInputType.MouseButton1 or input.KeyCode == Enum.KeyCode.ButtonR2 then
 			breakHeld = true
 		elseif t == Enum.UserInputType.MouseButton2 or input.KeyCode == Enum.KeyCode.ButtonL2 then
-			placeHeld = true
-			nextPlaceAt = 0 -- first placement is immediate
+			local hit = BlockInteraction.target
+			local shift = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+			if hit and INTERACTABLE[hit.id] and not shift then
+				InventoryClient.openBlock(hit.x, hit.y, hit.z) -- server opens the window; the UI follows
+			else
+				placeHeld = true
+				nextPlaceAt = 0 -- first placement is immediate
+			end
+		elseif input.KeyCode == keyDrop or input.KeyCode == Enum.KeyCode.ButtonB then
+			local ctrl = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
+			InventoryClient.drop(ctrl)
 		end
 	end)
 	UserInputService.InputEnded:Connect(function(input)

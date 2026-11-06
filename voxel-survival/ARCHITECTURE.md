@@ -179,6 +179,18 @@ Phase 2 server validation for break and place:
 | Inventory | Server-owned 36 slots (9 hotbar + 27 main), stacks of 64 (tools 1, snowballs 16), tool durability with classic values. Drops go straight into the inventory until phase 3 adds item entities |
 | Corrections | Every rejected action answers the requester with the true block state, which undoes the client's prediction |
 
+## 5c. Phase 3: inventory, crafting, smelting (built)
+
+| Piece | Design |
+|---|---|
+| Authority | The server owns every slot. Clients send intentions (`InventoryAction`: click/open/close/drop); the rules are pure shared modules (`SlotLogic`, `Crafting`, `FurnaceLogic`), unit-tested headless |
+| Windows | inventory (2×2 grid), crafting_table (3×3), furnace (input/fuel/output), chest (27). Opening a block window needs reach; it closes when you walk away (>6 blocks) or the block is broken. Closing returns grid and cursor items to the inventory, or drops them if full |
+| Clicks | Classic: left = pick up/put/merge/swap, right = half/one, shift = quick-move (hotbar ↔ main, inventory ↔ container; furnace sorts smeltables into input and fuel into fuel), result slot crafts once or as many as fit |
+| Recipes | `Items/Recipes.luau`: shaped (anywhere in the grid, mirrored) and shapeless, tags such as `#planks`. Covers planks, sticks, crafting table, chest, furnace, all tools × 5 tiers, shears, sandstone, snow and clay blocks. Validated at load time |
+| Furnace | 10 s per item; fuel: coal/charcoal 80 s (8 items), planks/logs 15 s, sticks 5 s, wooden tools 10 s. Ticks on the server 4× per second; progress cools down without fire |
+| Dropped items | Mined blocks, thrown items (Q) and container contents become item entities. They rest on the first solid block below and re-settle if it's mined. Picked up within 1.6 blocks (0.5 s delay, 2 s for thrown items), despawn after 5 min, max 400. Spin/bob is animated client-side |
+| Not yet | Saving block entities and inventories (phase 6), item merging on the ground, drag-to-distribute |
+
 ## 6. Mechanics spec (later phases)
 
 Values follow the classic formula. Speeds are in blocks/s; at 3 studs per block, walk 4.317 → 13 studs/s and sprint 5.612 → 16.8 studs/s.

@@ -3,7 +3,7 @@
 
 local GameInfo = {
 	TITLE = "ROCRAFT",
-	VERSION = "0.2.6-hotbar-check",
+	VERSION = "0.3.0-phase3",
 }
 
 return GameInfo

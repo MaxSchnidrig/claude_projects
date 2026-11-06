@@ -28,6 +28,7 @@ export type ItemDefInput = {
 local defs: { ItemDefInput } = {
 	-- Materials
 	{ key = "coal", name = "Coal", color = { 40, 40, 44 } },
+	{ key = "charcoal", name = "Charcoal", color = { 52, 44, 36 } },
 	{ key = "raw_iron", name = "Raw Iron", color = { 196, 160, 132 } },
 	{ key = "raw_copper", name = "Raw Copper", color = { 190, 110, 70 } },
 	{ key = "raw_gold", name = "Raw Gold", color = { 230, 190, 60 } },
