@@ -193,9 +193,11 @@ local function replaceRender(section: Section, r: Render?, immediate: boolean?, 
 end
 
 -- Replace a section's special faces (water, ice, glass, lava) right away. `groups` nil = none.
-local function setSpecial(section: Section, groups: { [number]: { number } }?)
+local function setSpecial(section: Section, groups: { [number]: { number } }?, padded: buffer?)
 	local old = section.special
-	section.special = if groups and section.alive then SpecialPartsBackend.build(groups, section.origin, renderFolder) else nil
+	section.special = if groups and padded and section.alive
+		then SpecialPartsBackend.build(groups, padded, section.origin, renderFolder)
+		else nil
 	SpecialPartsBackend.destroy(old)
 end
 
@@ -377,7 +379,7 @@ function ChunkRenderer.renderSection(section: Section, chunk: any, neighbors: Se
 			return -- edited while we were meshing; the newer rebuild handles it
 		end
 		local result, special = splitResult(full)
-		setSpecial(section, special) -- special faces are Parts: show them now
+		setSpecial(section, special, paddedRender) -- special faces are Parts: show them now
 		EditableMeshBackend.build(result, section.origin, renderFolder, Scheduler.checkpoint, function(handle, err, budgetHit)
 			if not section.alive or section.version ~= version then
 				if handle then
@@ -467,7 +469,7 @@ function ChunkRenderer.renderUrgent(section: Section, chunk: any, neighbors: Sec
 		section.editTime = os.clock()
 		local result, special = splitResult(GreedyMesher.mesh(paddedUrgent))
 		-- Water/ice/glass/lava are plain Parts: rebuilt on this frame, no hand-over ever.
-		setSpecial(section, special)
+		setSpecial(section, special, paddedUrgent)
 		local slot = LiveEditPool.acquire(section)
 		if slot then
 			local uncovered = LiveEditPool.write(slot, section, result)

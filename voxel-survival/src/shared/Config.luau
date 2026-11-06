@@ -117,6 +117,9 @@ Config.STUDIO_STARTER_KIT = {
 	{ "glass", 64 },
 }
 
+-- Roblox default UI turned off on the client (our UI replaces them). Remove entries to test.
+Config.CORE_GUI_DISABLE = { "Backpack", "Health", "EmotesMenu" }
+
 -- Debug -------------------------------------------------------------------------------------
 -- KeyCode names (strings, so this module stays loadable in headless tests).
 Config.DEBUG_KEY_OVERLAY = "F3" -- toggle the performance overlay

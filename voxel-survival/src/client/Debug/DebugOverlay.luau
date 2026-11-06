@@ -22,6 +22,7 @@ local PartsBackend = require(script.Parent.Parent.Render.PartsBackend)
 local CollisionBuilder = require(script.Parent.Parent.Render.CollisionBuilder)
 local LiveEditPool = require(script.Parent.Parent.Render.LiveEditPool)
 local SpecialPartsBackend = require(script.Parent.Parent.Render.SpecialPartsBackend)
+local Hotbar = require(script.Parent.Parent.UI.Hotbar)
 local BlockInteraction = require(script.Parent.Parent.Interaction.BlockInteraction)
 local InventoryClient = require(script.Parent.Parent.Player.InventoryClient)
 local CameraController = require(script.Parent.Parent.Player.CameraController)
@@ -43,6 +44,23 @@ local function fmtMb(mb: number?): string
 end
 
 local DebugOverlay = {}
+
+local function yes(b: boolean): string
+	return if b then "yes" else "NO"
+end
+
+-- Hotbar diagnostics (startup steps, where the GUI is, whether it's on screen).
+local function hotbarLines(): string
+	local st = Hotbar.status
+	return table.concat({
+		`hotbar steps: {table.concat(st.steps, " > ")}`,
+		string.format("hotbar: in PlayerGui %s (parent %s), enabled %s, visible %s, on screen %s at %d,%d size %dx%d (screen %dx%d), rebuilt %d",
+			yes(st.parented), st.parentName, yes(st.enabled), yes(st.visible), yes(st.onScreen),
+			st.absPos.X, st.absPos.Y, st.absSize.X, st.absSize.Y, st.viewport.X, st.viewport.Y, st.rebuiltCount),
+		`inventory: {InventoryClient.syncCount} syncs from server, {InventoryClient.itemCount} items, selected slot {InventoryClient.selected}` ..
+			(if st.lastProblem ~= "" then `   last hotbar problem: {st.lastProblem}` else ""),
+	}, "\n")
+end
 
 -- "target Stone (12 64 -3)  1.15 s with Wooden Pickaxe, drops"
 local function targetLine(): string
@@ -147,6 +165,7 @@ function DebugOverlay.init()
 			`{GameInfo.TITLE} {GameInfo.VERSION}   {string.format("%.0f", fps)} fps   [F3 hide, F4 backend, F6 keep live edits]`,
 			`pos {posText}   biome {biomeText}   camera {CameraController.mode}`,
 			targetLine(),
+			hotbarLines(),
 			`render distance {ClientWorld.effectiveRenderDistance()}/{ClientWorld.getRenderDistance()}{if ClientWorld.isMobile() then " (mobile)" else ""}   backend {backend}`,
 			`chunks loaded {ws.loaded}   waiting: gen {ws.pendingGen}, mesh {ws.pendingMesh} sections`,
 			string.format("gen %.2f ms/chunk avg (%d)   mesh %.2f ms/section avg (%d)", genAvg, ws.generated, meshAvg, rs.sectionsMeshed),

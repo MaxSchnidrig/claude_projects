@@ -13,6 +13,8 @@ export type Stack = { item: string, count: number, durability: number? }
 local InventoryClient = {}
 InventoryClient.slots = {} :: { [number]: Stack? }
 InventoryClient.selected = 1
+InventoryClient.syncCount = 0 -- InventorySync messages received (diagnostics)
+InventoryClient.itemCount = 0 -- items in the last sync
 
 local changed = Instance.new("BindableEvent")
 InventoryClient.Changed = changed.Event -- fires (selectionChanged: boolean)
@@ -30,6 +32,12 @@ function InventoryClient.init()
 			end
 		end
 		InventoryClient.slots = slots
+		InventoryClient.syncCount += 1
+		local n = 0
+		for _, st in slots do
+			n += (st :: any).count
+		end
+		InventoryClient.itemCount = n
 		changed:Fire(false)
 	end)
 	-- tell the server our starting selection

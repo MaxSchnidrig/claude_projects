@@ -23,6 +23,26 @@ local N = Config.HOTBAR_SLOTS
 
 local Hotbar = {}
 
+-- Startup / health diagnostics, shown in F3 (the hotbar went missing in a test with no errors).
+Hotbar.status = {
+	steps = {} :: { string }, -- startup steps reached, in order
+	parented = false,
+	enabled = false,
+	visible = false,
+	onScreen = false,
+	absPos = Vector2.zero,
+	absSize = Vector2.zero,
+	viewport = Vector2.zero,
+	parentName = "nil",
+	removedCount = 0, -- times the GUI was found outside PlayerGui
+	rebuiltCount = 0,
+	lastProblem = "",
+}
+local startTime = os.clock()
+local function step(name: string)
+	table.insert(Hotbar.status.steps, string.format("%s@%.1fs", name, os.clock() - startTime))
+end
+
 type SlotUI = { frame: TextButton, stroke: UIStroke, icon: Frame, count: TextLabel, durability: Frame, durabilityBg: Frame }
 local slots: { SlotUI } = {}
 local nameLabel: TextLabel
@@ -140,12 +160,22 @@ local function refresh(selectionChanged: boolean)
 	end
 end
 
-function Hotbar.init()
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "Hotbar"
-	gui.ResetOnSpawn = false
+local gui: ScreenGui
+local bar: Frame
 
-	local bar = Instance.new("Frame")
+local function buildGui()
+	table.clear(slots)
+	table.clear(shownItems)
+	gui = Instance.new("ScreenGui")
+	gui.Name = "RocraftHotbar"
+	gui.ResetOnSpawn = false
+	gui.Enabled = true
+	gui.DisplayOrder = 5
+	gui.IgnoreGuiInset = false
+
+	bar = Instance.new("Frame")
+	bar.Name = "Bar"
+	bar.Visible = true
 	bar.BackgroundTransparency = 1
 	bar.AnchorPoint = Vector2.new(0.5, 1)
 	bar.Position = UDim2.new(0.5, 0, 1, -12)
@@ -223,6 +253,47 @@ function Hotbar.init()
 		slots[i] = { frame = frame, stroke = stroke, icon = icon, count = count, durability = durability, durabilityBg = durabilityBg }
 	end
 
+	step("gui built")
+end
+
+-- Is the GUI where it should be and actually on screen? Restores it if not.
+local function healthCheck(playerGui: Instance)
+	local st = Hotbar.status
+	local alive = gui ~= nil and bar ~= nil
+	st.parented = alive and gui.Parent == playerGui
+	st.parentName = if alive and gui.Parent then gui.Parent:GetFullName() else "nil"
+	st.enabled = alive and gui.Enabled
+	st.visible = alive and bar.Visible
+	st.absPos = if alive then bar.AbsolutePosition else Vector2.zero
+	st.absSize = if alive then bar.AbsoluteSize else Vector2.zero
+	st.viewport = workspace.CurrentCamera.ViewportSize
+	st.onScreen = st.absSize.X > 0 and st.absPos.X + st.absSize.X > 0 and st.absPos.Y + st.absSize.Y > 0
+		and st.absPos.X < st.viewport.X and st.absPos.Y < st.viewport.Y
+	if not st.parented then
+		st.removedCount += 1
+		st.lastProblem = string.format("GUI was under '%s' at %.1fs; rebuilt", st.parentName, os.clock() - startTime)
+		warn(`[Hotbar] {st.lastProblem}`)
+		if gui then
+			pcall(function()
+				gui:Destroy()
+			end)
+		end
+		buildGui()
+		gui.Parent = playerGui
+		st.rebuiltCount += 1
+		refresh(true)
+	elseif not st.enabled or not st.visible then
+		st.lastProblem = string.format("GUI hidden (Enabled=%s, Visible=%s) at %.1fs; re-shown", tostring(st.enabled), tostring(st.visible), os.clock() - startTime)
+		warn(`[Hotbar] {st.lastProblem}`)
+		gui.Enabled = true
+		bar.Visible = true
+	end
+end
+
+function Hotbar.init()
+	step("init")
+	buildGui()
+
 	UserInputService.InputBegan:Connect(function(input, processed)
 		if processed then
 			return
@@ -243,9 +314,25 @@ function Hotbar.init()
 		end
 	end)
 
-	InventoryClient.Changed:Connect(refresh)
+	InventoryClient.Changed:Connect(function(selectionChanged: boolean)
+		if #Hotbar.status.steps < 8 and not selectionChanged then
+			step("inventory received")
+		end
+		refresh(selectionChanged)
+	end)
 	refresh(true)
-	gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+	gui.Parent = playerGui
+	step("parented")
+
+	-- Check twice a second that the GUI is still in PlayerGui, enabled and on screen.
+	task.spawn(function()
+		while true do
+			task.wait(0.5)
+			healthCheck(playerGui)
+		end
+	end)
+	step("health check running")
 end
 
 return Hotbar

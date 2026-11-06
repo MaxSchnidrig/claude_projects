@@ -23,6 +23,36 @@ local BS = Config.BLOCK_SIZE
 local SHADE = Config.FACE_SHADE
 local DIR_SHADE = { SHADE.east, SHADE.west, SHADE.top, SHADE.bottom, SHADE.south, SHADE.north }
 local THICKNESS = 0.02 -- studs; the slab sits just behind the face plane (inside its block)
+-- Separate Parts sharing an edge aren't drawn watertight (thin seams showed on water). Each slab
+-- extends this far into in-plane neighbours with a visible face, so neighbours overlap instead of
+-- leaving a crack. The overlap strip is far thinner than a pixel at normal distances.
+local SEAM_OVERLAP = 0.012
+
+local faceVisible = GreedyMesher.faceVisible
+local STRIDE = GreedyMesher.STRIDE
+
+-- Is the face in direction d of padded cell (slice k, u, v) visible? (u, v may be -1 or 16.)
+local function faceAt(padded: buffer, d: number, k: number, u: number, v: number): boolean
+	if u < -1 or u > 16 or v < -1 or v > 16 then
+		return false
+	end
+	local dir = GreedyMesher.DIRS[d]
+	local p = (k + 1) * STRIDE[dir.axis] + (u + 1) * STRIDE[dir.u] + (v + 1) * STRIDE[dir.v]
+	local b = buffer.readu8(padded, p)
+	return b ~= 0 and faceVisible(b, buffer.readu8(padded, p + STRIDE[dir.axis] * dir.sign))
+end
+
+-- Does the plane continue into another visible face anywhere along this edge?
+local function continues(padded: buffer, d: number, k: number, u0: number, u1: number, v0: number, v1: number): number
+	for u = u0, u1 do
+		for v = v0, v1 do
+			if faceAt(padded, d, k, u, v) then
+				return SEAM_OVERLAP
+			end
+		end
+	end
+	return 0
+end
 
 export type Handle = { parts: { BasePart } }
 
@@ -36,7 +66,8 @@ function Backend.isSpecial(tex: number): boolean
 end
 
 -- `groups`: texture -> quad list (GreedyMesher format), special textures only.
-function Backend.build(groups: { [number]: { number } }, originStuds: Vector3, folder: Instance): Handle?
+-- `padded` is the section's padded buffer (SectionSampler) the quads were meshed from.
+function Backend.build(groups: { [number]: { number } }, padded: buffer, originStuds: Vector3, folder: Instance): Handle?
 	local handle: Handle = { parts = {} }
 	for tex, quads in groups do
 		local style = RenderStyle.forTexture(tex)
@@ -45,10 +76,14 @@ function Backend.build(groups: { [number]: { number } }, originStuds: Vector3, f
 			local dir = GreedyMesher.DIRS[d]
 			local size = { 0, 0, 0 }
 			local center = { 0, 0, 0 }
-			size[dir.u + 1] = w * BS
-			size[dir.v + 1] = h * BS
-			center[dir.u + 1] = (i + w / 2) * BS
-			center[dir.v + 1] = (j + h / 2) * BS
+			local eU0 = continues(padded, d, k, i - 1, i - 1, j, j + h - 1)
+			local eU1 = continues(padded, d, k, i + w, i + w, j, j + h - 1)
+			local eV0 = continues(padded, d, k, i, i + w - 1, j - 1, j - 1)
+			local eV1 = continues(padded, d, k, i, i + w - 1, j + h, j + h)
+			size[dir.u + 1] = w * BS + eU0 + eU1
+			size[dir.v + 1] = h * BS + eV0 + eV1
+			center[dir.u + 1] = (i + w / 2) * BS + (eU1 - eU0) / 2
+			center[dir.v + 1] = (j + h / 2) * BS + (eV1 - eV0) / 2
 			local plane = (if dir.sign > 0 then k + 1 else k) * BS
 			size[dir.axis + 1] = THICKNESS
 			center[dir.axis + 1] = plane - dir.sign * THICKNESS / 2
