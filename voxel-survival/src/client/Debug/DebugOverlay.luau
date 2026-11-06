@@ -90,6 +90,8 @@ function DebugOverlay.init()
 		end
 		if input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_OVERLAY] then
 			gui.Enabled = not gui.Enabled
+		elseif input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_KEEP_TEMP] then
+			ClientWorld.setKeepTemp(not ChunkRenderer.keepTemp)
 		elseif input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_BACKEND] then
 			local nextBackend = if ChunkRenderer.backend == "editable" then "parts" else "editable"
 			ChunkRenderer.setBackend(nextBackend)
@@ -139,7 +141,7 @@ function DebugOverlay.init()
 			else tostring(Config.MAX_LIVE_EDITABLE)
 
 		label.Text = table.concat({
-			`{GameInfo.TITLE} {GameInfo.VERSION}   {string.format("%.0f", fps)} fps   [F3 hide, F4 switch backend]`,
+			`{GameInfo.TITLE} {GameInfo.VERSION}   {string.format("%.0f", fps)} fps   [F3 hide, F4 backend, F6 keep edit quads]`,
 			`pos {posText}   biome {biomeText}   camera {CameraController.mode}`,
 			targetLine(),
 			`render distance {ClientWorld.effectiveRenderDistance()}/{ClientWorld.getRenderDistance()}{if ClientWorld.isMobile() then " (mobile)" else ""}   backend {backend}`,
@@ -151,7 +153,10 @@ function DebugOverlay.init()
 			`MeshParts {es.meshParts}   triangles {es.triangles}   uploads {es.uploadsInFlight} in flight / {es.uploadsQueued} queued`,
 			`sections: {rs.sectionsEditable} mesh, {rs.sectionsParts} parts   fallbacks {rs.fallbacks}   demotions {rs.demotions}`,
 			`render Parts {PartsBackend.stats.parts}   collision Parts {CollisionBuilder.stats.parts}   instant-edit sections {rs.sectionsQuads}`,
-			string.format("instant edit rebuild %.2f ms avg (%d)", if rs.urgentBuilds > 0 then rs.urgentTime / rs.urgentBuilds * 1000 else 0, rs.urgentBuilds),
+			string.format("instant edit rebuild %.2f ms avg (%d)   quads->mesh hand-over %.2f s avg (%d)   F6 keep quads: %s",
+				if rs.urgentBuilds > 0 then rs.urgentTime / rs.urgentBuilds * 1000 else 0, rs.urgentBuilds,
+				if rs.swaps > 0 then rs.swapTime / rs.swaps else 0, rs.swaps,
+				if ChunkRenderer.keepTemp then "ON" else "off"),
 			`memory: GraphicsMeshParts {fmtMb(tagMb("GraphicsMeshParts"))}   GraphicsParts {fmtMb(tagMb("GraphicsParts"))}   total {string.format("%.0f MB", Stats:GetTotalMemoryUsageMb())}`,
 			if es.bakeError ~= "" then `bake unavailable: {es.bakeError}` else "",
 			`mesh upload retries {es.uploadRetries}   failures {es.failures}`,

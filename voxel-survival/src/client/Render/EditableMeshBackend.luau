@@ -75,7 +75,7 @@ local MESH_OPTIONS = {
 	RenderFidelity = Enum.RenderFidelity.Precise, -- no automatic LOD (it would punch holes)
 }
 
-type Upload = { em: any, liveBytes: number, done: (MeshPart?, string?, boolean) -> () }
+type Upload = { em: any, liveBytes: number, priority: boolean?, done: (MeshPart?, string?, boolean) -> () }
 local queue: { Upload } = {}
 
 local function trackCreate()
@@ -93,12 +93,14 @@ local function destroyEditable(em: any, liveBytes: number)
 end
 
 -- Can a new section start building right now without risking the budget?
-function Backend.canStart(): boolean
+-- `priority` (a just-edited section) may use a couple of extra slots so it never waits behind
+-- background chunk loading.
+function Backend.canStart(priority: boolean?): boolean
 	local s = Backend.stats
 	if s.bakeMode == "live" then
 		return s.learnedCap == nil or s.liveEditable < (s.learnedCap :: number)
 	end
-	return s.liveEditable < Config.MAX_LIVE_EDITABLE
+	return s.liveEditable < Config.MAX_LIVE_EDITABLE + (if priority then 2 else 0)
 end
 
 -- True when meshes can't be baked and the live budget is exhausted: most sections end up as Parts.
@@ -232,7 +234,8 @@ function Backend.build(
 	originStuds: Vector3,
 	folder: Instance,
 	checkpoint: () -> (),
-	onDone: (Handle?, string?, boolean) -> ()
+	onDone: (Handle?, string?, boolean) -> (),
+	priority: boolean?
 )
 	-- Group textures that can share a mesh.
 	local byKey: { [string]: { number } } = {}
@@ -299,10 +302,12 @@ function Backend.build(
 	local handle: Handle = { parts = {}, meshes = {}, triangles = 0, liveBytes = 0, counted = false }
 	local remaining = #built
 	local failed: string? = nil
-	for _, b in built do
-		table.insert(queue, {
+	for n, b in built do
+		-- priority uploads (just-edited sections) go to the front of the queue
+		table.insert(queue, if priority then n else #queue + 1, {
 			em = b.em,
 			liveBytes = b.liveBytes,
+			priority = priority,
 			done = function(part: MeshPart?, uploadErr: string?, baked: boolean)
 				if part then
 					part.Anchored = true
@@ -445,7 +450,12 @@ end
 
 -- Call every frame: starts queued uploads up to the concurrency cap.
 function Backend.pump()
-	while Backend.stats.uploadsInFlight < Config.MAX_MESH_UPLOADS_IN_FLIGHT and #queue > 0 do
+	while #queue > 0 do
+		-- priority jobs (just-edited sections) may exceed the normal concurrency by 2
+		local limit = Config.MAX_MESH_UPLOADS_IN_FLIGHT + (if queue[1].priority then 2 else 0)
+		if Backend.stats.uploadsInFlight >= limit then
+			break
+		end
 		local job = table.remove(queue, 1) :: Upload
 		Backend.stats.uploadsInFlight += 1
 		task.spawn(function()

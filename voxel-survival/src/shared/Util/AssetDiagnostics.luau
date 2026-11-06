@@ -40,6 +40,46 @@ local DESCRIPTION_FIELDS = {
 local unresolved: { [string]: boolean } = {}
 local reported: { [string]: boolean } = {}
 
+-- Phases: code that triggers engine asset loads (e.g. building avatars) wraps itself in
+-- AssetDiagnostics.phase(name, fn), so an error can be tied to the step that caused it even when
+-- no instance keeps the failing ID.
+type Phase = { name: string, t0: number, t1: number? }
+local phases: { Phase } = {}
+local activePhase: string? = nil
+local phaseOf: { [string]: string } = {} -- asset id -> phase name it was logged during
+
+local function now(): number
+	return DateTime.now().UnixTimestampMillis / 1000
+end
+
+function AssetDiagnostics.phase<T...>(name: string, fn: () -> T...): T...
+	local p: Phase = { name = name, t0 = now(), t1 = nil }
+	table.insert(phases, p)
+	if #phases > 200 then
+		table.remove(phases, 1)
+	end
+	local prev = activePhase
+	activePhase = name
+	local results = table.pack(pcall(fn))
+	activePhase = prev
+	p.t1 = now()
+	if not results[1] then
+		error(results[2], 0)
+	end
+	return table.unpack(results, 2, results.n)
+end
+
+-- Which phase was running at time t (epoch seconds)? Small slack for log timestamp rounding.
+local function phaseAt(t: number): string?
+	for i = #phases, 1, -1 do
+		local p = phases[i]
+		if t >= p.t0 - 0.05 and t <= (p.t1 or math.huge) + 0.25 then
+			return p.name
+		end
+	end
+	return nil
+end
+
 local function containsId(value: any, id: string): boolean
 	if typeof(value) == "number" then
 		return tostring(value) == id
@@ -103,29 +143,40 @@ local function resolve(id: string)
 		reported[id] = true
 		unresolved[id] = nil
 		for _, where in found do
-			warn(`[AssetDiagnostics:{side}] rbxassetid://{id} -> {where}`)
+			warn(`[AssetDiagnostics:{side}] rbxassetid://{id} -> {where}{describePhase(id)}`)
 		end
 	else
 		unresolved[id] = true
 	end
 end
 
-local function onMessage(message: string)
+local function describePhase(id: string): string
+	local p = phaseOf[id]
+	return if p then `; it was logged during: {p}` else "; it was not logged during any tagged step"
+end
+
+local function onMessage(message: string, timestamp: number?)
 	if string.find(message, "AssetDiagnostics", 1, true) then
 		return
 	end
 	if string.find(message, "does not match", 1, true) or string.find(message, "failed", 1, true) then
 		local id = string.match(message, "rbxassetid://(%d+)") or string.match(message, "[?&]id=(%d+)")
 		if id then
+			local p = if timestamp then phaseAt(timestamp) else activePhase or phaseAt(now())
+			if p and not phaseOf[id] then
+				phaseOf[id] = p
+			end
 			task.defer(resolve, id)
 		end
 	end
 end
 
 function AssetDiagnostics.init()
-	LogService.MessageOut:Connect(onMessage)
+	LogService.MessageOut:Connect(function(message)
+		onMessage(message, nil)
+	end)
 	for _, entry in LogService:GetLogHistory() do
-		onMessage(entry.message)
+		onMessage(entry.message, entry.timestamp)
 	end
 	-- An ID may belong to something that appears later (e.g. the character): retry for a while,
 	-- then say clearly that it isn't referenced by any instance we can see.
@@ -138,7 +189,7 @@ function AssetDiagnostics.init()
 		end
 		local side = if RunService:IsServer() then "server" else "client"
 		for id in unresolved do
-			warn(`[AssetDiagnostics:{side}] rbxassetid://{id} is not referenced by any instance in workspace, characters, GUIs or shared folders; it is requested internally (engine/default asset)`)
+			warn(`[AssetDiagnostics:{side}] rbxassetid://{id} is not referenced by any instance in workspace, characters, GUIs or shared folders; it is requested internally (engine/default asset){describePhase(id)}`)
 		end
 	end)
 end

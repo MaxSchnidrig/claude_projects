@@ -46,6 +46,7 @@ end
 
 local GreedyMesher = {}
 GreedyMesher.DIRS = DIRS
+GreedyMesher.STRIDE = STRIDE -- padded-buffer stride per axis (0 x, 1 y, 2 z)
 
 export type MeshResult = {
 	groups: { [number]: { number } }, -- texture index -> flat quad list

@@ -44,6 +44,8 @@ export type Section = {
 	retryAt: number, -- os.clock() after which it may try EditableMesh again
 	failCount: number, -- consecutive EditableMesh failures (retry delay doubles each time)
 	culled: boolean, -- skipped by Parts-mode cave culling; ClientWorld re-dirties it when needed
+	editPending: boolean, -- showing instant quad Parts after an edit; its mesh rebuild has priority
+	editTime: number, -- os.clock() of that edit (to measure how long the hand-over takes)
 	alive: boolean,
 }
 
@@ -60,7 +62,12 @@ ChunkRenderer.stats = {
 	sectionsQuads = 0, -- just-edited sections shown with instant quad Parts, awaiting their mesh
 	urgentBuilds = 0,
 	urgentTime = 0,
+	swaps = 0, -- quad Parts -> baked mesh hand-overs
+	swapTime = 0, -- total seconds from edit to the mesh being parented
 }
+-- Debug (F6): keep the instant quad Parts instead of baking a mesh, to compare them to meshes.
+ChunkRenderer.keepTemp = false
+local tempSections: { [Section]: boolean } = {}
 
 local paddedRender = buffer.create(SectionSampler.VOLUME)
 local paddedCollision = buffer.create(SectionSampler.VOLUME)
@@ -112,6 +119,8 @@ function ChunkRenderer.newSections(cx: number, cz: number): { Section }
 			retryAt = 0,
 			failCount = 0,
 			culled = false,
+			editPending = false,
+			editTime = 0,
 			alive = true,
 		})
 	end
@@ -128,6 +137,9 @@ local function destroyRender(section: Section, r: Render?)
 	elseif r.kind == "quads" then
 		ChunkRenderer.stats.sectionsQuads -= 1
 		QuadPartsBackend.destroy(r.handle)
+		if section.render == nil or section.render.kind ~= "quads" then
+			tempSections[section] = nil
+		end
 	else
 		ChunkRenderer.stats.sectionsParts -= 1
 		PartsBackend.destroy(r.handle)
@@ -147,6 +159,7 @@ local function replaceRender(section: Section, r: Render?, immediate: boolean?)
 			ChunkRenderer.stats.sectionsEditable += 1
 		elseif r.kind == "quads" then
 			ChunkRenderer.stats.sectionsQuads += 1
+			tempSections[section] = true
 		else
 			ChunkRenderer.stats.sectionsParts += 1
 		end
@@ -195,7 +208,7 @@ function ChunkRenderer.chooseBackend(section: Section): string
 	if ChunkRenderer.backend ~= "editable" or section.forceParts then
 		return "parts"
 	end
-	if EditableMeshBackend.canStart() then
+	if EditableMeshBackend.canStart(section.editPending) then
 		return "editable"
 	end
 	if EditableMeshBackend.isBudgetLimited() then
@@ -248,8 +261,13 @@ function ChunkRenderer.renderSection(section: Section, chunk: any, neighbors: Se
 				return
 			end
 			section.failCount = 0
+			if section.editPending then
+				section.editPending = false
+				ChunkRenderer.stats.swaps += 1
+				ChunkRenderer.stats.swapTime += os.clock() - section.editTime
+			end
 			replaceRender(section, { kind = "editable", handle = handle })
-		end)
+		end, section.editPending)
 	else
 		local t = os.clock()
 		local handle = PartsBackend.build(paddedRender, section.origin, renderFolder)
@@ -301,12 +319,27 @@ function ChunkRenderer.renderUrgent(section: Section, chunk: any, neighbors: Sec
 		section.renderDirty = false
 	else
 		local result = GreedyMesher.mesh(paddedUrgent)
-		local handle = QuadPartsBackend.build(result, section.origin, renderFolder)
+		local handle = QuadPartsBackend.build(result, paddedUrgent, section.origin, renderFolder)
 		replaceRender(section, { kind = "quads", handle = handle }, true)
-		section.renderDirty = true -- bake the real mesh in the background
+		section.editPending = true
+		section.editTime = os.clock()
+		-- bake the real mesh in the background (priority), unless the F6 debug toggle keeps quads
+		section.renderDirty = not ChunkRenderer.keepTemp
 	end
 	ChunkRenderer.stats.urgentBuilds += 1
 	ChunkRenderer.stats.urgentTime += os.clock() - t
+end
+
+-- F6 debug toggle. Turning it off queues meshes for every section still showing quad Parts.
+function ChunkRenderer.setKeepTemp(on: boolean)
+	ChunkRenderer.keepTemp = on
+	if not on then
+		for s in tempSections do
+			if s.alive then
+				s.renderDirty = true
+			end
+		end
+	end
 end
 
 -- Rebuild a section's collision boxes. Runs inside a scheduler job.

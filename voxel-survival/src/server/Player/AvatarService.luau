@@ -15,6 +15,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
+local AssetDiagnostics = require(Shared.Util.AssetDiagnostics)
 
 local AvatarService = {}
 
@@ -41,7 +42,9 @@ local function description(player: Player): HumanoidDescription
 	local desc: HumanoidDescription? = nil
 	if player.UserId > 0 then
 		local ok, result = pcall(function()
-			return Players:GetHumanoidDescriptionFromUserId(player.UserId)
+			return AssetDiagnostics.phase("GetHumanoidDescriptionFromUserId", function()
+				return Players:GetHumanoidDescriptionFromUserId(player.UserId)
+			end)
 		end)
 		if ok then
 			desc = result
@@ -112,12 +115,17 @@ function AvatarService.spawn(player: Player, cframe: CFrame)
 	if not player.Parent then
 		return
 	end
+	local desc = description(player)
 	local ok, model = pcall(function()
-		return Players:CreateHumanoidModelFromDescription(description(player), Enum.HumanoidRigType.R6)
+		return AssetDiagnostics.phase("CreateHumanoidModelFromDescription (R6 avatar build)", function()
+			return Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R6)
+		end)
 	end)
 	if not ok or not model then
 		warn(`[AvatarService] R6 build failed for {player.Name} ({model}); using LoadCharacter`)
-		player:LoadCharacter()
+		AssetDiagnostics.phase("LoadCharacter (fallback)", function()
+			player:LoadCharacter()
+		end)
 		if player.Character then
 			player.Character:PivotTo(cframe)
 		end
@@ -129,14 +137,18 @@ function AvatarService.spawn(player: Player, cframe: CFrame)
 	if not character:FindFirstChild("Animate") then
 		warn("[AvatarService] generated character has no Animate script; it will not animate")
 	end
-	character:PivotTo(cframe)
+	AssetDiagnostics.phase("positioning the character", function()
+		character:PivotTo(cframe)
+	end)
 	-- Assigning player.Character manually doesn't clean up the old body (LoadCharacter would).
 	local old = player.Character
 	player.Character = character
 	if old and old ~= character then
 		old:Destroy()
 	end
-	character.Parent = workspace
+	AssetDiagnostics.phase("parenting the character", function()
+		character.Parent = workspace
+	end)
 end
 
 -- Movement settings applied to every character (server-side defaults; the client's

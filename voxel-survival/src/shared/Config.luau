@@ -116,5 +116,6 @@ Config.STUDIO_STARTER_KIT = {
 -- KeyCode names (strings, so this module stays loadable in headless tests).
 Config.DEBUG_KEY_OVERLAY = "F3" -- toggle the performance overlay
 Config.DEBUG_KEY_BACKEND = "F4" -- switch render backend (A/B test)
+Config.DEBUG_KEY_KEEP_TEMP = "F6" -- keep the instant-edit quad Parts (compare them to meshes)
 
 return Config

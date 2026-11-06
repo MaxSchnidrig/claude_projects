@@ -178,6 +178,9 @@ local function collisionJob(rec: Rec, section: ChunkRenderer.Section): () -> ()
 	end
 end
 
+-- Sections that were just edited: their mesh rebuild goes before all other render work.
+local editQueue: { { rec: Rec, section: ChunkRenderer.Section } } = {}
+
 local function pickJob(): (() -> ())?
 	-- 1. collision near the player
 	local cr = Config.COLLISION_RADIUS
@@ -194,7 +197,23 @@ local function pickJob(): (() -> ())?
 			end
 		end
 	end
-	-- 2. nearest-first generation and meshing
+	-- 2. meshes for just-edited sections (they're showing temporary quad Parts)
+	local i = 1
+	while i <= #editQueue do
+		local e = editQueue[i]
+		local rec, s = e.rec, e.section
+		if not s.alive or not s.renderDirty or chunks[rec.key] ~= rec or not rec.data then
+			table.remove(editQueue, i)
+		else
+			local mode = ChunkRenderer.chooseBackend(s)
+			if mode ~= "wait" then
+				table.remove(editQueue, i)
+				return renderJob(rec, s, mode)
+			end
+			i += 1
+		end
+	end
+	-- 3. nearest-first generation and meshing
 	local rd = effectiveRenderDistance()
 	local genLimit = (rd + 1.5) ^ 2
 	local meshLimit = (rd + 0.5) ^ 2
@@ -364,6 +383,9 @@ local function rebuildNow(touched: { { rec: Rec, section: ChunkRenderer.Section 
 			if dx * dx + dz * dz <= meshLimit and neighborsReady(rec) and (s.render ~= nil or not s.culled) then
 				urgentLeft -= 1
 				ChunkRenderer.renderUrgent(s, data, neighbors(rec))
+				if s.renderDirty then
+					table.insert(editQueue, { rec = rec, section = s })
+				end
 			end
 			-- collision: rebuild now if this section has collision, so you can walk into the hole
 			-- (or stand on the new block) immediately
@@ -558,6 +580,20 @@ function ClientWorld.biomeAt(wx: number, wz: number): number?
 		return nil
 	end
 	return buffer.readu8(data.biomes, lx + lz * CS)
+end
+
+-- F6 debug toggle: keep instant quad Parts (no mesh hand-over) to compare them with meshes.
+function ClientWorld.setKeepTemp(on: boolean)
+	ChunkRenderer.setKeepTemp(on)
+	if not on then
+		for _, rec in chunks do
+			for _, s in rec.sections do
+				if s.alive and s.renderDirty and s.render and s.render.kind == "quads" then
+					table.insert(editQueue, { rec = rec, section = s })
+				end
+			end
+		end
+	end
 end
 
 -- Rebuild every section's geometry (used when switching render backends).
