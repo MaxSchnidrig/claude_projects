@@ -145,7 +145,15 @@ end
 -- geometry stays visible for Config.RENDER_SWAP_OVERLAP seconds: a freshly parented MeshPart can
 -- take a few frames before it actually draws, and destroying the old one in the same frame showed
 -- a see-through "x-ray" flash. Removals with no replacement (unload, empty section) are immediate.
-local function replaceRender(section: Section, r: Render?, immediate: boolean?)
+--
+-- Transparent geometry (water, ice, glass) must never be doubled: two overlapping see-through
+-- surfaces blend and flicker. So during the overlap the NEW transparent parts are drawn almost
+-- invisibly (LocalTransparencyModifier 0.99: they still get drawn, so they're ready), and at the
+-- end of the overlap one callback makes them fully visible, removes the old geometry and runs
+-- `afterSwap` (e.g. clearing the live edit mesh), all in the same frame.
+local NEAR_INVISIBLE = 0.99
+
+local function replaceRender(section: Section, r: Render?, immediate: boolean?, afterSwap: (() -> ())?)
 	local old = section.render
 	section.render = r
 	liveSections[section] = if r and r.kind == "editable" and #r.handle.meshes > 0 then true else nil
@@ -156,24 +164,60 @@ local function replaceRender(section: Section, r: Render?, immediate: boolean?)
 			ChunkRenderer.stats.sectionsParts += 1
 		end
 	end
-	if old and r and not immediate and Config.RENDER_SWAP_OVERLAP > 0 then
-		task.delay(Config.RENDER_SWAP_OVERLAP, destroyRender, section, old)
+	if r and (old or afterSwap) and not immediate and Config.RENDER_SWAP_OVERLAP > 0 then
+		local hiddenNew: { BasePart } = {}
+		for _, p in r.handle.parts do
+			if p.Transparency > 0 then
+				p.LocalTransparencyModifier = NEAR_INVISIBLE
+				table.insert(hiddenNew, p)
+			end
+		end
+		task.delay(Config.RENDER_SWAP_OVERLAP, function()
+			for _, p in hiddenNew do
+				p.LocalTransparencyModifier = 0
+			end
+			destroyRender(section, old)
+			if afterSwap then
+				afterSwap()
+			end
+		end)
 	else
 		destroyRender(section, old)
+		if afterSwap then
+			afterSwap()
+		end
 	end
 end
 
--- Give a section's live pool mesh back (immediately, or after the swap overlap).
-local function releaseLive(section: Section, afterOverlap: boolean?)
+-- Give a section's live pool mesh back now.
+local function releaseLive(section: Section)
 	local slot = section.liveSlot
-	if not slot then
-		return
-	end
-	if afterOverlap then
-		LiveEditPool.releaseAfter(slot, Config.RENDER_SWAP_OVERLAP)
-	else
+	if slot then
 		LiveEditPool.release(slot)
 	end
+end
+
+-- An afterSwap callback that releases the section's live slot, unless the slot was written again
+-- in the meantime (a newer edit is showing on it).
+local function releaseLiveAfterSwap(section: Section): (() -> ())?
+	local slot = section.liveSlot
+	if not slot then
+		return nil
+	end
+	local writes = slot.writes
+	return function()
+		if section.liveSlot == slot and slot.writes == writes then
+			LiveEditPool.release(slot)
+		end
+	end
+end
+
+-- Temporary bake failure (e.g. editable budget momentarily full): keep the current geometry and
+-- retry with backoff instead of falling back to Parts.
+local function retryLater(section: Section)
+	section.failCount += 1
+	section.retryAt = os.clock() + math.min(0.5 * 2 ^ (section.failCount - 1), 8)
+	section.renderDirty = true
 end
 
 -- Hide the old baked parts of every group the live mesh now shows (same frame as the edit).
@@ -227,6 +271,13 @@ function ChunkRenderer.chooseBackend(section: Section): string
 	if ChunkRenderer.backend ~= "editable" or section.forceParts then
 		return "parts"
 	end
+	local slot = section.liveSlot
+	if slot and LiveEditPool.canBake(slot, section) then
+		return "editable" -- bakes from the live mesh: needs no new EditableMesh
+	end
+	if section.retryAt > os.clock() then
+		return "wait" -- backing off after a temporary failure
+	end
 	if EditableMeshBackend.canStart(section.editPending) then
 		return "editable"
 	end
@@ -248,6 +299,36 @@ end
 -- Rebuild a section's visible geometry. Runs inside a scheduler job.
 function ChunkRenderer.renderSection(section: Section, chunk: any, neighbors: SectionSampler.Neighbors, mode: string)
 	section.renderDirty = false
+
+	-- Just-edited section on a live pool mesh that shows exactly its current contents: bake that
+	-- mesh directly (no re-meshing, no extra EditableMesh).
+	local slot = section.liveSlot
+	if mode == "editable" and slot and LiveEditPool.canBake(slot, section) then
+		local version = section.version
+		LiveEditPool.bake(slot, function(handle, err)
+			if not section.alive or section.version ~= version or section.liveSlot ~= slot then
+				if handle then
+					EditableMeshBackend.destroy(handle)
+				end
+				return
+			end
+			if not handle then
+				EditableMeshBackend.stats.lastError = tostring(err)
+				retryLater(section)
+				return
+			end
+			section.failCount = 0
+			section.retryAt = 0
+			if section.editPending then
+				section.editPending = false
+				ChunkRenderer.stats.swaps += 1
+				ChunkRenderer.stats.swapTime += os.clock() - section.editTime
+			end
+			replaceRender(section, { kind = "editable", handle = handle }, false, releaseLiveAfterSwap(section))
+		end)
+		return
+	end
+
 	section.version += 1
 	local version = section.version
 
@@ -275,20 +356,23 @@ function ChunkRenderer.renderSection(section: Section, chunk: any, neighbors: Se
 			if err or not handle then
 				if budgetHit and EditableMeshBackend.isBudgetLimited() and demoteFarthestFor(section) then
 					section.renderDirty = true -- a farther section gave up its slot; retry now
+				elseif budgetHit and not EditableMeshBackend.isBudgetLimited() then
+					retryLater(section) -- static mode: the budget frees up as uploads finish
 				else
 					fallBackToParts(section)
 				end
 				return
 			end
 			section.failCount = 0
+			section.retryAt = 0
 			if section.editPending then
 				section.editPending = false
 				ChunkRenderer.stats.swaps += 1
 				ChunkRenderer.stats.swapTime += os.clock() - section.editTime
 			end
-			replaceRender(section, { kind = "editable", handle = handle })
-			-- the baked mesh is parented: hand back the live mesh once it's surely drawing
-			releaseLive(section, true)
+			-- the baked mesh is parented: the live mesh (if any) goes back in the same frame the
+			-- baked one becomes fully visible
+			replaceRender(section, { kind = "editable", handle = handle }, false, releaseLiveAfterSwap(section))
 		end, section.editPending)
 	else
 		local t = os.clock()

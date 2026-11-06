@@ -15,9 +15,11 @@ local BlockInteraction = require(script.Parent.Interaction.BlockInteraction)
 local Hotbar = require(script.Parent.UI.Hotbar)
 local Crosshair = require(script.Parent.UI.Crosshair)
 local DebugOverlay = require(script.Parent.Debug.DebugOverlay)
+local CoreGuiSetup = require(script.Parent.UI.CoreGuiSetup)
 
 print(`[{GameInfo.TITLE}] client {GameInfo.VERSION}`)
 
+CoreGuiSetup.init()
 ClientWorld.init()
 InventoryClient.init()
 MovementController.init()

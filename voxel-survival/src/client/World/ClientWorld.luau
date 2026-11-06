@@ -344,6 +344,8 @@ local function markDirty(wx: number, wy: number, wz: number): { { rec: Rec, sect
 			local sec = rec.sections[s + 1]
 			sec.renderDirty = true
 			sec.collisionDirty = true
+			-- contents changed: in-flight builds and any live edit mesh for it are now out of date
+			sec.version += 1
 			table.insert(touched, { rec = rec, section = sec })
 		end
 	end

@@ -6,8 +6,11 @@
 -- written straight into a pooled mesh on the same frame. It's the same mesh type, vertex colours
 -- and material as the baked terrain, so it looks identical. The section's old baked MeshParts
 -- for the groups the pool covers are hidden in that same frame.
--- Meanwhile the normal background job bakes a static mesh for the section; once that is parented
--- (plus the usual overlap) the pooled mesh is cleared and returned to the pool.
+-- Meanwhile a background job bakes the slot's live mesh straight to static content (no second
+-- EditableMesh needed, so no extra budget); once the baked MeshPart is drawing (after the usual
+-- overlap) the pooled mesh is cleared and returned to the pool, in the same frame the baked one
+-- becomes visible. The pool's MeshParts stay parented all the time (an unused slot just has no
+-- faces): re-parenting a MeshPart can leave it undrawn for a few frames.
 --
 -- Each pool slot has one live mesh per render group it covers (opaque terrain, water). Groups a
 -- slot doesn't cover (lava, ice, glass) keep showing the section's old baked parts until the bake.
@@ -35,12 +38,15 @@ local CENTER = Vector3.new(SS / 2, SS / 2, SS / 2) -- block units, section-local
 local HALF = SS / 2 * BS -- studs
 local ANCHOR = 0.01 -- studs
 
-type Sub = { em: any, part: MeshPart, faces: { number } }
+type Sub = { em: any, key: string, part: MeshPart, faces: { number } }
 export type Slot = {
 	subs: { [string]: Sub },
 	section: any?, -- ChunkRenderer.Section currently shown by this slot
 	lastUsed: number,
 	releaseToken: number,
+	writes: number, -- increments on every write (detects edits during a bake/hand-over)
+	sectionVersion: number, -- section.version the slot's geometry corresponds to
+	uncoveredCount: number, -- groups in the section the slot can't show (then the bake is normal)
 }
 
 local LiveEditPool = {}
@@ -51,6 +57,8 @@ LiveEditPool.stats = {
 	writes = 0,
 	writeTime = 0,
 	noSlot = 0, -- edits that found no free slot (used the delayed swap)
+	bakes = 0,
+	bakeFailures = 0,
 	createError = "",
 }
 
@@ -75,7 +83,15 @@ local function addAnchor(em: any, corner: Vector3, dir: number)
 end
 
 local function createSlot(): Slot?
-	local slot: Slot = { subs = {}, section = nil, lastUsed = 0, releaseToken = 0 }
+	local slot: Slot = {
+		subs = {},
+		section = nil,
+		lastUsed = 0,
+		releaseToken = 0,
+		writes = 0,
+		sectionVersion = -1,
+		uncoveredCount = 0,
+	}
 	for _, g in coveredGroups() do
 		local ok, em = pcall(function()
 			return AssetService:CreateEditableMesh()
@@ -117,7 +133,9 @@ local function createSlot(): Slot?
 		mp.Material = style.material
 		mp.Color = if Config.USE_VERTEX_COLORS then Color3.new(1, 1, 1) else style.color
 		mp.Transparency = style.transparency
-		slot.subs[g.key] = { em = em, part = mp, faces = {} }
+		mp.CFrame = CFrame.new(0, -1000, 0) -- parked until first used (it has no faces anyway)
+		mp.Parent = folder -- stays parented for good (see header)
+		slot.subs[g.key] = { em = em, key = g.key, part = mp, faces = {} }
 	end
 	return slot
 end
@@ -169,6 +187,7 @@ end
 function LiveEditPool.write(slot: Slot, section: any, result: GreedyMesher.MeshResult): { [string]: boolean }
 	local t = os.clock()
 	slot.releaseToken += 1 -- cancels any pending release from an earlier hand-over
+	slot.writes += 1
 	slot.lastUsed = t
 	clear(slot)
 	local uncovered: { [string]: boolean } = {}
@@ -190,8 +209,13 @@ function LiveEditPool.write(slot: Slot, section: any, result: GreedyMesher.MeshR
 	local cf = CFrame.new(section.origin + CENTER * BS)
 	for _, sub in slot.subs do
 		sub.part.CFrame = cf
-		sub.part.Parent = if #sub.faces > 0 then folder else nil
 	end
+	local n = 0
+	for _ in uncovered do
+		n += 1
+	end
+	slot.uncoveredCount = n
+	slot.sectionVersion = section.version
 	LiveEditPool.stats.writes += 1
 	LiveEditPool.stats.writeTime += os.clock() - t
 	return uncovered
@@ -200,10 +224,7 @@ end
 -- Return a slot to the pool now.
 function LiveEditPool.release(slot: Slot)
 	slot.releaseToken += 1
-	clear(slot)
-	for _, sub in slot.subs do
-		sub.part.Parent = nil
-	end
+	clear(slot) -- no faces = nothing drawn; the parts stay parented
 	if slot.section then
 		slot.section.liveSlot = nil
 		slot.section = nil
@@ -220,6 +241,68 @@ function LiveEditPool.releaseAfter(slot: Slot, delay: number)
 			LiveEditPool.release(slot)
 		end
 	end)
+end
+
+-- Bake the slot's current live geometry to static MeshParts (async). No new EditableMesh is
+-- created, so this costs no extra editable budget. onDone(handle) or onDone(nil, err).
+-- The handle is EditableMeshBackend-compatible (destroy with EditableMeshBackend.destroy).
+function LiveEditPool.bake(slot: Slot, onDone: (any?, string?) -> ())
+	task.spawn(function()
+		local handle = { parts = {}, keys = {}, meshes = {}, triangles = 0, liveBytes = 0, counted = false }
+		local err: string? = nil
+		for _, sub in slot.subs do
+			if #sub.faces > 0 then
+				local ok, res, content = pcall(function()
+					return AssetService:CreateDataModelContentAsync(Content.fromObject(sub.em))
+				end)
+				if not ok or res ~= Enum.CreateContentResult.Success then
+					err = `bake: {if ok then res else res}`
+					break
+				end
+				local ok2, part = pcall(function()
+					return AssetService:CreateMeshPartAsync(content, EditableMeshBackend.MESH_OPTIONS)
+				end)
+				if not ok2 or not part then
+					err = `bake CreateMeshPartAsync: {part}`
+					break
+				end
+				local mp = part :: MeshPart
+				mp.Anchored = true
+				mp.CanCollide = false
+				mp.CanQuery = false
+				mp.CanTouch = false
+				mp.CastShadow = true
+				mp.Material = sub.part.Material
+				mp.Color = sub.part.Color
+				mp.Transparency = sub.part.Transparency
+				mp.CFrame = sub.part.CFrame
+				table.insert(handle.parts, mp)
+				table.insert(handle.keys, sub.key)
+				handle.triangles += #sub.faces
+			end
+		end
+		if err then
+			for _, p in handle.parts do
+				p:Destroy()
+			end
+			LiveEditPool.stats.bakeFailures += 1
+			onDone(nil, err)
+			return
+		end
+		for _, p in handle.parts do
+			p.Parent = folder
+		end
+		EditableMeshBackend.stats.meshParts += #handle.parts
+		EditableMeshBackend.stats.triangles += handle.triangles
+		handle.counted = true
+		LiveEditPool.stats.bakes += 1
+		onDone(handle, nil)
+	end)
+end
+
+-- Is the slot showing exactly the section's current contents, with every group covered?
+function LiveEditPool.canBake(slot: Slot, section: any): boolean
+	return slot.section == section and slot.sectionVersion == section.version and slot.uncoveredCount == 0
 end
 
 -- Sections currently shown by pool meshes (for the F6 toggle).

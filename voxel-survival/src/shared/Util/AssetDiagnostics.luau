@@ -41,6 +41,7 @@ local DESCRIPTION_FIELDS = {
 -- before any game code runs (place content, Studio itself).
 local scriptsStarted = DateTime.now().UnixTimestampMillis / 1000
 local loggedAt: { [string]: number } = {} -- asset id -> log timestamp (from log history)
+local characterSpawns: { number } = {} -- (client) times the local character appeared
 
 local unresolved: { [string]: boolean } = {}
 local reported: { [string]: boolean } = {}
@@ -176,6 +177,18 @@ local function describePhase(id: string): string
 		else
 			text ..= string.format("; logged %.2f s after our scripts started", t - scriptsStarted)
 		end
+		-- (client) relative to the most recent local character spawn before it
+		local spawnT: number? = nil
+		for _, s in characterSpawns do
+			if s <= t + 0.05 then
+				spawnT = s
+			end
+		end
+		if spawnT then
+			text ..= string.format(", %.2f s after the local character spawned", t - spawnT)
+		elseif RunService:IsClient() then
+			text ..= ", before the local character spawned"
+		end
 	end
 	return text
 end
@@ -201,6 +214,15 @@ local function onMessage(message: string, timestamp: number?)
 end
 
 function AssetDiagnostics.init()
+	if RunService:IsClient() then
+		local player = Players.LocalPlayer
+		player.CharacterAdded:Connect(function()
+			table.insert(characterSpawns, now())
+		end)
+		if player.Character then
+			table.insert(characterSpawns, now())
+		end
+	end
 	LogService.MessageOut:Connect(function(message)
 		onMessage(message, nil)
 	end)
