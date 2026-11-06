@@ -22,6 +22,7 @@ local SectionSampler = require(Shared.Meshing.SectionSampler)
 local GreedyMesher = require(Shared.Meshing.GreedyMesher)
 local EditableMeshBackend = require(script.Parent.EditableMeshBackend)
 local PartsBackend = require(script.Parent.PartsBackend)
+local QuadPartsBackend = require(script.Parent.QuadPartsBackend)
 local CollisionBuilder = require(script.Parent.CollisionBuilder)
 
 local BS = Config.BLOCK_SIZE
@@ -56,10 +57,14 @@ ChunkRenderer.stats = {
 	demotions = 0,
 	sectionsEditable = 0,
 	sectionsParts = 0,
+	sectionsQuads = 0, -- just-edited sections shown with instant quad Parts, awaiting their mesh
+	urgentBuilds = 0,
+	urgentTime = 0,
 }
 
 local paddedRender = buffer.create(SectionSampler.VOLUME)
 local paddedCollision = buffer.create(SectionSampler.VOLUME)
+local paddedUrgent = buffer.create(SectionSampler.VOLUME) -- urgent builds may interrupt a yielded job
 
 local centerX, centerZ = 0, 0
 -- Sections currently rendered with EditableMesh in live (unbaked) mode, for demotion.
@@ -120,6 +125,9 @@ local function destroyRender(section: Section, r: Render?)
 	if r.kind == "editable" then
 		ChunkRenderer.stats.sectionsEditable -= 1
 		EditableMeshBackend.destroy(r.handle)
+	elseif r.kind == "quads" then
+		ChunkRenderer.stats.sectionsQuads -= 1
+		QuadPartsBackend.destroy(r.handle)
 	else
 		ChunkRenderer.stats.sectionsParts -= 1
 		PartsBackend.destroy(r.handle)
@@ -137,6 +145,8 @@ local function replaceRender(section: Section, r: Render?, immediate: boolean?)
 	if r then
 		if r.kind == "editable" then
 			ChunkRenderer.stats.sectionsEditable += 1
+		elseif r.kind == "quads" then
+			ChunkRenderer.stats.sectionsQuads += 1
 		else
 			ChunkRenderer.stats.sectionsParts += 1
 		end
@@ -270,6 +280,33 @@ function ChunkRenderer.refreshRetries(sections: { Section })
 			s.renderDirty = true
 		end
 	end
+end
+
+-- Rebuild a just-edited section RIGHT NOW (same frame as the click), so a broken block vanishes
+-- and a placed block appears instantly. Instant geometry: quad Parts (or Parts in Parts mode),
+-- which draw immediately; the old geometry is removed in the same frame, so there's never a gap.
+-- The section stays renderDirty so a background job bakes the real mesh, which then replaces the
+-- quads after the usual overlap (Config.RENDER_SWAP_OVERLAP).
+function ChunkRenderer.renderUrgent(section: Section, chunk: any, neighbors: SectionSampler.Neighbors)
+	local t = os.clock()
+	section.version += 1 -- any in-flight mesh for the old contents is now stale
+	SectionSampler.fill(paddedUrgent, chunk, neighbors, section.sy)
+	local class = GreedyMesher.classify(paddedUrgent)
+	if class ~= "mesh" then
+		replaceRender(section, nil)
+		section.renderDirty = false
+	elseif ChunkRenderer.chooseBackend(section) == "parts" then
+		local handle = PartsBackend.build(paddedUrgent, section.origin, renderFolder)
+		replaceRender(section, { kind = "parts", handle = handle }, true)
+		section.renderDirty = false
+	else
+		local result = GreedyMesher.mesh(paddedUrgent)
+		local handle = QuadPartsBackend.build(result, section.origin, renderFolder)
+		replaceRender(section, { kind = "quads", handle = handle }, true)
+		section.renderDirty = true -- bake the real mesh in the background
+	end
+	ChunkRenderer.stats.urgentBuilds += 1
+	ChunkRenderer.stats.urgentTime += os.clock() - t
 end
 
 -- Rebuild a section's collision boxes. Runs inside a scheduler job.

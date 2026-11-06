@@ -7,6 +7,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local GameInfo = require(Shared.GameInfo)
 local Config = require(Shared.Config)
 require(Shared.Net.Remotes) -- creates the RemoteEvents before anything listens
+require(Shared.Util.AssetDiagnostics).init() -- reports where failing asset IDs come from
 
 local WorldService = require(script.Parent.World.WorldService)
 local ChunkStreamer = require(script.Parent.World.ChunkStreamer)

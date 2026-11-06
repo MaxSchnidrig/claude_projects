@@ -5,6 +5,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local GameInfo = require(Shared.GameInfo)
+require(Shared.Util.AssetDiagnostics).init() -- reports where failing asset IDs come from
 
 local ClientWorld = require(script.Parent.World.ClientWorld)
 local InventoryClient = require(script.Parent.Player.InventoryClient)

@@ -169,7 +169,7 @@ local function update(dt: number)
 			cur.progress = if total <= 0 then 1 else cur.progress + dt / total
 			if cur.progress >= 1 then
 				send("finish", cur.x, cur.y, cur.z)
-				ClientWorld.setBlock(cur.x, cur.y, cur.z, AIR) -- prediction; server corrects if wrong
+				ClientWorld.setBlock(cur.x, cur.y, cur.z, AIR, true) -- instant prediction; server corrects if wrong
 				cooldownUntil = now + (if total <= 0 then 0.05 else Config.BREAK_COOLDOWN)
 				mining = nil
 				crackPart.Transparency = 1
@@ -192,7 +192,7 @@ local function update(dt: number)
 			local solid = BlockRegistry.isSolid[item.block + 1]
 			if current ~= nil and (current == AIR or isLiquid[current + 1]) and not (solid and overlapsSelf(x, y, z)) then
 				send("place", x, y, z)
-				ClientWorld.setBlock(x, y, z, item.block) -- prediction
+				ClientWorld.setBlock(x, y, z, item.block, true) -- instant prediction
 				nextPlaceAt = now + Config.PLACE_REPEAT
 			end
 		end

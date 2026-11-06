@@ -314,15 +314,18 @@ local function refresh()
 end
 
 -- Mark the sections touching a block dirty (including neighbours across borders).
-local function markDirty(wx: number, wy: number, wz: number)
+-- Returns the affected (rec, section) pairs.
+local function markDirty(wx: number, wy: number, wz: number): { { rec: Rec, section: ChunkRenderer.Section } }
 	local cx, cz, lx, lz = ChunkData.worldToChunk(wx, wz)
 	local sy = wy // SS
+	local touched = {}
 	local function mark(ccx: number, ccz: number, s: number)
 		local rec = chunks[ChunkData.key(ccx, ccz)]
 		if rec and s >= 0 and s < NSEC then
 			local sec = rec.sections[s + 1]
 			sec.renderDirty = true
 			sec.collisionDirty = true
+			table.insert(touched, { rec = rec, section = sec })
 		end
 	end
 	mark(cx, cz, sy)
@@ -341,6 +344,33 @@ local function markDirty(wx: number, wy: number, wz: number)
 		mark(cx, cz - 1, sy)
 	elseif lz == CS - 1 then
 		mark(cx, cz + 1, sy)
+	end
+	return touched
+end
+
+-- Same-frame rebuilds for edits (see ChunkRenderer.renderUrgent). Capped per frame so a burst of
+-- remote edits (e.g. future explosions) can't stall a frame; extra sections use the normal path.
+local URGENT_SECTIONS_PER_FRAME = 8
+local urgentLeft = URGENT_SECTIONS_PER_FRAME
+
+local function rebuildNow(touched: { { rec: Rec, section: ChunkRenderer.Section } })
+	local meshLimit = (effectiveRenderDistance() + 0.5) ^ 2
+	for _, t in touched do
+		local rec, s = t.rec, t.section
+		local data = rec.data
+		local dx, dz = rec.cx - centerX, rec.cz - centerZ
+		if urgentLeft > 0 and data and rec.diffsReady and s.alive then
+			-- render (only where we'd render anyway, and once neighbours exist for border culling)
+			if dx * dx + dz * dz <= meshLimit and neighborsReady(rec) and (s.render ~= nil or not s.culled) then
+				urgentLeft -= 1
+				ChunkRenderer.renderUrgent(s, data, neighbors(rec))
+			end
+			-- collision: rebuild now if this section has collision, so you can walk into the hole
+			-- (or stand on the new block) immediately
+			if s.collision ~= nil then
+				ChunkRenderer.collideSection(s, data)
+			end
+		end
 	end
 end
 
@@ -447,7 +477,7 @@ function ClientWorld.init()
 	Remotes.get("BlockChanged").OnClientEvent:Connect(function(x: any, y: any, z: any, id: any)
 		if typeof(x) == "number" and typeof(y) == "number" and typeof(z) == "number" and typeof(id) == "number" then
 			if ClientWorld.getBlock(x, y, z) ~= id then
-				ClientWorld.setBlock(x, y, z, id)
+				ClientWorld.setBlock(x, y, z, id, true) -- others' edits and our rollbacks show instantly
 			end
 		end
 	end)
@@ -460,6 +490,7 @@ function ClientWorld.init()
 	local prof = ClientWorld.profile
 	RunService.Heartbeat:Connect(function(dt)
 		local t0 = os.clock()
+		urgentLeft = URGENT_SECTIONS_PER_FRAME
 		acc += dt
 		if acc >= 0.25 then
 			acc = 0
@@ -502,7 +533,9 @@ function ClientWorld.getBlock(wx: number, wy: number, wz: number): number?
 end
 
 -- Local block write (used when the server confirms a change; phase 2).
-function ClientWorld.setBlock(wx: number, wy: number, wz: number, id: number)
+-- Block write. `instant` = show the change on this very frame (player edits, server-confirmed
+-- edits); otherwise the scheduler rebuilds the section in the background.
+function ClientWorld.setBlock(wx: number, wy: number, wz: number, id: number, instant: boolean?)
 	if wy < 0 or wy >= H then
 		return
 	end
@@ -512,7 +545,10 @@ function ClientWorld.setBlock(wx: number, wy: number, wz: number, id: number)
 		return
 	end
 	ChunkData.set(data, lx, wy, lz, id)
-	markDirty(wx, wy, wz)
+	local touched = markDirty(wx, wy, wz)
+	if instant then
+		rebuildNow(touched)
+	end
 end
 
 function ClientWorld.biomeAt(wx: number, wz: number): number?
