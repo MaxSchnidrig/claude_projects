@@ -32,6 +32,9 @@ Config.MAX_MESH_UPLOADS_IN_FLIGHT = 3 -- concurrent mesh uploads (bake + CreateM
 -- (forum reports: ~8 meshes), so meshes are baked to static content and destroyed right after
 -- upload; this caps how many exist while waiting/uploading.
 Config.MAX_LIVE_EDITABLE = 4
+-- Seconds the old geometry of a rebuilt section stays visible after the new geometry is parented
+-- (prevents a see-through flash while the new MeshPart starts drawing). Raise if you still see it.
+Config.RENDER_SWAP_OVERLAP = 0.15
 -- How long a section that fell back to Parts waits before trying EditableMesh again (seconds).
 Config.EDITABLE_RETRY_SECONDS = 10
 -- Render distance cap while degraded to Parts (Parts backend selected, or EditableMesh can't be
@@ -90,6 +93,9 @@ Config.THIRD_PERSON_DISTANCE = 12 -- studs (4 blocks)
 -- Avatar: every player is a blocky R6 rig with a cube head, keeping clothing and body colours.
 Config.AVATAR_HEAD_SIZE = 1.5 -- studs, edge of the cube head
 Config.KEEP_ACCESSORIES = false -- hats/hair would poke through blocks and break the blocky look
+-- Print every asset ID on each player's HumanoidDescription when their character is built
+-- (to track down "asset type does not match" errors).
+Config.DEBUG_AVATAR = false
 
 Config.HOTBAR_SLOTS = 9
 Config.INVENTORY_SLOTS = 36 -- 9 hotbar + 27 main (main inventory UI arrives in phase 3)

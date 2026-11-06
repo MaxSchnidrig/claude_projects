@@ -119,7 +119,6 @@ local function destroyRender(section: Section, r: Render?)
 	end
 	if r.kind == "editable" then
 		ChunkRenderer.stats.sectionsEditable -= 1
-		liveSections[section] = nil
 		EditableMeshBackend.destroy(r.handle)
 	else
 		ChunkRenderer.stats.sectionsParts -= 1
@@ -127,20 +126,26 @@ local function destroyRender(section: Section, r: Render?)
 	end
 end
 
-local function replaceRender(section: Section, r: Render?)
+-- Swap a section's geometry. When new geometry replaces old (a rebuild after an edit), the old
+-- geometry stays visible for Config.RENDER_SWAP_OVERLAP seconds: a freshly parented MeshPart can
+-- take a few frames before it actually draws, and destroying the old one in the same frame showed
+-- a see-through "x-ray" flash. Removals with no replacement (unload, empty section) are immediate.
+local function replaceRender(section: Section, r: Render?, immediate: boolean?)
 	local old = section.render
 	section.render = r
+	liveSections[section] = if r and r.kind == "editable" and #r.handle.meshes > 0 then true else nil
 	if r then
 		if r.kind == "editable" then
 			ChunkRenderer.stats.sectionsEditable += 1
-			if #r.handle.meshes > 0 then
-				liveSections[section] = true -- holds live EditableMeshes
-			end
 		else
 			ChunkRenderer.stats.sectionsParts += 1
 		end
 	end
-	destroyRender(section, old)
+	if old and r and not immediate and Config.RENDER_SWAP_OVERLAP > 0 then
+		task.delay(Config.RENDER_SWAP_OVERLAP, destroyRender, section, old)
+	else
+		destroyRender(section, old)
+	end
 end
 
 local function fallBackToParts(section: Section)

@@ -23,6 +23,19 @@ local ACCESSORY_FIELDS = {
 	"ShouldersAccessory", "FrontAccessory", "BackAccessory", "WaistAccessory",
 }
 local BODY_PART_FIELDS = { "Head", "Torso", "LeftArm", "RightArm", "LeftLeg", "RightLeg" }
+-- Avatar animation packages are R15 assets; loading them on our R6 rig fails with
+-- "Asset type does not match requested type". R6 uses its own default animations instead.
+local ANIMATION_FIELDS = {
+	"ClimbAnimation", "FallAnimation", "IdleAnimation", "JumpAnimation",
+	"MoodAnimation", "RunAnimation", "SwimAnimation", "WalkAnimation",
+}
+local DEBUG_FIELDS = {
+	"Face", "Shirt", "Pants", "GraphicTShirt", "Head", "Torso", "LeftArm", "RightArm", "LeftLeg",
+	"RightLeg", "ClimbAnimation", "FallAnimation", "IdleAnimation", "JumpAnimation", "MoodAnimation",
+	"RunAnimation", "SwimAnimation", "WalkAnimation", "HatAccessory", "HairAccessory",
+	"FaceAccessory", "NeckAccessory", "ShouldersAccessory", "FrontAccessory", "BackAccessory",
+	"WaistAccessory",
+}
 
 local function description(player: Player): HumanoidDescription
 	local desc: HumanoidDescription? = nil
@@ -39,6 +52,14 @@ local function description(player: Player): HumanoidDescription
 	for _, field in BODY_PART_FIELDS do
 		(d :: any)[field] = 0
 	end
+	for _, field in ANIMATION_FIELDS do
+		(d :: any)[field] = 0
+	end
+	-- Emotes are R15-only too.
+	pcall(function()
+		d:SetEmotes({})
+		d:SetEquippedEmotes({})
+	end)
 	if not Config.KEEP_ACCESSORIES then
 		for _, field in ACCESSORY_FIELDS do
 			(d :: any)[field] = ""
@@ -46,6 +67,18 @@ local function description(player: Player): HumanoidDescription
 		pcall(function()
 			d:SetAccessories({}, true) -- also clears layered clothing entries
 		end)
+	end
+	if Config.DEBUG_AVATAR then
+		local parts = {}
+		for _, field in DEBUG_FIELDS do
+			local ok, v = pcall(function()
+				return (d :: any)[field]
+			end)
+			if ok and v ~= 0 and v ~= "" then
+				table.insert(parts, `{field}={v}`)
+			end
+		end
+		print(`[AvatarService] {player.Name} description: {table.concat(parts, ", ")}`)
 	end
 	return d
 end
