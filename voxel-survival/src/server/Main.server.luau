@@ -1,25 +1,36 @@
 --!strict
--- Server bootstrap: the ONLY server Script. Requires and starts each system in dependency order.
+-- Server bootstrap: the ONLY server Script. Starts each system in dependency order; each step is
+-- isolated (Util/Startup), so a failure is reported in Output and the rest still start.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local GameInfo = require(Shared.GameInfo)
 local Config = require(Shared.Config)
+local Startup = require(Shared.Util.Startup)
 require(Shared.Net.Remotes) -- creates the RemoteEvents before anything listens
-require(Shared.Util.AssetDiagnostics).init() -- reports where failing asset IDs come from
-
-local WorldService = require(script.Parent.World.WorldService)
-local ChunkStreamer = require(script.Parent.World.ChunkStreamer)
-local SpawnService = require(script.Parent.Player.SpawnService)
-local InventoryService = require(script.Parent.Player.InventoryService)
-local BlockActionService = require(script.Parent.Interaction.BlockActionService)
 
 print(`[{GameInfo.TITLE}] server {GameInfo.VERSION}`)
 
--- Phase 6 replaces this with the owning player's world seed (reserved-server worlds).
-WorldService.init(Config.DEFAULT_SEED)
-ChunkStreamer.init()
-InventoryService.init()
-BlockActionService.init()
-SpawnService.init()
+local server = script.Parent
+Startup.run("server", {
+	{ name = "AssetDiagnostics", run = function()
+		require(Shared.Util.AssetDiagnostics).init()
+	end },
+	-- Phase 6 replaces the default seed with the owning player's world seed (reserved servers).
+	{ name = "WorldService", run = function()
+		require(server.World.WorldService).init(Config.DEFAULT_SEED)
+	end },
+	{ name = "ChunkStreamer", run = function()
+		require(server.World.ChunkStreamer).init()
+	end },
+	{ name = "InventoryService", run = function()
+		require(server.Player.InventoryService).init()
+	end },
+	{ name = "BlockActionService", run = function()
+		require(server.Interaction.BlockActionService).init()
+	end },
+	{ name = "SpawnService", run = function()
+		require(server.Player.SpawnService).init()
+	end },
+})

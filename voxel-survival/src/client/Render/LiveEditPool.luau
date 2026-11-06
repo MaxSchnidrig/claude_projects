@@ -12,8 +12,8 @@
 -- becomes visible. The pool's MeshParts stay parented all the time (an unused slot just has no
 -- faces): re-parenting a MeshPart can leave it undrawn for a few frames.
 --
--- Each pool slot has one live mesh per render group it covers (opaque terrain, water). Groups a
--- slot doesn't cover (lava, ice, glass) keep showing the section's old baked parts until the bake.
+-- Each pool slot has one live mesh for the opaque terrain group. See-through and glowing blocks
+-- (water, ice, glass, lava) never use meshes: they're plain Parts rebuilt on the edit frame.
 --
 -- Fixed bounds: two tiny anchor triangles sit at opposite corners of the 16^3 section, so the
 -- mesh's bounding box never changes when geometry is rewritten (a MeshPart sizes itself to the
@@ -68,7 +68,8 @@ local folder: Instance
 -- Render groups the pool covers, as EditableMeshBackend group keys.
 local function coveredGroups(): { { key: string, tex: number } }
 	local list = {}
-	for _, texKey in { "stone", "water" } do
+	-- Opaque terrain only: water/ice/glass/lava are plain Parts (SpecialPartsBackend).
+	for _, texKey in { "stone" } do
 		local tex = BlockRegistry.textureIndex[texKey]
 		table.insert(list, { key = EditableMeshBackend.groupKey(tex), tex = tex })
 	end

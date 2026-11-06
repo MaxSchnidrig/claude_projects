@@ -23,6 +23,7 @@ local GreedyMesher = require(Shared.Meshing.GreedyMesher)
 local EditableMeshBackend = require(script.Parent.EditableMeshBackend)
 local PartsBackend = require(script.Parent.PartsBackend)
 local LiveEditPool = require(script.Parent.LiveEditPool)
+local SpecialPartsBackend = require(script.Parent.SpecialPartsBackend)
 local CollisionBuilder = require(script.Parent.CollisionBuilder)
 
 local BS = Config.BLOCK_SIZE
@@ -46,6 +47,7 @@ export type Section = {
 	culled: boolean, -- skipped by Parts-mode cave culling; ClientWorld re-dirties it when needed
 	editPending: boolean, -- just edited: its mesh rebuild has priority
 	liveSlot: any?, -- LiveEditPool slot currently showing this section (instant edit)
+	special: any?, -- SpecialPartsBackend handle: water/ice/glass/lava faces as plain Parts
 	editTime: number, -- os.clock() of that edit (to measure how long the hand-over takes)
 	alive: boolean,
 }
@@ -121,6 +123,7 @@ function ChunkRenderer.newSections(cx: number, cz: number): { Section }
 			culled = false,
 			editPending = false,
 			liveSlot = nil,
+			special = nil,
 			editTime = 0,
 			alive = true,
 		})
@@ -187,6 +190,29 @@ local function replaceRender(section: Section, r: Render?, immediate: boolean?, 
 			afterSwap()
 		end
 	end
+end
+
+-- Replace a section's special faces (water, ice, glass, lava) right away. `groups` nil = none.
+local function setSpecial(section: Section, groups: { [number]: { number } }?)
+	local old = section.special
+	section.special = if groups and section.alive then SpecialPartsBackend.build(groups, section.origin, renderFolder) else nil
+	SpecialPartsBackend.destroy(old)
+end
+
+-- Split a mesh result into the opaque part (EditableMesh) and the special groups (Parts).
+local function splitResult(result: GreedyMesher.MeshResult): (GreedyMesher.MeshResult, { [number]: { number } }?)
+	local opaque: GreedyMesher.MeshResult = { groups = {}, quadCount = 0, faceCount = result.faceCount }
+	local special: { [number]: { number } }? = nil
+	for tex, quads in result.groups do
+		if SpecialPartsBackend.isSpecial(tex) then
+			special = special or {}
+			(special :: any)[tex] = quads
+		else
+			opaque.groups[tex] = quads
+			opaque.quadCount += #quads // 6
+		end
+	end
+	return opaque, special
 end
 
 -- Give a section's live pool mesh back now.
@@ -337,15 +363,21 @@ function ChunkRenderer.renderSection(section: Section, chunk: any, neighbors: Se
 	if class ~= "mesh" then
 		replaceRender(section, nil)
 		releaseLive(section)
+		setSpecial(section, nil)
 		return
 	end
 
 	if mode == "editable" then
 		local t = os.clock()
-		local result = GreedyMesher.mesh(paddedRender, Scheduler.checkpoint)
+		local full = GreedyMesher.mesh(paddedRender, Scheduler.checkpoint)
 		ChunkRenderer.stats.meshTime += os.clock() - t
 		ChunkRenderer.stats.sectionsMeshed += 1
-		ChunkRenderer.stats.quads += result.quadCount
+		ChunkRenderer.stats.quads += full.quadCount
+		if section.version ~= version then
+			return -- edited while we were meshing; the newer rebuild handles it
+		end
+		local result, special = splitResult(full)
+		setSpecial(section, special) -- special faces are Parts: show them now
 		EditableMeshBackend.build(result, section.origin, renderFolder, Scheduler.checkpoint, function(handle, err, budgetHit)
 			if not section.alive or section.version ~= version then
 				if handle then
@@ -381,6 +413,7 @@ function ChunkRenderer.renderSection(section: Section, chunk: any, neighbors: Se
 		ChunkRenderer.stats.sectionsMeshed += 1
 		replaceRender(section, { kind = "parts", handle = handle })
 		releaseLive(section)
+		setSpecial(section, nil) -- the Parts backend draws everything itself
 	end
 end
 
@@ -421,18 +454,22 @@ function ChunkRenderer.renderUrgent(section: Section, chunk: any, neighbors: Sec
 	if class ~= "mesh" then
 		replaceRender(section, nil)
 		releaseLive(section)
+		setSpecial(section, nil)
 		section.renderDirty = false
 	elseif ChunkRenderer.chooseBackend(section) == "parts" then
 		local handle = PartsBackend.build(paddedUrgent, section.origin, renderFolder)
 		replaceRender(section, { kind = "parts", handle = handle }, true)
 		releaseLive(section)
+		setSpecial(section, nil)
 		section.renderDirty = false
 	else
 		section.editPending = true
 		section.editTime = os.clock()
+		local result, special = splitResult(GreedyMesher.mesh(paddedUrgent))
+		-- Water/ice/glass/lava are plain Parts: rebuilt on this frame, no hand-over ever.
+		setSpecial(section, special)
 		local slot = LiveEditPool.acquire(section)
 		if slot then
-			local result = GreedyMesher.mesh(paddedUrgent)
 			local uncovered = LiveEditPool.write(slot, section, result)
 			hideCovered(section.render, uncovered)
 			-- bake in the background (priority), unless the F6 debug toggle keeps the live mesh
@@ -480,6 +517,7 @@ end
 function ChunkRenderer.clearRender(section: Section)
 	replaceRender(section, nil)
 	releaseLive(section)
+	setSpecial(section, nil)
 	section.renderDirty = true
 end
 
@@ -487,6 +525,7 @@ function ChunkRenderer.destroySection(section: Section)
 	section.alive = false
 	replaceRender(section, nil)
 	releaseLive(section)
+	setSpecial(section, nil)
 	if section.collision then
 		CollisionBuilder.destroy(section.collision)
 		section.collision = nil

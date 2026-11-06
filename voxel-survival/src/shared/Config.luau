@@ -32,11 +32,11 @@ Config.MAX_MESH_UPLOADS_IN_FLIGHT = 3 -- concurrent mesh uploads (bake + CreateM
 -- (forum reports: ~8 meshes), so meshes are baked to static content and destroyed right after
 -- upload; this caps how many exist while waiting/uploading.
 Config.MAX_LIVE_EDITABLE = 2
--- Live EditableMeshes kept ready for instant block edits (LiveEditPool). Each slot holds 2 meshes
--- (opaque terrain + water), so 2 slots = 4 meshes. Edited sections bake straight from their slot
--- (no extra mesh), so the total stays at 4 + MAX_LIVE_EDITABLE (+1 priority) = 7. The Phase 2.x
--- test hit the budget at 8. 0 disables instant live edits.
-Config.LIVE_EDIT_SLOTS = 2
+-- Live EditableMeshes kept ready for instant block edits (LiveEditPool), one per slot (opaque
+-- terrain only; water etc. are Parts). Edited sections bake straight from their slot (no extra
+-- mesh), so the total is 3 + MAX_LIVE_EDITABLE (+1 priority) = 6. The Phase 2.x test hit the
+-- budget at 8. 3 slots cover an edit on a section corner (up to 3 sections). 0 disables.
+Config.LIVE_EDIT_SLOTS = 3
 -- Seconds the old geometry of a rebuilt section stays visible after the new geometry is parented
 -- (prevents a see-through flash while the new MeshPart starts drawing). Raise if you still see it.
 Config.RENDER_SWAP_OVERLAP = 0.15

@@ -21,6 +21,7 @@ local EditableMeshBackend = require(script.Parent.Parent.Render.EditableMeshBack
 local PartsBackend = require(script.Parent.Parent.Render.PartsBackend)
 local CollisionBuilder = require(script.Parent.Parent.Render.CollisionBuilder)
 local LiveEditPool = require(script.Parent.Parent.Render.LiveEditPool)
+local SpecialPartsBackend = require(script.Parent.Parent.Render.SpecialPartsBackend)
 local BlockInteraction = require(script.Parent.Parent.Interaction.BlockInteraction)
 local InventoryClient = require(script.Parent.Parent.Player.InventoryClient)
 local CameraController = require(script.Parent.Parent.Player.CameraController)
@@ -154,7 +155,7 @@ function DebugOverlay.init()
 			`EditableMesh mode {es.bakeMode}   live {es.liveEditable}/{cap} (peak {es.peakLiveEditable})   est. {string.format("%.0f", es.liveBytesEst / 1024)} KB   budget hits {es.budgetHits}`,
 			`MeshParts {es.meshParts}   triangles {es.triangles}   uploads {es.uploadsInFlight} in flight / {es.uploadsQueued} queued`,
 			`sections: {rs.sectionsEditable} mesh, {rs.sectionsParts} parts   fallbacks {rs.fallbacks}   demotions {rs.demotions}`,
-			`render Parts {PartsBackend.stats.parts}   collision Parts {CollisionBuilder.stats.parts}`,
+			`render Parts {PartsBackend.stats.parts}   water/ice/glass/lava Parts {SpecialPartsBackend.stats.parts} in {SpecialPartsBackend.stats.sections} sections   collision Parts {CollisionBuilder.stats.parts}`,
 			string.format("live edit pool: %d slots (%d meshes), %d in use, no free slot %dx%s",
 				ls.slots, ls.meshes, ls.inUse, ls.noSlot, if ls.createError ~= "" then `, error: {ls.createError}` else ""),
 			string.format("instant edit %.2f ms avg (live write %.2f ms)   edit->baked hand-over %.2f s avg (%d)   F6 keep live: %s",

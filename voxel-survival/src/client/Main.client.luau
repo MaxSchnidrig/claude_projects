@@ -1,30 +1,57 @@
 --!strict
--- Client bootstrap: the ONLY client LocalScript. Requires and starts each system in order.
+-- Client bootstrap: the ONLY client LocalScript. Starts each system in order; each step is
+-- isolated (Util/Startup), so one failing system is reported (Output + red on-screen list) and
+-- the rest still start.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local GameInfo = require(Shared.GameInfo)
-require(Shared.Util.AssetDiagnostics).init() -- reports where failing asset IDs come from
-
-local ClientWorld = require(script.Parent.World.ClientWorld)
-local InventoryClient = require(script.Parent.Player.InventoryClient)
-local MovementController = require(script.Parent.Player.MovementController)
-local CameraController = require(script.Parent.Player.CameraController)
-local BlockInteraction = require(script.Parent.Interaction.BlockInteraction)
-local Hotbar = require(script.Parent.UI.Hotbar)
-local Crosshair = require(script.Parent.UI.Crosshair)
-local DebugOverlay = require(script.Parent.Debug.DebugOverlay)
-local CoreGuiSetup = require(script.Parent.UI.CoreGuiSetup)
+local Startup = require(Shared.Util.Startup)
 
 print(`[{GameInfo.TITLE}] client {GameInfo.VERSION}`)
 
-CoreGuiSetup.init()
-ClientWorld.init()
-InventoryClient.init()
-MovementController.init()
-CameraController.init()
-BlockInteraction.init()
-Hotbar.init()
-Crosshair.init()
-DebugOverlay.init()
+local client = script.Parent
+local function system(name: string, path: () -> Instance)
+	return {
+		name = name,
+		run = function()
+			(require(path() :: ModuleScript) :: any).init()
+		end,
+	}
+end
+
+Startup.run("client", {
+	system("AssetDiagnostics", function()
+		return Shared.Util.AssetDiagnostics
+	end),
+	system("CoreGuiSetup", function()
+		return client.UI.CoreGuiSetup
+	end),
+	-- UI and input first: they don't need the world, and must appear even if the world is slow.
+	system("InventoryClient", function()
+		return client.Player.InventoryClient
+	end),
+	system("Hotbar", function()
+		return client.UI.Hotbar
+	end),
+	system("Crosshair", function()
+		return client.UI.Crosshair
+	end),
+	system("MovementController", function()
+		return client.Player.MovementController
+	end),
+	system("CameraController", function()
+		return client.Player.CameraController
+	end),
+	-- ClientWorld.init waits for the server's world seed.
+	system("ClientWorld", function()
+		return client.World.ClientWorld
+	end),
+	system("BlockInteraction", function()
+		return client.Interaction.BlockInteraction
+	end),
+	system("DebugOverlay", function()
+		return client.Debug.DebugOverlay
+	end),
+})
