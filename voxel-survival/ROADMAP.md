@@ -34,6 +34,11 @@ are fine.
 | Visible box walls at the render distance | The fog shell panels sit just past the fog end and are lit and shaded by Roblox, so they don't come out as exactly the fog colour | Remove the shell. Hide Roblox's skybox a different way, and make the sky dome itself fade fully into the fog colour (a horizon band plus the zenith plane), checked in all four directions |
 | Torch light arrives late | The torch's own section rebuilds at once; neighbouring sections whose light changed rebuild in the background | Rebuild light-changed sections on the same frame through the live-edit pool, up to a per-frame cap; background bakes only for the rest |
 
+## Done before Phase 8
+
+- 7.2: atmosphere sky (default), faster torch light.
+- 7.3: Java world height −64…320 (internal 0…383), save format v2 with conversion, Java ore height bands, cave culling.
+
 ## Phase 8 – Survival foundations (XL)
 
 **Liquids and gravity blocks**
@@ -197,7 +202,9 @@ are fine.
 - Java 1.18+ multi-noise terrain: continents, erosion, peaks and valleys, rivers, aquifers,
   noise caves (cheese, spaghetti and noodle).
 - Java ore distribution by height and biome.
-- ⚠ Roblox: world height −64 to 320 (from 0–127) is the biggest change in this plan: 3× the
+- World height −64 to 320 is already in place (0.7.3). Remaining here: deepslate-role stone
+  below Java y 0 (name to approve) and the exact 1.18 ore shapes.
+- (Original note) ⚠ Roblox: world height −64 to 320 (from 0–127) was the biggest change in this plan: 3× the
   blocks per chunk, plus memory, meshing load, a save-format migration and mobile limits. We
   measure on mobile first; fallback options are a smaller vertical range or lower view
   distance on phones. Existing worlds must be converted (a versioned migration, tested before

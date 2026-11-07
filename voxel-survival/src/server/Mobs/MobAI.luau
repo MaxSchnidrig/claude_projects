@@ -30,6 +30,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared.Config)
 local Pathfinder = require(Shared.Mobs.Pathfinder)
 local MobDefs = require(Shared.Mobs.MobDefs)
 local Combat = require(Shared.Gameplay.Combat)
@@ -265,7 +266,7 @@ local function teleport(m: any, attempts: number, towards: Vector3?): boolean
 			tz = m.z + (math.random() - 0.5) * 64
 		end
 		local gx, gz = math.floor(tx), math.floor(tz)
-		local gy = math.clamp(math.floor(ty), 1, 126)
+		local gy = math.clamp(math.floor(ty), 1, Config.WORLD_HEIGHT - 2)
 		while gy > 1 do
 			local below = S.blockAt(gx, gy - 1, gz)
 			if below == nil then

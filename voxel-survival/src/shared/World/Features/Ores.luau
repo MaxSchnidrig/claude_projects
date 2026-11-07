@@ -3,7 +3,8 @@
 -- Ore and stone-pocket veins. Each vein is a seeded random walk that only replaces Stone,
 -- so veins never eat into dirt, water or caves.
 --
--- Distribution (per 16x16 chunk), tuned for a 0..127 world:
+-- Distribution (per 16x16 chunk; the table below lists the original 0..127 tuning, VEINS has the
+-- current Java height bands):
 --   block        veins  walk  y-range        notes
 --   dirt          10     24   0..127         pockets
 --   gravel         8     24   0..127         pockets
@@ -37,16 +38,20 @@ type VeinDef = {
 	triangular: boolean?,
 }
 
+-- Height bands follow Java's current ranges (written in Java y, converted to internal y). The full
+-- Java ore placement (exact triangular bands, air exposure, biome extras) comes with phase 13.
+local O = Config.Y_OFFSET
 local VEINS: { VeinDef } = {
-	{ block = BlockRegistry.id("dirt"), count = 10, walk = 24, minY = 0, maxY = 127 },
-	{ block = BlockRegistry.id("gravel"), count = 8, walk = 24, minY = 0, maxY = 127 },
-	{ block = BlockRegistry.id("coal_ore"), count = 20, walk = 14, minY = 0, maxY = 127 },
-	{ block = BlockRegistry.id("copper_ore"), count = 8, walk = 10, minY = 0, maxY = 96 },
-	{ block = BlockRegistry.id("iron_ore"), count = 20, walk = 8, minY = 0, maxY = 63 },
-	{ block = BlockRegistry.id("lapis_ore"), count = 1, walk = 7, minY = 0, maxY = 31, triangular = true },
-	{ block = BlockRegistry.id("gold_ore"), count = 2, walk = 8, minY = 0, maxY = 31 },
-	{ block = BlockRegistry.id("volt_ore"), count = 8, walk = 7, minY = 0, maxY = 15 },
-	{ block = BlockRegistry.id("diamond_ore"), count = 1, walk = 7, minY = 0, maxY = 15 },
+	{ block = BlockRegistry.id("dirt"), count = 10, walk = 24, minY = 0 + O, maxY = 160 + O },
+	{ block = BlockRegistry.id("gravel"), count = 8, walk = 24, minY = -64 + O, maxY = 160 + O },
+	{ block = BlockRegistry.id("coal_ore"), count = 20, walk = 14, minY = 0 + O, maxY = 192 + O },
+	{ block = BlockRegistry.id("copper_ore"), count = 10, walk = 10, minY = -16 + O, maxY = 112 + O, triangular = true },
+	{ block = BlockRegistry.id("iron_ore"), count = 16, walk = 8, minY = -24 + O, maxY = 56 + O, triangular = true },
+	{ block = BlockRegistry.id("iron_ore"), count = 6, walk = 8, minY = -64 + O, maxY = 72 + O },
+	{ block = BlockRegistry.id("lapis_ore"), count = 2, walk = 7, minY = -32 + O, maxY = 32 + O, triangular = true },
+	{ block = BlockRegistry.id("gold_ore"), count = 4, walk = 8, minY = -64 + O, maxY = 32 + O, triangular = true },
+	{ block = BlockRegistry.id("volt_ore"), count = 8, walk = 7, minY = -64 + O, maxY = 15 + O },
+	{ block = BlockRegistry.id("diamond_ore"), count = 7, walk = 5, minY = -64 + O, maxY = 16 + O, triangular = true },
 }
 local EMERALD = BlockRegistry.id("emerald_ore")
 
@@ -69,7 +74,7 @@ function Ores.generate(gen: any, chunk: any)
 				y = rng:nextInt(v.minY, v.maxY)
 			end
 			for _ = 1, v.walk do
-				if x >= 0 and x < CS and z >= 0 and z < CS and y >= 0 and y < 128 then
+				if x >= 0 and x < CS and z >= 0 and z < CS and y >= 0 and y < Config.WORLD_HEIGHT then
 					local idx = x + z * CS + y * LAYER
 					if buffer.readu8(blocks, idx) == STONE then
 						buffer.writeu8(blocks, idx, v.block)
@@ -98,7 +103,7 @@ function Ores.generate(gen: any, chunk: any)
 	for _ = 1, n do
 		local x = rng:nextInt(0, CS - 1)
 		local z = rng:nextInt(0, CS - 1)
-		local y = rng:nextInt(4, 31)
+		local y = rng:nextInt(-16 + O, 160 + O) -- Java: mountains, y -16 .. 320
 		if buffer.readu8(chunk.biomes, x + z * CS) == MOUNTAINS then
 			local idx = x + z * CS + y * LAYER
 			if buffer.readu8(blocks, idx) == STONE then

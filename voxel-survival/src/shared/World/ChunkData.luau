@@ -1,8 +1,8 @@
 --!strict
 --!native
--- Chunk storage: 16 x 128 x 16 block IDs in one 32 KB buffer (1 byte per block).
+-- Chunk storage: 16 x 384 x 16 block IDs in one 96 KB buffer (1 byte per block).
 --
--- Layout: index = x + z * 16 + y * 256   (x, z in 0..15, y in 0..127)
+-- Layout: index = x + z * 16 + y * 256   (x, z in 0..15, internal y in 0..383)
 -- A horizontal 16x16 layer is contiguous, and a 16-high render section is a contiguous 4 KB slice.
 
 local Config = require(script.Parent.Parent.Config)
@@ -85,7 +85,7 @@ end
 function ChunkData.packDiffs(diffs: { [number]: number }): string
 	local parts = {}
 	for idx, id in diffs do
-		table.insert(parts, string.pack("<I2B", idx, id))
+		table.insert(parts, string.pack("<I3B", idx, id))
 	end
 	return table.concat(parts)
 end
@@ -94,8 +94,8 @@ function ChunkData.unpackDiffs(data: string): { [number]: number }
 	local out = {}
 	local pos = 1
 	local n = #data
-	while pos + 2 <= n do
-		local idx, id, nextPos = string.unpack("<I2B", data, pos)
+	while pos + 3 <= n do
+		local idx, id, nextPos = string.unpack("<I3B", data, pos)
 		out[idx] = id
 		pos = nextPos
 	end

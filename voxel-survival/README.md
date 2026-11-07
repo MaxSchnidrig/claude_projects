@@ -4,7 +4,7 @@ A voxel survival sandbox for Roblox, managed with [Rojo](https://rojo.space). Th
 mechanics follow the classic block-survival formula. All art, sounds, UI and every invented name
 are original to this project (see `ARCHITECTURE.md` → "Naming rules").
 
-**Status:** Phase 7 (graphics and sound: original 16×16 textures, smooth lighting, torches, sky, hand, particles, sound system) ready for testing.
+**Status:** 0.7.3: Java world height (−64 to 320) with cave culling, ready for desktop and phone testing. Next: Phase 8a.
 
 ## Structure
 

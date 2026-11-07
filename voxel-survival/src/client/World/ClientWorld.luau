@@ -230,8 +230,39 @@ end
 
 -- Parts-mode cave culling: a section entirely under the surface, farther than
 -- PARTS_CAVE_RADIUS chunks, is skipped (it can only be seen from inside the caves).
+-- Cave culling (all backends): a section entirely below the chunk's lowest surface is only drawn
+-- within CAVE_RENDER_RADIUS chunks while the camera is above ground; underground, everything in
+-- range is drawn. (Java hides unseen caves with occlusion culling; this is our cheaper stand-in.)
+local cameraUnderground = false
 local function hiddenCaveSection(rec: Rec, s: ChunkRenderer.Section, d2: number): boolean
-	return (s.sy + 1) * SS <= rec.minSurface - 2 and d2 > Config.PARTS_CAVE_RADIUS ^ 2
+	if cameraUnderground then
+		return false
+	end
+	return (s.sy + 1) * SS <= rec.minSurface - 2 and d2 > Config.CAVE_RENDER_RADIUS ^ 2
+end
+
+-- Is the camera underground? (below the surface of its column, with some hysteresis)
+local function updateUnderground()
+	local cam = workspace.CurrentCamera
+	if not cam then
+		return
+	end
+	local p = cam.CFrame.Position / BS
+	local bx, bz = math.floor(p.X), math.floor(p.Z)
+	local cx, cz = bx // CS, bz // CS
+	local rec = chunks[ChunkData.key(cx, cz)]
+	local data = rec and rec.data
+	if not data then
+		return
+	end
+	local h = buffer.readu8(data.heights, (bx - cx * CS) + (bz - cz * CS) * CS)
+	if cameraUnderground then
+		if p.Y > h - 1 then
+			cameraUnderground = false
+		end
+	elseif p.Y < h - 4 then
+		cameraUnderground = true
+	end
 end
 
 -- Render distance actually used for meshing: smaller while the world is mostly Parts, because
@@ -309,7 +340,7 @@ local function pickJob(): (() -> ())?
 				if s.renderDirty then
 					-- Nearest sections are asked first, so they get EditableMesh slots first.
 					local mode = ChunkRenderer.chooseBackend(s)
-					if mode == "parts" and hiddenCaveSection(rec, s, o.d2) then
+					if hiddenCaveSection(rec, s, o.d2) then
 						-- skip: invisible from the surface, not worth ~150 Parts. Parked until
 						-- refresh() sees the player come close (so it isn't rescanned every frame).
 						s.renderDirty = false
@@ -340,6 +371,7 @@ local function refresh()
 	centerX = math.floor(pos.X / BS) // CS
 	centerZ = math.floor(pos.Z / BS) // CS
 	ChunkRenderer.setCenter(centerX, centerZ)
+	updateUnderground()
 	local rd = effectiveRenderDistance()
 	if rd ~= lastFogDistance then
 		applyFog(rd)
@@ -377,7 +409,7 @@ local function refresh()
 					s.renderDirty = true
 				end
 				if s.render and (farForRender
-					or (s.render.kind == "parts" and hiddenCaveSection(rec, s, dx * dx + dz * dz)))
+					or hiddenCaveSection(rec, s, dx * dx + dz * dz))
 				then
 					ChunkRenderer.clearRender(s) -- out of (degraded) range, or culled cave section
 				end

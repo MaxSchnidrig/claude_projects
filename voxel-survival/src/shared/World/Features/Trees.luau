@@ -60,7 +60,7 @@ function Trees.candidates(gen: any, cx: number, cz: number): { Tree }
 		local wx, wz = cx * CS + lx, cz * CS + lz
 		local h, biomeId = gen.column(gen, wx, wz)
 		local biome = Biomes.byId[biomeId]
-		if roll < biome.treeChance and #biome.trees > 0 and h > SEA and h < 96 then
+		if roll < biome.treeChance and #biome.trees > 0 and h > SEA and h < SEA + 34 then
 			-- pick kind by weight
 			local total = 0
 			for _, t in biome.trees do

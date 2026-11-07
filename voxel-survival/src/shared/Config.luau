@@ -6,10 +6,13 @@ local Config = {}
 -- World dimensions --------------------------------------------------------------------------
 Config.BLOCK_SIZE = 3 -- studs per block edge (default character ≈ 1.8 blocks tall)
 Config.CHUNK_SIZE = 16 -- blocks per chunk edge (X and Z)
-Config.WORLD_HEIGHT = 128 -- blocks, y = 0 .. 127
+-- Java Edition height: y = -64 .. 319. Internally blocks are stored at y = 0 .. 383
+-- (internal y = Java y + Y_OFFSET); Java coordinates are what players see (F3).
+Config.WORLD_HEIGHT = 384 -- blocks, internal y = 0 .. 383
+Config.Y_OFFSET = 64 -- internal y - Y_OFFSET = Java y
 Config.SECTION_SIZE = 16 -- render/collision sections are 16³ slices of a chunk
 Config.SECTIONS_PER_CHUNK = Config.WORLD_HEIGHT // Config.SECTION_SIZE
-Config.SEA_LEVEL = 62 -- water surface is at y = SEA_LEVEL
+Config.SEA_LEVEL = 126 -- internal y of the water surface (Java y = 62)
 
 -- Default world seed (Phase 6 replaces this with the owning player's world seed).
 Config.DEFAULT_SEED = 1337
@@ -48,6 +51,7 @@ Config.PARTS_RENDER_DISTANCE = 4
 -- In Parts mode, sections entirely below the surface (cave interiors, ~44% of all Parts) are only
 -- built within this many chunks of the player.
 Config.PARTS_CAVE_RADIUS = 2
+Config.CAVE_RENDER_RADIUS = 2 -- chunks: deep sections drawn around you while above ground (cave culling)
 
 -- Rendering ---------------------------------------------------------------------------------
 -- "editable" = greedy mesh -> EditableMesh -> MeshPart (primary)
@@ -83,7 +87,7 @@ Config.TORCH_POINT_LIGHTS = 24 -- nearest torches that also carry a Roblox Point
 Config.SKY_MODE = "atmosphere" -- "atmosphere" (Roblox Atmosphere sky + haze) or "fog" (our fog dome)
 Config.ATMOSPHERE_DENSITY = 0.45 -- haze density at render distance 6 (scaled for others)
 Config.DEBUG_KEY_SKY_MODE = "F7" -- Studio only: switch the sky mode to compare
-Config.CLOUD_Y = 132 -- cloud layer height (blocks); low enough to stay inside the fog distance
+Config.CLOUD_Y = 196 -- cloud layer height (blocks); low enough to stay inside the fog distance
 
 -- Player & interaction (phase 2) -----------------------------------------------------------
 Config.REACH = 4.5 -- blocks, from the eye (classic survival reach)

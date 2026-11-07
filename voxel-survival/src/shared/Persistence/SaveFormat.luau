@@ -14,10 +14,27 @@
 local ChunkData = require(script.Parent.Parent.World.ChunkData)
 local ItemRegistry = require(script.Parent.Parent.Items.ItemRegistry)
 local Base64 = require(script.Parent.Parent.Util.Base64)
+local Config = require(script.Parent.Parent.Config)
 
 local SaveFormat = {}
 
-SaveFormat.VERSION = 1
+-- 1: world height 0..127 (2-byte diff indices); 2: Java height, internal y 0..383 (3-byte
+-- indices). Version-1 saves are converted on load: everything moves up by Config.Y_OFFSET.
+SaveFormat.VERSION = 2
+local LAYER = Config.CHUNK_SIZE * Config.CHUNK_SIZE
+local SHIFT = Config.Y_OFFSET
+
+-- Version-1 diffs: 2-byte index + id, y in 0..127.
+local function unpackV1(data: string): { [number]: number }
+	local out = {}
+	local pos = 1
+	while pos + 2 <= #data do
+		local idx, id, nextPos = string.unpack("<I2B", data, pos)
+		out[idx + SHIFT * LAYER] = id
+		pos = nextPos
+	end
+	return out
+end
 SaveFormat.REGION_CHUNKS = 4 -- region = 4 x 4 chunks (64 x 64 blocks)
 
 export type Stack = { item: string, count: number, durability: number? }
@@ -133,12 +150,15 @@ function SaveFormat.decodeRegion(record: any): Region
 	if typeof(record) ~= "table" then
 		return out
 	end
+	local legacy = record.v == nil or record.v < 2
+	local dy = if legacy then SHIFT else 0
 	if typeof(record.chunks) == "table" then
 		for name, text in record.chunks do
 			local cx, cz = string.match(tostring(name), "^(%-?%d+),(%-?%d+)$")
 			local raw = if typeof(text) == "string" then Base64.decode(text) else nil
 			if cx and cz and raw then
-				out.chunks[ChunkData.key(tonumber(cx) :: number, tonumber(cz) :: number)] = ChunkData.unpackDiffs(raw)
+				out.chunks[ChunkData.key(tonumber(cx) :: number, tonumber(cz) :: number)] =
+					if legacy then unpackV1(raw) else ChunkData.unpackDiffs(raw)
 			end
 		end
 	end
@@ -150,7 +170,7 @@ function SaveFormat.decodeRegion(record: any): Region
 				table.insert(out.entities, {
 					kind = e.k,
 					x = e.x,
-					y = e.y,
+					y = e.y + dy,
 					z = e.z,
 					slots = SaveFormat.decodeStacks(e.s, if e.k == "chest" then 27 else 3),
 					burn = if typeof(e.b) == "number" then e.b else 0,
@@ -206,7 +226,8 @@ function SaveFormat.decodePlayer(record: any, inventorySlots: number): PlayerSta
 	local pos: Vector3? = nil
 	local p = record.pos
 	if typeof(p) == "table" and typeof(p[1]) == "number" and typeof(p[2]) == "number" and typeof(p[3]) == "number" then
-		pos = Vector3.new(p[1], p[2], p[3])
+		local legacy = record.v == nil or record.v < 2
+		pos = Vector3.new(p[1], p[2] + (if legacy then SHIFT else 0), p[3])
 	end
 	return {
 		slots = SaveFormat.decodeStacks(record.slots, inventorySlots),

@@ -19,8 +19,8 @@
 | Topic | Decision |
 |---|---|
 | Block size | 1 block = 3 studs (character ≈ 1.8 blocks tall) |
-| World | y 0..127, sea level 62, bedrock floor y 0–4 |
-| Chunk | 16×16×128 block IDs in one 32 KB `buffer` (u8 IDs). Index `x + z*16 + y*256` |
+| World | Java height y −64..319, stored internally as y 0..383 (internal = Java + 64; F3 shows Java y); sea level Java 62 (internal 126); bedrock floor at the bottom 1–5 layers. Switched from 0..127 in 0.7.3 (saves version 2; version-1 saves are moved up 64 blocks on load) |
+| Chunk | 16×16×384 block IDs in one 96 KB `buffer` (u8 IDs), plus a 96 KB light buffer on clients. Index `x + z*16 + y*256`; packed diffs use 3-byte indices |
 | Render unit | 16³ section (8 per chunk). An edit rebuilds 1 section |
 | World data | Client and server generate identically from the seed. The server sends only per-chunk **diffs** (edits since generation) |
 | Authority | The server owns block state. Clients send requests and render what the server confirms |
@@ -303,6 +303,7 @@ status effects (spider eye poison), and the attack-cooldown reset on swings that
 | Piece | Design |
 |---|---|
 | Textures | `TextureGen`: every block texture is generated from a small recipe of our own (noise, Voronoi cells, bands, rings, blobs) in ROCRAFT's palette; ores = our stone + mineral blobs. Item icons (`ItemIconGen`): tool and material shapes drawn by code. Nothing is copied from another game. |
+| Cave culling (0.7.3) | Sections entirely below a chunk's lowest surface are drawn only within `CAVE_RENDER_RADIUS` (2) chunks while the camera is above ground; underground everything in range is drawn. Our stand-in for Java's occlusion culling: keeps the triangle count of the taller world close to the old one from the surface. ⚠ Roblox compromise: a deep cave opening seen from far away shows its upper part only |
 | Atlas | `TextureAtlas`: 1024² EditableImage, each 16² texture scaled 7× into a 128 px cell with an 8 px copied border (Roblox filters 3D textures; the scale keeps pixels sharp, the border stops bleeding, also in mips). 10 crack stages included. Baked to static content (frees the editable budget). Icons: a 16 px-per-icon sheet for UI (Pixelated). |
 | Why one quad per face | A texture atlas can't tile across greedy-merged faces, and one MeshPart per texture would be ~2,500 parts at render distance 6 instead of ~800. So textured terrain uses one quad per face (bench: 259 vs 89 quads per section, ~2.9×); see-through specials (water, lava, glass, ice) still merge. Sections over 19,000 triangles split into several meshes. `Config.TEXTURES = false` restores flat merged meshes. |
 | Light | Edits relight synchronously; sections whose light changed rebuild with the edit (live pool on the same frame up to the per-frame cap, else priority bakes) (0.7.2). `LightEngine` (shared, tested): per-chunk light buffer, sky (high nibble) + block (low nibble). Sky enters columns at 15 and falls without loss through clear blocks (leaves/water/ice −1); both spread −max(1, opacity) per step. Sources: torch 14, lava 15. Edits relight incrementally (remove + refill flood) across chunk borders and re-mesh only touched sections. A chunk meshes once it and its 4 neighbours are lit. ~32 ms per chunk in the interpreter, time-sliced. |

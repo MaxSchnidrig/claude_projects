@@ -162,7 +162,7 @@ function DebugOverlay.init()
 		if root then
 			local p = root.Position / BS
 			local bx, by, bz = math.floor(p.X), math.floor(p.Y), math.floor(p.Z)
-			posText = `{bx} {by} {bz}  chunk {bx // 16} {bz // 16}`
+			posText = `{bx} {by - Config.Y_OFFSET} {bz}  chunk {bx // 16} {bz // 16}` -- Java y
 			local b = ClientWorld.biomeAt(bx, bz)
 			biomeText = if b and Biomes.byId[b] then Biomes.byId[b].name else "?"
 		end

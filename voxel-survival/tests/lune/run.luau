@@ -785,7 +785,7 @@ test("save format: regions round trip diffs and containers", function()
 		},
 	}
 	local encoded = SaveFormat.encodeRegion(region)
-	eq(encoded.v, 1)
+	eq(encoded.v, 2)
 	local back = SaveFormat.decodeRegion(encoded)
 	eq(back.chunks[key][0], 1)
 	eq(back.chunks[key][123], 0)
@@ -799,6 +799,15 @@ test("save format: regions round trip diffs and containers", function()
 	for _, text in encoded.chunks do
 		assert(string.match(text, "^[%w%+/=]*$"), "chunk data is Base64")
 	end
+	-- version-1 saves (0..127 world, 2-byte indices) move up by Y_OFFSET on load
+	local v1 = { v = 1, chunks = { ["0,0"] = Base64.encode(string.pack("<I2B", 5 + 3 * 16 + 70 * 256, 7)) },
+		entities = { { k = "chest", x = 1, y = 70, z = 2, s = {} } } }
+	local conv = SaveFormat.decodeRegion(v1)
+	eq(conv.chunks[ChunkData.key(0, 0)][5 + 3 * 16 + (70 + 64) * 256], 7)
+	eq(conv.entities[1].y, 134)
+	local oldPlayer = SaveFormat.decodePlayer({ v = 1, pos = { 1, 70, 2 } }, 36)
+	assert(oldPlayer and oldPlayer.pos)
+	eq(oldPlayer.pos.Y, 134)
 	-- garbage in -> empty region, unknown items dropped
 	eq(next(SaveFormat.decodeRegion(nil).chunks), nil)
 	local bad = SaveFormat.decodeStacks({ { 1, "no_such_item", 3 }, { 2, "stick", 99 }, { 3, "stick", 2 } }, 36)

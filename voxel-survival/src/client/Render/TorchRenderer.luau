@@ -19,6 +19,7 @@ TorchRenderer.count = 0
 
 type Torch = { model: Model, light: PointLight, pos: Vector3, cx: number, cz: number }
 local torches: { [string]: Torch } = {}
+local refreshLights: () -> () = function() end
 local folder: Folder? = nil
 
 local function key(x: number, y: number, z: number): string
@@ -89,6 +90,7 @@ function TorchRenderer.set(x: number, y: number, z: number, id: number)
 	if TorchRules.isTorch(id) then
 		torches[k] = build(x, y, z, id)
 		TorchRenderer.count += 1
+		refreshLights() -- light the new torch now, not at the next periodic check
 	end
 end
 
@@ -109,13 +111,7 @@ function TorchRenderer.init()
 	f.Parent = workspace
 	folder = f
 	-- only the nearest torches carry a PointLight
-	local acc = 0
-	RunService.Heartbeat:Connect(function(dt)
-		acc += dt
-		if acc < 0.5 then
-			return
-		end
-		acc = 0
+	refreshLights = function()
 		local cam = workspace.CurrentCamera
 		if not cam then
 			return
@@ -129,6 +125,14 @@ function TorchRenderer.init()
 		end)
 		for i, e in list do
 			e.t.light.Enabled = i <= Config.TORCH_POINT_LIGHTS
+		end
+	end
+	local acc = 0
+	RunService.Heartbeat:Connect(function(dt)
+		acc += dt
+		if acc >= 0.5 then
+			acc = 0
+			refreshLights()
 		end
 	end)
 end

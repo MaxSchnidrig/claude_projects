@@ -140,8 +140,8 @@ local function column(gen: Generator, x: number, z: number): (number, number)
 
 	-- Climate: temperature cools with altitude.
 	local temp = gen.nTemp:fbm2(x * (1 / 900) + 0.17, z * (1 / 900) + 0.43, 3)
-	if height > 90 then
-		temp -= (height - 90) * 0.01
+	if height > SEA + 28 then
+		temp -= (height - (SEA + 28)) * 0.01
 	end
 	local hum = gen.nHum:fbm2(x * (1 / 800) + 0.83, z * (1 / 800) + 0.29, 3)
 
@@ -150,7 +150,7 @@ local function column(gen: Generator, x: number, z: number): (number, number)
 		biome = if temp < -0.3 then BIOME.FROZEN_OCEAN else BIOME.OCEAN
 	elseif height <= SEA + 2 and cont < -0.03 then
 		biome = if temp < -0.3 then BIOME.SNOWY_TUNDRA else BIOME.BEACH
-	elseif m > 0.5 and height >= 82 then
+	elseif m > 0.5 and height >= SEA + 20 then
 		biome = BIOME.MOUNTAINS
 	elseif temp > 0.14 and hum < 0.08 then
 		biome = BIOME.DESERT
@@ -186,8 +186,8 @@ local function latticeDensity(gen: Generator, gx: number, gy: number, gz: number
 	-- Cheese caverns: large open pockets, deep only.
 	local c = gen.nCaveC:noise3(x * (1 / 90) + 0.71, y * (1 / 45) + 0.33, z * (1 / 90) + 0.05)
 	local cheese = CHEESE_THRESHOLD - c
-	if y > 40 then
-		cheese += (y - 40) * 0.02 -- caverns stay deep
+	if y > SEA - 22 then
+		cheese += (y - (SEA - 22)) * 0.02 -- caverns stay deep
 	elseif y < 14 then
 		cheese += (14 - y) * 0.025 -- and mostly above the lava layer
 	end
@@ -283,7 +283,7 @@ function TerrainGen.generate(gen: Generator, chunk: ChunkData.Chunk, checkpoint:
 			if lx >= 0 and lx < CS and lz >= 0 and lz < CS then
 				bmap[lx + lz * CS + 1] = biome
 				buffer.writeu8(chunk.biomes, lx + lz * CS, biome)
-				buffer.writeu8(chunk.heights, lx + lz * CS, h)
+				buffer.writeu8(chunk.heights, lx + lz * CS, math.min(h, 255))
 				if h > maxH then
 					maxH = h
 				end
@@ -307,7 +307,7 @@ function TerrainGen.generate(gen: Generator, chunk: ChunkData.Chunk, checkpoint:
 			local sandstoneDepth = 0
 
 			if biome == BIOME.MOUNTAINS then
-				if h >= 100 then
+				if h >= SEA + 38 then
 					surface, sub = B.SNOW, B.STONE
 				elseif slope >= 3 then
 					surface, sub = B.STONE, B.STONE
@@ -420,7 +420,7 @@ function TerrainGen.findSpawn(gen: Generator): (number, number, number)
 			for _, p in { { i, -ring }, { i, ring }, { -ring, i }, { ring, i } } do
 				local x, z = p[1] * step, p[2] * step
 				local h, biome = column(gen, x, z)
-				if h > SEA + 1 and h < 90 and biome ~= BIOME.BEACH and biome ~= BIOME.MOUNTAINS
+				if h > SEA + 1 and h < SEA + 28 and biome ~= BIOME.BEACH and biome ~= BIOME.MOUNTAINS
 					and not caveCarved(gen, x, h, z)
 				then
 					return x, h + 1, z
