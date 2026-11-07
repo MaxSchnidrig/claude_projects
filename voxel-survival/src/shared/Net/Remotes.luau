@@ -15,6 +15,7 @@
 --   MobSnapshot   S -> C  (unreliable, 10 Hz) flat list: id, code, x, y, z, yaw, pitch, flags, ...
 --   MobEvent      S -> C  { type = "hurt" | "died" | "explode" | "teleport" | "crit" | "angry", id, ... }
 --   AttackMob     C -> S  (mobId, crit: boolean)  crit = the client saw a critical-hit state
+--   Lobby         both    lobby menu (see server/Lobby/LobbyService)
 --   StareMob      C -> S  (mobId)  the player has looked a voidling in the eyes for 5 ticks
 --   Knockback     S -> C  { dir = Vector3, strength } (Java hit knockback, blocks/tick) or
 --                         { add = Vector3 } (explosion push, blocks/tick)
@@ -38,6 +39,7 @@ local NAMES = {
 	"AttackMob",
 	"Knockback",
 	"StareMob",
+	"Lobby",
 }
 -- High-frequency state where a lost packet doesn't matter (the next one replaces it).
 local UNRELIABLE = { "MobSnapshot" }

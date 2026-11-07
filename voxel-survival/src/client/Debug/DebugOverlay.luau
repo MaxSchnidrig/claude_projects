@@ -189,6 +189,7 @@ function DebugOverlay.init()
 				healthText(), SurvivalClient.food, SurvivalClient.saturation, SurvivalClient.air,
 				if SurvivalClient.canSprint then "ok" else "too hungry", DayNightClient.clockText(), DayNightClient.timeOfDay),
 			hotbarLines(),
+			`save: {game:GetService("ReplicatedStorage"):GetAttribute("SaveStatus") or "-"}`,
 			`render distance {ClientWorld.effectiveRenderDistance()}/{ClientWorld.getRenderDistance()}{if ClientWorld.isMobile() then " (mobile)" else ""}   backend {backend}`,
 			`chunks loaded {ws.loaded}   waiting: gen {ws.pendingGen}, mesh {ws.pendingMesh} sections`,
 			string.format("gen %.2f ms/chunk avg (%d)   mesh %.2f ms/section avg (%d)", genAvg, ws.generated, meshAvg, rs.sectionsMeshed),

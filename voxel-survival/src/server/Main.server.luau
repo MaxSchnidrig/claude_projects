@@ -12,7 +12,25 @@ require(Shared.Net.Remotes) -- creates the RemoteEvents before anything listens
 
 print(`[{GameInfo.TITLE}] server {GameInfo.VERSION}`)
 
+-- Characters are spawned by SpawnService once the player's save and terrain are ready.
+game:GetService("Players").CharacterAutoLoads = false
+
 local server = script.Parent
+local Persistence = require(server.Persistence.Persistence)
+
+-- Lobby or world? (A reserved server looks up its owner; Studio waits for the first player.)
+local mode = Persistence.resolve()
+ReplicatedStorage:SetAttribute("ServerMode", mode)
+if mode == "lobby" then
+	Startup.run("server", {
+		{ name = "LobbyService", run = function()
+			require(server.Lobby.LobbyService).init()
+		end },
+	})
+	return
+end
+
+local meta = Persistence.loadWorld()
 Startup.run("server", {
 	{ name = "AssetDiagnostics", run = function()
 		require(Shared.Util.AssetDiagnostics).init()
@@ -26,9 +44,10 @@ Startup.run("server", {
 		PhysicsService:CollisionGroupSetCollidable(SneakPose.GHOST_GROUP, "Default", false)
 		PhysicsService:CollisionGroupSetCollidable(SneakPose.GHOST_GROUP, SneakPose.GHOST_GROUP, false)
 	end },
-	-- Phase 6 replaces the default seed with the owning player's world seed (reserved servers).
 	{ name = "WorldService", run = function()
-		require(server.World.WorldService).init(Config.DEFAULT_SEED)
+		local WorldService = require(server.World.WorldService)
+		Persistence.attachWorld(WorldService, require(server.World.BlockEntityService))
+		WorldService.init(meta.seed)
 	end },
 	{ name = "ChunkStreamer", run = function()
 		require(server.World.ChunkStreamer).init()
@@ -49,12 +68,20 @@ Startup.run("server", {
 		require(server.Player.SpawnService).init()
 	end },
 	{ name = "DayNightService", run = function()
-		require(server.Survival.DayNightService).init()
+		require(server.Survival.DayNightService).init(meta.ticks)
 	end },
 	{ name = "SurvivalService", run = function()
 		require(server.Survival.SurvivalService).init()
 	end },
 	{ name = "MobService", run = function()
 		require(server.Mobs.MobService).init()
+	end },
+	{ name = "Persistence", run = function()
+		Persistence.startWorld({
+			InventoryService = require(server.Player.InventoryService),
+			SurvivalService = require(server.Survival.SurvivalService),
+			SpawnService = require(server.Player.SpawnService),
+			DayNightService = require(server.Survival.DayNightService),
+		})
 	end },
 })

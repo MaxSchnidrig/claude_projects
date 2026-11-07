@@ -51,12 +51,16 @@ type State = {
 	grounded: boolean,
 	inLiquid: boolean,
 	sneaking: boolean,
+	lastHealth: number, -- for saving after the character is gone
 	burning: number, -- seconds of fire left (after lava)
 	fireTimer: number,
 }
 
 local SurvivalService = {}
 local states: { [Player]: State } = {}
+-- Saved values to apply on the player's first spawn this session (Persistence).
+type Restore = { health: number, food: number, saturation: number, exhaustion: number, air: number }
+local pendingRestore: { [Player]: Restore } = {}
 
 local function newState(): State
 	return {
@@ -79,6 +83,7 @@ local function newState(): State
 		grounded = true,
 		inLiquid = false,
 		sneaking = false,
+		lastHealth = 20,
 		burning = 0,
 		fireTimer = 0,
 	}
@@ -150,6 +155,30 @@ function SurvivalService.movement(p: Player): (boolean, boolean, boolean)
 	return s.sprinting, s.grounded, s.inLiquid
 end
 
+function SurvivalService.setRestore(p: Player, r: Restore)
+	pendingRestore[p] = r
+end
+
+-- Save snapshot. A dead player is saved as respawned (their items were already dropped).
+function SurvivalService.snapshot(p: Player): (Restore, boolean)
+	local s = states[p]
+	local r = pendingRestore[p]
+	if r then
+		return r, false -- not spawned yet: keep what was loaded
+	end
+	if not s or s.dead then
+		return { health = 20, food = 20, saturation = SurvivalRules.START_SATURATION, exhaustion = 0, air = SurvivalRules.MAX_AIR }, s ~= nil and s.dead
+	end
+	local humanoid = humanoidOf(p)
+	return {
+		health = if humanoid and humanoid.Health > 0 then humanoid.Health else s.lastHealth,
+		food = s.hunger.food,
+		saturation = s.hunger.saturation,
+		exhaustion = s.hunger.exhaustion,
+		air = s.air,
+	}, false
+end
+
 function SurvivalService.isSneaking(p: Player): boolean
 	return state(p).sneaking
 end
@@ -181,6 +210,8 @@ local function stepPlayer(p: Player, s: State, dt: number)
 	local eyeBlock = block(bx, math.floor((pos.Y + SneakPose.eyeHeight(p.Character)) / BS), bz)
 	local belowY = math.floor((feetY - 0.1) / BS)
 	local grounded = isSolid[block(bx, belowY, bz) + 1] and feetY - (belowY + 1) * BS <= 0.4
+
+	s.lastHealth = humanoid.Health
 
 	-- Recent heights, to sanity-check falls the client reports (see "fall" action).
 	table.insert(s.heights, { t = os.clock(), y = feetY })
@@ -345,6 +376,16 @@ local function onCharacter(p: Player, character: Model)
 	end
 	humanoid.MaxHealth = SurvivalRules.MAX_HEALTH
 	humanoid.Health = SurvivalRules.MAX_HEALTH
+	local r = pendingRestore[p]
+	if r then
+		-- first spawn after joining: continue where the save left off
+		pendingRestore[p] = nil
+		humanoid.Health = math.max(1, r.health)
+		s.hunger.food = r.food
+		s.hunger.saturation = r.saturation
+		s.hunger.exhaustion = r.exhaustion
+		s.air = r.air
+	end
 	humanoid.Died:Connect(function()
 		if s.dead then
 			return
@@ -398,7 +439,10 @@ function SurvivalService.init()
 		onPlayer(p)
 	end
 	Players.PlayerRemoving:Connect(function(p)
-		states[p] = nil
+		task.delay(30, function() -- kept a moment longer so Persistence can save it
+			states[p] = nil
+			pendingRestore[p] = nil
+		end)
 	end)
 
 	local acc = 0

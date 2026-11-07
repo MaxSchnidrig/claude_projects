@@ -316,15 +316,53 @@ Values follow the classic formula. Speeds are in blocks/s; at 3 studs per block,
 | Server-side terrain physics | Geometry exists only on clients | Mobs move kinematically on the voxel grid; the server validates player positions loosely |
 | One shared world across servers | DataStores have no live sync | Player-owned worlds in reserved servers (decided) |
 
-## 8. Persistence (Phase 6)
-- Key `p:<userId>` holds the player's inventory, stats and position.
-- Key `w:<ownerId>:meta` holds the world's seed, owner and allowed friends.
-- Key `w:<ownerId>:c:<cx>:<cz>` holds the packed chunk diffs.
-- All writes use `UpdateAsync` through a queue that:
-  - checks `GetRequestBudgetForRequestType` before each request;
-  - backs off exponentially with jitter;
-  - merges writes to the same key, respecting the 6 s per-key limit;
-  - flushes every 60 s, on unload, and in `BindToClose`.
+## 8. Persistence (Phase 6, built)
+
+### Servers
+
+| Kind | How it's recognised | What runs |
+|---|---|---|
+| Lobby | public server | `LobbyService` + `LobbyUI` only: play your world, join a friend's, friends setting |
+| World | reserved server (owner from `srv:<PrivateServerId>`), VIP server (its owner), or Studio (first player / `Config.STUDIO_OWNER_ID`) | the game, plus `Persistence` |
+
+"Play my world" reserves a server once per owner (`TeleportService:ReserveServer`) and keeps its
+access code in the world meta, so the same world always opens in the same reserved server.
+Running worlds publish themselves in a MemoryStore sorted map (`RocraftActiveWorlds`, 150 s TTL,
+refreshed every 60 s); the lobby lists online friends whose world is running and open to friends.
+A world server re-checks access on join: the owner always, others only if the owner allows
+friends and is their Roblox friend.
+
+### Keys (one DataStore; Studio uses a separate `_Studio` store)
+
+| Key | Content |
+|---|---|
+| `w:<owner>:meta` | seed, reserved-server code and id, friends setting, world time, index of saved regions |
+| `w:<owner>:r:<rx>:<rz>` | region of 4×4 chunks: packed diffs per chunk (Base64) and its chests/furnaces |
+| `w:<owner>:p:<userId>` | the player's state in that world: inventory (cursor and crafting grid folded back in), selected slot, health, hunger, saturation, exhaustion, air, position, facing |
+| `srv:<privateServerId>` | owner of a reserved server |
+
+Records carry `v` (format version). Regions keep the number of keys and requests low: a player's
+17×17-chunk area touches at most 25 regions, and only regions listed in the meta index are read.
+
+### Loading
+
+- The meta loads before the world starts (seed, time). If it can't be read the server refuses to
+  run the world instead of overwriting it.
+- `WorldService` only generates a chunk once its region's saved edits are installed (gate);
+  client chunk requests wait for the same. A region that fails to load after all retries is
+  played but never saved, so the stored copy survives.
+- A player's record loads before their character spawns (at the saved position). If it can't be
+  read they are kicked with a message rather than playing with (and later saving) an empty
+  inventory. Players without a record start fresh (Studio: test kit).
+
+### Saving
+
+`DataStoreQueue`: every request waits for `GetRequestBudgetForRequestType`; writes use
+`UpdateAsync` (the meta merges: the lobby owns code/friends, the world owns time and the region
+index), at most one write per key every 6 s, retries with exponential backoff and jitter, and
+many changes to one key merge into one write. Block edits and container changes mark their region
+dirty; players are saved on leave; everything dirty is flushed every 60 s and in `BindToClose`
+(25 s deadline). Not saved: dropped items and mobs.
 
 ## 9. Original equivalents: **approved** (designs must read clearly original)
 

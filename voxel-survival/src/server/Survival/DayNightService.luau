@@ -44,8 +44,8 @@ function DayNightService.addTicks(n: number)
 	publish(DayNightService.ticks() + n)
 end
 
-function DayNightService.init()
-	publish(Config.START_TIME_TICKS) -- phase 6: restore the saved world time
+function DayNightService.init(startTicks: number?)
+	publish(startTicks or Config.START_TIME_TICKS) -- saved world time (Persistence) or a new morning
 end
 
 return DayNightService

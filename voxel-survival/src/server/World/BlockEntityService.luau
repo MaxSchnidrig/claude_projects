@@ -31,6 +31,7 @@ BlockEntityService.CHEST_SLOTS = CHEST_SLOTS
 
 local entities: { [string]: Entity } = {}
 local onChanged: ((Entity) -> ())? = nil -- InventoryService refreshes viewers
+local dirtyListeners: { (x: number, z: number) -> () } = {} -- Persistence marks the region
 
 local function key(x: number, y: number, z: number): string
 	return `{x},{y},{z}`
@@ -43,6 +44,44 @@ end
 
 function BlockEntityService.setChangedCallback(fn: (Entity) -> ())
 	onChanged = fn
+end
+
+-- Contents changed (clicks, furnace progress, creation, removal): tell Persistence.
+function BlockEntityService.markDirty(x: number, z: number)
+	for _, fn in dirtyListeners do
+		fn(x, z)
+	end
+end
+
+function BlockEntityService.onDirty(fn: (x: number, z: number) -> ())
+	table.insert(dirtyListeners, fn)
+end
+
+-- Entities whose x/z lie in [x0, x1) x [z0, z1).
+function BlockEntityService.inArea(x0: number, z0: number, x1: number, z1: number): { Entity }
+	local out = {}
+	for _, e in entities do
+		if e.x >= x0 and e.x < x1 and e.z >= z0 and e.z < z1 then
+			table.insert(out, e)
+		end
+	end
+	return out
+end
+
+-- Recreate a saved entity (Persistence, when its region loads).
+function BlockEntityService.restore(kind: string, x: number, y: number, z: number, slots: { [number]: Stack }, burn: number, burnMax: number, progress: number)
+	local e = BlockEntityService.ensure(x, y, z, kind)
+	if e.furnace then
+		local f = e.furnace :: FurnaceLogic.State
+		for i = 1, 3 do
+			f.slots[i] = slots[i]
+		end
+		f.burn, f.burnMax, f.progress = burn, burnMax, progress
+	else
+		for i, st in slots do
+			e.slots[i] = st
+		end
+	end
 end
 
 function BlockEntityService.get(x: number, y: number, z: number): Entity?
@@ -64,6 +103,7 @@ function BlockEntityService.ensure(x: number, y: number, z: number, kind: string
 			furnace = furnace,
 		}
 		entities[k] = e
+		BlockEntityService.markDirty(x, z)
 	end
 	return e :: Entity
 end
@@ -73,6 +113,9 @@ function BlockEntityService.remove(x: number, y: number, z: number): { Stack }
 	local k = key(x, y, z)
 	local e = entities[k]
 	entities[k] = nil
+	if e then
+		BlockEntityService.markDirty(x, z)
+	end
 	local out = {}
 	if e then
 		for _, s in e.slots do
@@ -100,6 +143,9 @@ function BlockEntityService.init()
 				local changed = FurnaceLogic.step(f, step)
 				if (changed or before) and onChanged then
 					onChanged(e) -- progress bars of anyone viewing it
+				end
+				if changed or before then
+					BlockEntityService.markDirty(e.x, e.z)
 				end
 			end
 		end

@@ -9,6 +9,8 @@ local fs = require("@lune/fs")
 local luau = require("@lune/luau")
 
 local Loader = {}
+-- Extra globals for modules (e.g. Roblox datatypes from @lune/roblox); set before requiring.
+Loader.globals = {} :: { [string]: any }
 
 local cache: { [string]: any } = {}
 local codegen = false
@@ -72,6 +74,9 @@ local function requireNode(node: any): any
 	end
 	local source = fs.readFile(path)
 	local env = setmetatable({}, { __index = _G })
+	for k, v in Loader.globals do
+		env[k] = v
+	end
 	env.script = node
 	env.require = requireNode
 	local fn = luau.load(source, { debugName = path, environment = env, codegenEnabled = codegen })
@@ -79,6 +84,7 @@ local function requireNode(node: any): any
 	cache[path] = result
 	return result
 end
+
 
 -- Require a module by filesystem path, e.g. Loader.require("src/shared/World/TerrainGen")
 function Loader.require(path: string): any

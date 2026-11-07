@@ -480,10 +480,16 @@ function ClientWorld.init()
 		ReplicatedStorage:GetAttributeChangedSignal("WorldSeed"):Wait()
 		seed = ReplicatedStorage:GetAttribute("WorldSeed")
 	end
-	spawnBlock = ReplicatedStorage:GetAttribute("SpawnBlock") or Vector3.new(0, 80, 0)
 	gen = TerrainGen.new(seed :: number)
 
 	local player = Players.LocalPlayer
+	-- wait for our save to load (it may move our spawn point), at most 30 s
+	local waited = 0
+	while player:GetAttribute("DataLoaded") ~= true and waited < 30 do
+		waited += task.wait(0.1)
+	end
+	local own = player:GetAttribute("SpawnBlock")
+	spawnBlock = if typeof(own) == "Vector3" then own else (ReplicatedStorage:GetAttribute("SpawnBlock") or Vector3.new(0, 80, 0))
 	local function applyRenderDistance()
 		local rd = player:GetAttribute("RenderDistance")
 		if typeof(rd) == "number" then

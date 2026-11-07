@@ -16,6 +16,9 @@ local BS = Config.BLOCK_SIZE
 local READY_TIMEOUT = 20 -- seconds
 
 local SpawnService = {}
+-- Saved position for a player's first spawn this session (feet, block units), set by Persistence
+-- before it marks the player's data as loaded (player attribute "DataLoaded").
+local firstSpawn: { [Player]: { pos: Vector3, yaw: number } } = {}
 
 local function spawnCFrame(): CFrame
 	local b = WorldService.getSpawnBlock()
@@ -23,11 +26,27 @@ local function spawnCFrame(): CFrame
 	return CFrame.new((b.X + 0.5) * BS, b.Y * BS + 3.5, (b.Z + 0.5) * BS)
 end
 
+function SpawnService.setFirstSpawn(player: Player, pos: Vector3, yaw: number)
+	firstSpawn[player] = { pos = pos, yaw = yaw }
+	player:SetAttribute("SpawnBlock", Vector3.new(math.floor(pos.X), math.floor(pos.Y), math.floor(pos.Z)))
+end
+
 local function spawn(player: Player)
 	if not player.Parent then
 		return
 	end
+	local saved = firstSpawn[player]
+	if saved then
+		firstSpawn[player] = nil
+		local p = saved.pos * BS
+		AvatarService.spawn(player, CFrame.new(p.X, p.Y + 3.05, p.Z) * CFrame.Angles(0, saved.yaw, 0))
+		return
+	end
 	AvatarService.spawn(player, spawnCFrame())
+end
+
+local function dataLoaded(player: Player): boolean
+	return player:GetAttribute("DataLoaded") == true
 end
 
 -- Respawn at the world spawn (phase 6+: beds / personal spawn points).
@@ -45,7 +64,12 @@ function SpawnService.init()
 			AvatarService.configureHumanoid(humanoid)
 			-- Death and respawn are handled by SurvivalService (death screen -> "respawn").
 		end)
-		task.delay(READY_TIMEOUT, function()
+		task.spawn(function()
+			-- the save must be loaded first; then wait for the client's collision
+			while player.Parent and not dataLoaded(player) do
+				task.wait(0.2)
+			end
+			task.wait(READY_TIMEOUT)
 			if player.Parent and not player.Character then
 				warn(`[SpawnService] {player.Name} never reported WorldReady; spawning anyway`)
 				spawn(player)
@@ -58,9 +82,12 @@ function SpawnService.init()
 	end
 
 	Remotes.get("WorldReady").OnServerEvent:Connect(function(player)
-		if not player.Character then
+		if not player.Character and dataLoaded(player) then
 			spawn(player)
 		end
+	end)
+	Players.PlayerRemoving:Connect(function(player)
+		firstSpawn[player] = nil
 	end)
 end
 

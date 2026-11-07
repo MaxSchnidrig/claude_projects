@@ -4,7 +4,7 @@ A voxel survival sandbox for Roblox, managed with [Rojo](https://rojo.space). Th
 mechanics follow the classic block-survival formula. All art, sounds, UI and every invented name
 are original to this project (see `ARCHITECTURE.md` → "Naming rules").
 
-**Status:** 0.5.2: Java Edition parity pass (mob/player/tool stats, line of sight, critical hits, double-click collect, brighter nights) ready for Studio testing. Next: Phase 6 (saving).
+**Status:** Phase 6 (saving: player-owned worlds in reserved servers, friends can join, inventories, containers and changed chunks saved) ready for testing. Next: Phase 7 (polish).
 
 ## Structure
 
@@ -22,6 +22,7 @@ voxel-survival/
 │   │   ├── Mobs/      MobDefs (data), MobPhysics (box vs voxels), Pathfinder (A*)
 │   │   ├── World/     Noise, ChunkData, Biomes, TerrainGen, Features/{Ores,Trees}, VoxelRaycast, SkyLight
 │   │   ├── Meshing/   SectionSampler, GreedyMesher, BoxMerger
+│   │   ├── Persistence/ SaveFormat (keys, region/player records)
 │   │   ├── Net/       Remotes
 │   │   └── Util/      Hash (deterministic RNG), Scheduler (time-sliced jobs)
 │   ├── server/  -> ServerScriptService               authoritative world
@@ -31,7 +32,9 @@ voxel-survival/
 │   │   ├── World/     (+) ItemEntityService (dropped items), BlockEntityService (furnaces, chests)
 │   │   ├── Player/    SpawnService, AvatarService (blocky R6), InventoryService (windows, crafting)
 │   │   ├── Survival/  SurvivalService (health, hunger, air, falls, death), DayNightService (world time)
-│   │   └── Mobs/      MobService (sim, damage, snapshots), MobAI (behaviours), MobSpawner
+│   │   ├── Mobs/      MobService (sim, damage, snapshots), MobAI (behaviours), MobSpawner
+│   │   ├── Persistence/ Persistence (world/player saving), DataStoreQueue (budget, retries)
+│   │   └── Lobby/     LobbyService (own world, friends' worlds, reserved servers)
 │   └── client/  -> StarterPlayer.StarterPlayerScripts  rendering, input, UI
 │       ├── Main.client.luau   the only client LocalScript
 │       ├── World/     ClientWorld (streaming, generation, job picking)
@@ -41,6 +44,7 @@ voxel-survival/
 │       ├── UI/        Hotbar, Crosshair, InventoryUI, ItemIcon, CoreGuiSetup
 │       ├── Survival/  SurvivalClient, SurvivalHUD (pips, death screen), DayNightClient (lighting)
 │       ├── Mobs/      MobClient (replication, interpolation, animation), MobModels (original designs)
+│       ├── Lobby/     LobbyUI
 │       └── Debug/     DebugOverlay
 └── tests/lune/          headless tests + benchmarks for the pure shared modules
 ```
@@ -61,6 +65,18 @@ Every system is a ModuleScript. There is exactly one bootstrap script per side.
 5. Press **Play**. Terrain streams in around you, and the character spawns once the ground under it has collision.
 
 Build a place file without Studio: `rojo build -o rocraft.rbxl`.
+
+### Saving (phase 6)
+
+- **In Studio** you play your own world directly (no lobby). Turn on *Game Settings → Security →
+  Enable Studio Access to API Services* (the place must be published once), otherwise the game
+  runs without saving and says so in Output and F3 (`save:` line). Studio saves go to a separate
+  DataStore (`RocraftWorlds_v1_Studio`) and never touch live data.
+- **Published game:** public servers are lobbies. "Play my world" creates (once) and opens your own
+  reserved server; friends see your world in their lobby while it runs, if "Friends can join" is ON.
+- Saved: changed blocks, chest and furnace contents, the world time, and per player in each world:
+  inventory, health, hunger, air and position. Autosave every 60 s, on leaving and on shutdown.
+- Not saved: dropped items and mobs (animals re-populate when terrain loads).
 
 ### Controls
 | Input | Action |

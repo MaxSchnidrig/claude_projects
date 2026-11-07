@@ -159,6 +159,12 @@ Config.MOB_SEND_DISTANCE = 96 -- mobs within this range are sent to a client (ba
 Config.MOB_SNAPSHOT_HZ = 10
 Config.SHIFT_CLICK_INTO_CRAFT_GRID = true -- Java: shift-click from the inventory fills the 3x3 grid first (slots 1-9, merging first), then hotbar <-> inventory
 
+-- Saving (phase 6) ----------------------------------------------------------------------------
+Config.DATASTORE_NAME = "RocraftWorlds_v1" -- Studio uses DATASTORE_NAME .. "_Studio" (never live data)
+Config.AUTOSAVE_SECONDS = 60
+Config.STUDIO_OWNER_ID = 0 -- 0: in Studio the first player to join owns the world
+Config.ACTIVE_WORLDS_MAP = "RocraftActiveWorlds" -- MemoryStore: worlds running now (for friends)
+
 -- Debug -------------------------------------------------------------------------------------
 -- KeyCode names (strings, so this module stays loadable in headless tests).
 Config.DEBUG_KEY_OVERLAY = "F3" -- toggle the performance overlay

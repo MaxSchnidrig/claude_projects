@@ -21,6 +21,24 @@ local function system(name: string, path: () -> Instance)
 	}
 end
 
+-- The server decides whether this is a lobby or a world (ReplicatedStorage "ServerMode").
+local mode = ReplicatedStorage:GetAttribute("ServerMode")
+while mode == nil do
+	ReplicatedStorage:GetAttributeChangedSignal("ServerMode"):Wait()
+	mode = ReplicatedStorage:GetAttribute("ServerMode")
+end
+if mode == "lobby" then
+	Startup.run("client", {
+		system("CoreGuiSetup", function()
+			return client.UI.CoreGuiSetup
+		end),
+		system("LobbyUI", function()
+			return client.Lobby.LobbyUI
+		end),
+	})
+	return
+end
+
 Startup.run("client", {
 	system("AssetDiagnostics", function()
 		return Shared.Util.AssetDiagnostics

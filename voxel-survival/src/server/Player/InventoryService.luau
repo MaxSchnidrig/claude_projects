@@ -98,6 +98,55 @@ function InventoryService.addStack(player: Player, s: Stack): number
 	return InventoryService.add(player, s.item, s.count, s.durability)
 end
 
+-- Studio test kit (only for players without saved data).
+function InventoryService.giveStarterKit(player: Player)
+	for _, entry in Config.STUDIO_STARTER_KIT do
+		InventoryService.add(player, entry[1], entry[2])
+	end
+end
+
+-- Save snapshot: the slots, with the carried stack and the crafting grid folded back in (Java
+-- returns them to the inventory when the screen closes; whatever doesn't fit is listed in `extra`
+-- and re-added on load).
+function InventoryService.snapshot(player: Player): ({ [number]: Stack }, number)
+	local i = inv(player)
+	local slots: { [number]: Stack } = {}
+	for idx = 1, N do
+		local st = i.slots[idx]
+		if st then
+			slots[idx] = SlotLogic.copy(st, st.count)
+		end
+	end
+	local loose: { Stack } = {}
+	if i.cursor then
+		table.insert(loose, SlotLogic.copy(i.cursor :: Stack, (i.cursor :: Stack).count))
+	end
+	for _, st in i.craft do
+		if st then
+			table.insert(loose, SlotLogic.copy(st, st.count))
+		end
+	end
+	for _, st in loose do
+		SlotLogic.insert(slots, HOTBAR + 1, N, st)
+		if st.count > 0 then
+			SlotLogic.insert(slots, 1, HOTBAR, st)
+		end
+	end
+	return slots, i.selected
+end
+
+function InventoryService.restore(player: Player, slots: { [number]: Stack }, selected: number)
+	local i = inv(player)
+	table.clear(i.slots)
+	for idx, st in slots do
+		if idx >= 1 and idx <= N then
+			i.slots[idx] = st
+		end
+	end
+	i.selected = math.clamp(selected, 1, HOTBAR)
+	i.dirty = true
+end
+
 function InventoryService.selectedSlot(player: Player): number
 	return inv(player).selected
 end
@@ -202,6 +251,7 @@ end
 
 -- Mark everyone who has this container open as needing a sync.
 local function touchViewers(e: BlockEntityService.Entity)
+	BlockEntityService.markDirty(e.x, e.z)
 	for _, other in invs do
 		local w = other.window
 		if w.x == e.x and w.y == e.y and w.z == e.z then
@@ -647,18 +697,16 @@ function InventoryService.init()
 
 	local function onPlayer(player: Player)
 		inv(player)
-		if RunService:IsStudio() then
-			for _, entry in Config.STUDIO_STARTER_KIT do
-				InventoryService.add(player, entry[1], entry[2])
-			end
-		end
 	end
 	Players.PlayerAdded:Connect(onPlayer)
 	for _, player in Players:GetPlayers() do
 		onPlayer(player)
 	end
 	Players.PlayerRemoving:Connect(function(player)
-		invs[player] = nil -- phase 6: save first (incl. returning grid/cursor items)
+		-- kept a moment longer so Persistence can save it
+		task.delay(30, function()
+			invs[player] = nil
+		end)
 	end)
 
 	local acc = 0

@@ -30,6 +30,9 @@ local wanted: { [number]: boolean } = {}
 local wantedOrder: { number } = {} -- wanted keys, nearest to a player first
 local populated: { [number]: boolean } = {} -- chunks that already had their first load (animals)
 local loadedListeners: { (key: number, firstTime: boolean) -> () } = {}
+local blockSetListeners: { (chunkKey: number) -> () } = {}
+-- Saved-data gate (Persistence): a chunk may only be generated once its saved edits are loaded.
+local gate: { ready: (number) -> boolean, request: (number) -> (), ensure: (number) -> () }? = nil
 local unloadedListeners: { (key: number) -> () } = {}
 local spawnBlock = Vector3.zero
 local scheduler: Scheduler.Scheduler
@@ -67,6 +70,11 @@ end
 local function pickJob(): (() -> ())?
 	for _, key in wantedOrder do
 		if not chunks[key] and not generating[key] then
+			local g = gate
+			if g and not g.ready(key) then
+				g.request(key) -- loads in the background; picked up on a later frame
+				continue
+			end
 			generating[key] = true
 			return function()
 				local chunk = generateNow(key)
@@ -87,7 +95,8 @@ local function refreshWanted()
 	for _, player in Players:GetPlayers() do
 		local character = player.Character
 		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-		local pos = if root then root.Position else spawnBlock * BS
+		local own = player:GetAttribute("SpawnBlock")
+		local pos = if root then root.Position elseif typeof(own) == "Vector3" then own * BS else spawnBlock * BS
 		local pcx, pcz = math.floor(pos.X / BS) // CS, math.floor(pos.Z / BS) // CS
 		for dz = -r, r do
 			for dx = -r, r do
@@ -153,6 +162,9 @@ end
 
 -- Packed diff string for a chunk (empty string if unmodified).
 function WorldService.getPackedDiffs(key: number): string
+	if gate then
+		gate.ensure(key) -- yields until the chunk's saved edits are loaded
+	end
 	local d = diffs[key]
 	if not d then
 		return ""
@@ -169,10 +181,52 @@ function WorldService.getChunkSync(cx: number, cz: number): ChunkData.Chunk
 	local key = ChunkData.key(cx, cz)
 	local chunk = chunks[key]
 	if not chunk then
+		if gate then
+			gate.ensure(key)
+			chunk = chunks[key]
+			if chunk then
+				return chunk
+			end
+		end
 		chunk = generateNow(key)
 		stored(key, chunk)
 	end
 	return chunk
+end
+
+-- Persistence hooks ---------------------------------------------------------------------------
+
+function WorldService.setGate(g: { ready: (number) -> boolean, request: (number) -> (), ensure: (number) -> () })
+	gate = g
+end
+
+-- Saved edits for a chunk, installed before the chunk is generated.
+function WorldService.installDiffs(key: number, d: { [number]: number })
+	local mine = diffs[key]
+	if not mine then
+		mine = {}
+		diffs[key] = mine
+	end
+	for idx, id in d do
+		if mine[idx] == nil then -- edits made this session win
+			mine[idx] = id
+		end
+	end
+	local chunk = chunks[key]
+	if chunk then
+		for idx, id in mine do
+			buffer.writeu8(chunk.blocks, idx, id)
+		end
+		chunk.diffs = mine
+	end
+end
+
+function WorldService.getDiffs(key: number): { [number]: number }?
+	return diffs[key]
+end
+
+function WorldService.onBlockSet(fn: (chunkKey: number) -> ())
+	table.insert(blockSetListeners, fn)
 end
 
 -- Chunk lifecycle hooks (mobs: animals spawn with new chunks and are parked with unloaded ones).
@@ -226,6 +280,9 @@ function WorldService.setBlock(wx: number, wy: number, wz: number, id: number): 
 		chunk.diffs = d
 	end
 	d[ChunkData.index(lx, wy, lz)] = id
+	for _, fn in blockSetListeners do
+		fn(key)
+	end
 	return key
 end
 

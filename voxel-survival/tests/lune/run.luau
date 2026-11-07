@@ -3,6 +3,7 @@
 
 local process = require("@lune/process")
 local Loader = require("./Loader")
+Loader.globals.Vector3 = (require("@lune/roblox") :: any).Vector3
 
 local Hash = Loader.require("src/shared/Util/Hash")
 local Noise = Loader.require("src/shared/World/Noise")
@@ -754,6 +755,76 @@ test("sky light: darkening, brightness and monster spawn light", function()
 	assert(SkyLight.monsterCanSpawn(true, 18000, 20, 5), "night sky: sky 15 <= 20, light 4 <= 5")
 	assert(not SkyLight.monsterCanSpawn(true, 18000, 10, 7), "sky light 15 > 10 fails")
 	assert(SkyLight.monsterCanSpawn(false, 6000, 0, 0), "caves always dark")
+end)
+
+local Base64 = Loader.require("src/shared/Util/Base64")
+local SaveFormat = Loader.require("src/shared/Persistence/SaveFormat")
+test("base64 round trip (all byte values, every padding)", function()
+	local all = {}
+	for i = 0, 255 do
+		all[#all + 1] = string.char(i)
+	end
+	local bytes = table.concat(all)
+	for len = 0, 7 do
+		local s = string.sub(bytes, 1, len)
+		eq(Base64.decode(Base64.encode(s)), s)
+	end
+	eq(Base64.decode(Base64.encode(bytes)), bytes)
+	eq(Base64.encode("Man"), "TWFu")
+	eq(Base64.encode("Ma"), "TWE=")
+	eq(Base64.decode("not base64!"), nil)
+end)
+test("save format: regions round trip diffs and containers", function()
+	local key = ChunkData.key(-3, 5)
+	local diffs = { [0] = 1, [123] = 0, [32767] = 200 }
+	local region = {
+		chunks = { [key] = diffs, [ChunkData.key(-4, 4)] = {} },
+		entities = {
+			{ kind = "chest", x = -40, y = 60, z = 70, slots = { [1] = { item = "stick", count = 5 }, [27] = { item = "iron_pickaxe", count = 1, durability = 100 } }, burn = 0, burnMax = 0, progress = 0 },
+			{ kind = "furnace", x = -41, y = 60, z = 70, slots = { [1] = { item = "raw_iron", count = 3 } }, burn = 4.5, burnMax = 80, progress = 2 },
+		},
+	}
+	local encoded = SaveFormat.encodeRegion(region)
+	eq(encoded.v, 1)
+	local back = SaveFormat.decodeRegion(encoded)
+	eq(back.chunks[key][0], 1)
+	eq(back.chunks[key][123], 0)
+	eq(back.chunks[key][32767], 200)
+	eq(back.chunks[ChunkData.key(-4, 4)], nil) -- empty chunks aren't stored
+	eq(#back.entities, 2)
+	eq(back.entities[1].slots[27].durability, 100)
+	eq(back.entities[2].burn, 4.5)
+	eq(back.entities[2].slots[1].item, "raw_iron")
+	-- every stored string must be plain text (DataStores reject invalid UTF-8)
+	for _, text in encoded.chunks do
+		assert(string.match(text, "^[%w%+/=]*$"), "chunk data is Base64")
+	end
+	-- garbage in -> empty region, unknown items dropped
+	eq(next(SaveFormat.decodeRegion(nil).chunks), nil)
+	local bad = SaveFormat.decodeStacks({ { 1, "no_such_item", 3 }, { 2, "stick", 99 }, { 3, "stick", 2 } }, 36)
+	eq(bad[1], nil); eq(bad[2], nil); eq(bad[3].count, 2)
+end)
+test("save format: player state round trip, clamps bad values", function()
+	local V3 = Loader.globals.Vector3
+	local st = {
+		slots = { [1] = { item = "bread", count = 7 }, [36] = { item = "stone_sword", count = 1, durability = 3 } },
+		selected = 4, health = 13.5, food = 12, saturation = 2.5, exhaustion = 1.25, air = 15,
+		pos = V3.new(10.5, 64, -3.25), yaw = 1.5,
+	}
+	local back = SaveFormat.decodePlayer(SaveFormat.encodePlayer(st), 36)
+	assert(back)
+	eq(back.slots[1].count, 7)
+	eq(back.slots[36].durability, 3)
+	eq(back.selected, 4); eq(back.health, 13.5); eq(back.food, 12)
+	eq(back.pos.Y, 64); eq(back.yaw, 1.5)
+	local weird = SaveFormat.decodePlayer({ hp = 999, food = -5, sel = 42, pos = { "x" } }, 36)
+	assert(weird)
+	eq(weird.health, 20); eq(weird.food, 0); eq(weird.selected, 9); eq(weird.pos, nil)
+	eq(SaveFormat.decodePlayer("nope", 36), nil)
+	-- keys and regions
+	eq(SaveFormat.regionKey(42, -1, 3), "w:42:r:-1:3")
+	local rx, rz = SaveFormat.regionOf(-1, 4)
+	eq(rx, -1); eq(rz, 1)
 end)
 
 print(`\n{passed} passed, {failed} failed`)
