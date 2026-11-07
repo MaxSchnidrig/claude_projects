@@ -118,18 +118,46 @@ local function canReach(eye: Vector3, x: number, y: number, z: number, forPlace:
 	return false, "no line of sight"
 end
 
--- Would a block at this cell overlap any character? (Characters are ~2 studs wide, 5 tall.)
-local function overlapsCharacter(x: number, y: number, z: number): boolean
+-- Recent root positions per player (last ~0.5 s), for latency-tolerant overlap checks.
+local history: { [Player]: { { t: number, p: Vector3 } } } = {}
+local HISTORY_SECONDS = 0.5
+
+local function boxOverlaps(p: Vector3, minP: Vector3, maxP: Vector3): boolean
+	-- character box: ~1.8 studs wide, feet 2.95 below the root, top 2 above
+	local cMin = Vector3.new(p.X - 0.9, p.Y - 2.95, p.Z - 0.9)
+	local cMax = Vector3.new(p.X + 0.9, p.Y + 2.0, p.Z + 0.9)
+	return cMin.X < maxP.X and cMax.X > minP.X and cMin.Y < maxP.Y and cMax.Y > minP.Y and cMin.Z < maxP.Z and cMax.Z > minP.Z
+end
+
+-- Would a block at this cell overlap a character?
+-- The requester's own body is judged with latency tolerance (towering up: you jump and place a
+-- block under yourself; the server sees you a few frames late, still lower). It's allowed when
+-- the client's own check passed and, on the server, either:
+--   * any position in the last 0.5 s is clear of the block (you've been above it), or
+--   * you're moving upward and your feet are above the block's lower half.
+-- Other players are checked at their current position with no tolerance.
+local function overlapsCharacter(x: number, y: number, z: number, requester: Player): boolean
 	local minP = Vector3.new(x, y, z) * BS
 	local maxP = minP + Vector3.one * BS
 	for _, player in Players:GetPlayers() do
 		local character = player.Character
 		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-		if root then
-			local p = root.Position
-			local cMin = Vector3.new(p.X - 0.9, p.Y - 2.95, p.Z - 0.9)
-			local cMax = Vector3.new(p.X + 0.9, p.Y + 2.0, p.Z + 0.9)
-			if cMin.X < maxP.X and cMax.X > minP.X and cMin.Y < maxP.Y and cMax.Y > minP.Y and cMin.Z < maxP.Z and cMax.Z > minP.Z then
+		if root and boxOverlaps(root.Position, minP, maxP) then
+			if player ~= requester then
+				return true
+			end
+			local clear = false
+			for _, h in history[player] or {} do
+				if not boxOverlaps(h.p, minP, maxP) then
+					clear = true
+					break
+				end
+			end
+			local feetY = root.Position.Y - 2.95
+			if not clear and root.AssemblyLinearVelocity.Y > 2 and feetY >= minP.Y + BS * 0.5 then
+				clear = true
+			end
+			if not clear then
 				return true
 			end
 		end
@@ -256,7 +284,7 @@ local function place(player: Player, x: number, y: number, z: number)
 	if not ok then
 		return correct(player, x, y, z, why)
 	end
-	if BlockRegistry.isSolid[item.block + 1] and overlapsCharacter(x, y, z) then
+	if BlockRegistry.isSolid[item.block + 1] and overlapsCharacter(x, y, z, player) then
 		return correct(player, x, y, z, "would overlap a player")
 	end
 	if not InventoryService.consumeSelected(player, 1) then
@@ -295,6 +323,22 @@ function BlockActionService.init()
 	end)
 	Players.PlayerRemoving:Connect(function(p)
 		states[p] = nil
+		history[p] = nil
+	end)
+	game:GetService("RunService").Heartbeat:Connect(function()
+		local now = os.clock()
+		for _, p in Players:GetPlayers() do
+			local character = p.Character
+			local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+			if root then
+				local h = history[p] or {}
+				history[p] = h
+				table.insert(h, { t = now, p = root.Position })
+				while #h > 0 and now - h[1].t > HISTORY_SECONDS do
+					table.remove(h, 1)
+				end
+			end
+		end
 	end)
 end
 

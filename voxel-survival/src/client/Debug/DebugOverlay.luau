@@ -180,7 +180,10 @@ function DebugOverlay.init()
 		label.Text = table.concat({
 			`{GameInfo.TITLE} {GameInfo.VERSION}   {string.format("%.0f", fps)} fps   [F3 hide, F4 backend, F6 keep live edits, J +6h, K hurt, L spawn mob (Studio)]`,
 			`pos {posText}   biome {biomeText}   camera {CameraController.mode}`,
-			targetLine() .. `   mobs nearby {MobClient.count}` .. (if BlockInteraction.mobTarget then `   aiming at mob #{BlockInteraction.mobTarget}` else ""),
+			targetLine() .. (if BlockInteraction.mobTarget then `   aiming at mob #{BlockInteraction.mobTarget}` else ""),
+			string.format("mobs: known %d, with visible model %d   snapshot packets %d   model build errors %d%s",
+				MobClient.stats.known, MobClient.stats.visible, MobClient.stats.packets, MobClient.stats.buildErrors,
+				if MobClient.stats.lastBuildError ~= "" then ` ({MobClient.stats.lastBuildError})` else ""),
 			string.format("survival: health %s  food %d  saturation %.1f  air %.1f s  sprint %s   time %s (tick %d)",
 				healthText(), SurvivalClient.food, SurvivalClient.saturation, SurvivalClient.air,
 				if SurvivalClient.canSprint then "ok" else "too hungry", DayNightClient.clockText(), DayNightClient.timeOfDay),

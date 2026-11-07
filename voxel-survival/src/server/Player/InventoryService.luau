@@ -255,9 +255,9 @@ local function inventoryTargets(i: Inv, from: number): { { slots: SlotLogic.Slot
 			return { { slots = e.slots, lo = 2, hi = 2 } }
 		end
 	end
-	-- Java Edition: with a crafting table open, shift-click still moves hotbar <-> inventory.
-	-- Config.SHIFT_CLICK_INTO_CRAFT_GRID = true sends it into the 3x3 grid instead (then, if
-	-- the grid is full, the usual hotbar <-> inventory move).
+	-- Java Edition: with a crafting table open, shift-click from the inventory fills the 3x3
+	-- grid first (slots 1..9, merging into matching stacks before empty slots); whatever doesn't
+	-- fit moves hotbar <-> inventory as usual. (The 2x2 inventory grid is never a target.)
 	if Config.SHIFT_CLICK_INTO_CRAFT_GRID and i.window.kind == "crafting_table" then
 		local other = if from <= HOTBAR then { slots = i.slots, lo = HOTBAR + 1, hi = N } else { slots = i.slots, lo = 1, hi = HOTBAR }
 		return { { slots = i.craft, lo = 1, hi = 9 }, other }

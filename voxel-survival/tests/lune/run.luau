@@ -502,6 +502,27 @@ test("drag: left splits evenly with remainder, right places one each, Java rules
 	eq(cur3.count, 2); eq(c[1], nil) -- more slots than items: nothing happens
 end)
 
+test("mob snapshot codec: round trip, packets stay small", function()
+	local Codec = Loader.require("src/shared/Mobs/MobSnapshotCodec")
+	local recs = {}
+	for i = 1, 75 do
+		table.insert(recs, { id = i * 7, code = 4, flags = 3, x = i * 1.5, y = 200.25, z = -i * 3.5, yaw = 3.0, pitch = -0.5 })
+	end
+	local packets = Codec.encode(recs)
+	eq(#packets, 3)
+	local back = {}
+	for _, p in packets do
+		assert(buffer.len(p) <= 600, "packet too big: " .. buffer.len(p))
+		for _, r in Codec.decode(p) do
+			table.insert(back, r)
+		end
+	end
+	eq(#back, 75)
+	eq(back[10].id, 70); eq(back[10].code, 4); eq(back[10].flags, 3)
+	assert(math.abs(back[10].x - 15) < 1e-4 and math.abs(back[10].z + 35) < 1e-4)
+	assert(math.abs(back[10].yaw - 3.0) < 1e-3 and math.abs(back[10].pitch + 0.5) < 1e-3)
+end)
+
 print("Survival rules")
 local SurvivalRules = Loader.require("src/shared/Gameplay/SurvivalRules")
 test("exhaustion drains saturation first, then food", function()

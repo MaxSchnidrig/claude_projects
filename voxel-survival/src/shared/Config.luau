@@ -150,7 +150,7 @@ Config.MOB_SPAWN_MAX_DISTANCE = 48
 Config.MOB_DESPAWN_DISTANCE = 64 -- hostiles (and far passives) beyond this are removed
 Config.MOB_SEND_DISTANCE = 72 -- mobs within this range are sent to a client
 Config.MOB_SNAPSHOT_HZ = 10
-Config.SHIFT_CLICK_INTO_CRAFT_GRID = false -- Java: false (shift-click moves hotbar <-> inventory)
+Config.SHIFT_CLICK_INTO_CRAFT_GRID = true -- Java: shift-click from the inventory fills the 3x3 grid first (slots 1-9, merging first), then hotbar <-> inventory
 
 -- Debug -------------------------------------------------------------------------------------
 -- KeyCode names (strings, so this module stays loadable in headless tests).

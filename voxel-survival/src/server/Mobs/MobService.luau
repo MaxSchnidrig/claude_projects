@@ -24,6 +24,7 @@ local Crafting = require(Shared.Items.Crafting)
 local ItemRegistry = require(Shared.Items.ItemRegistry)
 local VoxelRaycast = require(Shared.World.VoxelRaycast)
 local SurvivalRules = require(Shared.Gameplay.SurvivalRules)
+local MobSnapshotCodec = require(Shared.Mobs.MobSnapshotCodec)
 local WorldService = require(script.Parent.Parent.World.WorldService)
 local ItemEntityService = require(script.Parent.Parent.World.ItemEntityService)
 local ExplosionService = require(script.Parent.Parent.World.ExplosionService)
@@ -476,23 +477,27 @@ local function sendSnapshots()
 	local remote = Remotes.getUnreliable("MobSnapshot")
 	local range2 = Config.MOB_SEND_DISTANCE ^ 2
 	for _, t in MobService.targets() do
-		local out = {}
-		local n = 0
+		local records = {}
 		for _, m in mobs do
 			local dx, dz = m.x - t.feet.X, m.z - t.feet.Z
 			if dx * dx + dz * dz <= range2 then
-				out[n + 1] = m.id
-				out[n + 2] = m.def.code
-				out[n + 3] = math.floor(m.x * BS * 100) / 100
-				out[n + 4] = math.floor(m.y * BS * 100) / 100
-				out[n + 5] = math.floor(m.z * BS * 100) / 100
-				out[n + 6] = math.floor(m.yaw * 100) / 100
-				out[n + 7] = math.floor(m.pitch * 100) / 100
-				out[n + 8] = m.flags + (if m.burning > 0 then FLAG.BURNING else 0)
-				n += 8
+				table.insert(records, {
+					id = m.id,
+					code = m.def.code,
+					flags = bit32.bor(m.flags, if m.burning > 0 then FLAG.BURNING else 0),
+					x = m.x * BS,
+					y = m.y * BS,
+					z = m.z * BS,
+					yaw = m.yaw,
+					pitch = m.pitch,
+				})
 			end
 		end
-		remote:FireClient(t.player, out)
+		-- small binary packets: unreliable events over ~900 bytes are dropped by Roblox
+		for _, packet in MobSnapshotCodec.encode(records) do
+			remote:FireClient(t.player, packet)
+		end
+		MobService.stats.lastSent = #records
 	end
 end
 

@@ -13,6 +13,7 @@ local Config = require(Shared.Config)
 local Remotes = require(Shared.Net.Remotes)
 local MobDefs = require(Shared.Mobs.MobDefs)
 local MobModels = require(script.Parent.MobModels)
+local MobSnapshotCodec = require(Shared.Mobs.MobSnapshotCodec)
 
 local BS = Config.BLOCK_SIZE
 local INTERP_DELAY = 0.15
@@ -39,6 +40,8 @@ type Mob = {
 
 local MobClient = {}
 MobClient.count = 0
+-- Diagnostics for F3: mobs the client knows about vs. mobs with a model in the world.
+MobClient.stats = { packets = 0, known = 0, visible = 0, buildErrors = 0, lastBuildError = "" }
 
 local mobs: { [number]: Mob } = {}
 local folder: Folder
@@ -49,8 +52,15 @@ local function lerpAngle(a: number, b: number, t: number): number
 end
 
 local function create(id: number, def: MobDefs.MobDef, pos: Vector3): Mob?
-	local built = MobModels.build(def.key)
+	local ok, result = pcall(MobModels.build, def.key)
+	local built = if ok then result else nil
 	if not built then
+		MobClient.stats.buildErrors += 1
+		local msg = `model for '{def.key}' failed: {if ok then "no design" else tostring(result)}`
+		if MobClient.stats.lastBuildError ~= msg then
+			warn(`[MobClient] {msg}`)
+		end
+		MobClient.stats.lastBuildError = msg
 		return nil
 	end
 	built.model.Parent = folder
@@ -100,20 +110,20 @@ local function flashAt(pos: Vector3, color: Color3, size: number, duration: numb
 	end)
 end
 
-local function onSnapshot(list: any)
-	if typeof(list) ~= "table" then
+local function onSnapshot(packet: any)
+	if typeof(packet) ~= "buffer" then
 		return
 	end
+	MobClient.stats.packets += 1
 	local now = os.clock()
-	for i = 1, #list - 7, 8 do
-		local id, code = list[i], list[i + 1]
-		local pos = Vector3.new(list[i + 2], list[i + 3], list[i + 4])
-		local def = MobDefs.byCode[code]
-		if typeof(id) == "number" and def then
-			local m = mobs[id] or create(id, def, pos)
+	for _, r in MobSnapshotCodec.decode(packet) do
+		local pos = Vector3.new(r.x, r.y, r.z)
+		local def = MobDefs.byCode[r.code]
+		if def then
+			local m = mobs[r.id] or create(r.id, def, pos)
 			if m and not m.dying then
 				m.lastSeen = now
-				table.insert(m.samples, { t = now, pos = pos, yaw = list[i + 5], pitch = list[i + 6], flags = list[i + 7] })
+				table.insert(m.samples, { t = now, pos = pos, yaw = r.yaw, pitch = r.pitch, flags = r.flags })
 				while #m.samples > 6 do
 					table.remove(m.samples, 1)
 				end
@@ -288,6 +298,16 @@ local function update(dt: number)
 		pose(m, now)
 	end
 	MobClient.count = count
+	-- known vs visible (a model in the world with at least one part)
+	local known, visible = 0, 0
+	for _, m in mobs do
+		known += 1
+		if m.built.model.Parent ~= nil and #m.built.parts > 0 then
+			visible += 1
+		end
+	end
+	MobClient.stats.known = known
+	MobClient.stats.visible = visible
 end
 
 -- Closest mob hit by a ray (studs) within maxDist, as (id, distance) or nil.
