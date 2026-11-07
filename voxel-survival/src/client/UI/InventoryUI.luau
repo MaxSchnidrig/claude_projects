@@ -54,6 +54,17 @@ local widgets: { Widget } = {}
 local layoutKind: string? = nil
 local hovered: Widget? = nil
 local splitMode = false
+-- Modifier keys, tracked from key events (UserInputService:IsKeyDown missed Shift during
+-- GUI clicks in a Studio test on macOS). Both sources are combined.
+local shiftHeld, ctrlHeld = false, false
+local shiftMarker: TextLabel? = nil
+local function shiftDown(): boolean
+	return shiftHeld or UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+end
+local function ctrlDown(): boolean
+	return ctrlHeld or UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
+		or UserInputService:IsKeyDown(Enum.KeyCode.LeftSuper) or UserInputService:IsKeyDown(Enum.KeyCode.RightSuper)
+end
 local furnaceArrow: Frame? = nil
 local furnaceFlame: Frame? = nil
 
@@ -157,9 +168,6 @@ local function slot(x: number, y: number, container: string, index: number, big:
 		durability = durability,
 		shown = nil,
 	}
-	local function shiftDown(): boolean
-		return UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
-	end
 	b.MouseButton1Click:Connect(function()
 		InventoryClient.click(container, index, if splitMode then "right" else "left", shiftDown())
 	end)
@@ -232,6 +240,11 @@ local function build(kind: string)
 
 	local y = PAD
 	label(panel, TITLES[kind] or kind, UDim2.fromOffset(PAD, y), UDim2.fromOffset(300, 20))
+	-- shows while Shift is held, so it's visible whether shift-clicks will quick-move
+	local marker = label(panel, "SHIFT", UDim2.new(1, -PAD - 120, 0, y), UDim2.fromOffset(60, 20), 13)
+	marker.TextColor3 = Color3.fromRGB(140, 200, 255)
+	marker.Visible = false
+	shiftMarker = marker
 	y += 26
 
 	if kind == "inventory" or kind == "crafting_table" then
@@ -506,8 +519,26 @@ function InventoryUI.init()
 	end)
 
 	local keyInventory = (Enum.KeyCode :: any)[Config.KEY_INVENTORY]
+	local keyDrop = (Enum.KeyCode :: any)[Config.KEY_DROP]
+	local function setModifier(k: Enum.KeyCode, down: boolean)
+		if k == Enum.KeyCode.LeftShift or k == Enum.KeyCode.RightShift then
+			shiftHeld = down
+		elseif k == Enum.KeyCode.LeftControl or k == Enum.KeyCode.RightControl
+			or k == Enum.KeyCode.LeftSuper or k == Enum.KeyCode.RightSuper
+		then
+			ctrlHeld = down -- Ctrl, or Cmd on a Mac
+		end
+	end
+	UserInputService.InputEnded:Connect(function(input)
+		setModifier(input.KeyCode, false)
+	end)
 	UserInputService.InputBegan:Connect(function(input, processed)
-		if input.KeyCode == keyInventory and (not processed or gui.Enabled) then
+		setModifier(input.KeyCode, true) -- regardless of `processed`
+		if input.KeyCode == keyDrop and gui.Enabled and hovered then
+			-- Q over a slot drops one item from it; Ctrl/Cmd+Q drops the whole stack
+			local h = hovered :: Widget
+			InventoryClient.dropSlot(h.container, h.index, ctrlDown())
+		elseif input.KeyCode == keyInventory and (not processed or gui.Enabled) then
 			InventoryUI.toggle()
 		elseif input.KeyCode == Enum.KeyCode.Escape and gui.Enabled then
 			hide(true)
@@ -527,6 +558,9 @@ function InventoryUI.init()
 		local inset = GuiService:GetGuiInset()
 		local m = UserInputService:GetMouseLocation() - inset
 		cursorFrame.Position = UDim2.fromOffset(m.X, m.Y)
+		if shiftMarker then
+			shiftMarker.Visible = shiftDown()
+		end
 		local h = hovered
 		local s = h and stackFor(h)
 		local def = s and ItemRegistry.get(s.item)

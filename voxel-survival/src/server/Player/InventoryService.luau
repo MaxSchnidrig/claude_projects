@@ -457,6 +457,36 @@ local function onAction(player: Player, a: any)
 			end
 			i.dirty = true
 		end
+	elseif t == "dropSlot" then
+		-- Q over a slot in an open window (Ctrl/Cmd+Q: whole stack)
+		if typeof(a.container) ~= "string" or not isInt(a.index) then
+			return
+		end
+		local slots: { [number]: Stack? }? = nil
+		local size = 0
+		if a.container == "inv" then
+			slots, size = i.slots, N
+		elseif a.container == "craft" then
+			slots, size = i.craft, craftWidth(i) ^ 2
+		elseif a.container == "block" then
+			local e = windowEntity(i)
+			if e then
+				slots, size = e.slots, if e.kind == "chest" then BlockEntityService.CHEST_SLOTS else 3
+				touchViewers(e)
+			end
+		end
+		if slots and a.index >= 1 and a.index <= size then
+			local s = slots[a.index]
+			if s then
+				local n = if a.all == true then s.count else 1
+				throw(player, SlotLogic.copy(s, n))
+				s.count -= n
+				if s.count <= 0 then
+					slots[a.index] = nil
+				end
+				i.dirty = true
+			end
+		end
 	elseif t == "dropCursor" then
 		-- clicked outside the window while carrying something
 		local c = i.cursor

@@ -133,6 +133,11 @@ function InventoryClient.drop(all: boolean)
 	send({ type = "drop", all = all })
 end
 
+-- Q while hovering a slot in an open window.
+function InventoryClient.dropSlot(container: string, index: number, all: boolean)
+	send({ type = "dropSlot", container = container, index = index, all = all })
+end
+
 function InventoryClient.dropCursor(all: boolean)
 	send({ type = "dropCursor", all = all })
 end
