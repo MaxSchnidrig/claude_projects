@@ -43,6 +43,10 @@ Startup.run("client", {
 	system("AssetDiagnostics", function()
 		return Shared.Util.AssetDiagnostics
 	end),
+	-- textures first: terrain meshes, icons and the hand all use the atlas
+	system("TextureAtlas", function()
+		return client.Render.TextureAtlas
+	end),
 	system("CoreGuiSetup", function()
 		return client.UI.CoreGuiSetup
 	end),
@@ -87,6 +91,39 @@ Startup.run("client", {
 	system("MobClient", function()
 		return client.Mobs.MobClient
 	end),
+	{
+		name = "Effects",
+		run = function()
+			local BlockInteraction = require(client.Interaction.BlockInteraction) :: any
+			local ClientWorld = require(client.World.ClientWorld) :: any
+			local Particles = require(client.Render.Particles) :: any
+			Particles.init(ClientWorld.getBlock)
+			BlockInteraction.broken.Event:Connect(function(x, y, z, id)
+				Particles.breakBlock(x, y, z, id)
+			end)
+			BlockInteraction.digging.Event:Connect(function(x, y, z, id)
+				local hit = BlockInteraction.target
+				local n = if hit then Vector3.new(hit.nx, hit.ny, hit.nz) else Vector3.yAxis
+				Particles.dig(x, y, z, id, n)
+			end)
+			require(client.Player.ViewModel).init(BlockInteraction.swing)
+			require(client.World.Clouds).init()
+			local BlockRegistry = require(Shared.Blocks.BlockRegistry) :: any
+			require(client.Survival.DayNightClient).setBlockSource(ClientWorld.getBlock, BlockRegistry.isOpaque)
+		end,
+	},
+	{
+		name = "AudioClient",
+		run = function()
+			require(client.Audio.AudioClient).init({
+				BlockInteraction = require(client.Interaction.BlockInteraction),
+				ClientWorld = require(client.World.ClientWorld),
+				MovementController = require(client.Player.MovementController),
+				InventoryClient = require(client.Player.InventoryClient),
+				MobClient = require(client.Mobs.MobClient),
+			})
+		end,
+	},
 	system("DebugOverlay", function()
 		return client.Debug.DebugOverlay
 	end),

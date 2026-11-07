@@ -30,6 +30,7 @@ local shaped: { Shaped } = {
 	{ pattern = { " I", "I " }, key = { I = "iron_ingot" }, result = { item = "shears", count = 1 } },
 	{ pattern = { "ss", "ss" }, key = { s = "string" }, result = { item = "white_wool", count = 1 } },
 	{ pattern = { "GSG", "SGS", "GSG" }, key = { G = "gunpowder", S = "sand" }, result = { item = "tnt", count = 1 } },
+	{ pattern = { "C", "S" }, key = { C = "#coals", S = "stick" }, result = { item = "torch", count = 4 } },
 }
 
 -- Tools: same shapes for every material tier.

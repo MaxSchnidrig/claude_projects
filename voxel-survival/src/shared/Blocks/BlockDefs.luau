@@ -19,6 +19,12 @@
 --   liquid      fluid block (default false)
 --   cullSelf    hide faces between two blocks of this same type (glass, water) (default true)
 --   bonusDrops  extra chance drops when broken by hand or any tool: { { item, chance } }
+--   light       light emitted, 0-15 (lava 15, torch 14)
+--   opacity     how much light it removes passing through (0 clear .. 15 opaque); default 15
+--               for opaque blocks, 0 otherwise; leaves, water and ice are 1
+--   sound       material sound group (Audio/SoundConfig); default from the tool type
+--   shape       "cube" (meshed), "torch" / "wall_torch" (own small model); default "cube"
+--   facing      wall torches: the side it leans towards ("east" = its wall is at x - 1)
 
 export type BlockDefInput = {
 	id: number,
@@ -36,34 +42,39 @@ export type BlockDefInput = {
 	liquid: boolean?,
 	cullSelf: boolean?,
 	bonusDrops: { { item: string, chance: number } }?,
+	light: number?,
+	opacity: number?,
+	sound: string?,
+	shape: string?,
+	facing: string?,
 }
 
 local defs: { BlockDefInput } = {
 	-- Terrain ---------------------------------------------------------------------------------
 	{ id = 1, key = "stone", name = "Stone", hardness = 1.5, tool = "pickaxe", minTier = 1, drop = "cobblestone", textures = { all = "stone" } },
-	{ id = 2, key = "grass_block", name = "Grass Block", hardness = 0.6, tool = "shovel", drop = "dirt", textures = { top = "grass_top", side = "grass_side", bottom = "dirt" } },
-	{ id = 3, key = "dirt", name = "Dirt", hardness = 0.5, tool = "shovel", textures = { all = "dirt" } },
+	{ id = 2, key = "grass_block", name = "Grass Block", hardness = 0.6, tool = "shovel", drop = "dirt", textures = { top = "grass_top", side = "grass_side", bottom = "dirt" }, sound = "grass" },
+	{ id = 3, key = "dirt", name = "Dirt", hardness = 0.5, tool = "shovel", textures = { all = "dirt" }, sound = "gravel" },
 	{ id = 4, key = "cobblestone", name = "Cobblestone", hardness = 2.0, tool = "pickaxe", minTier = 1, textures = { all = "cobblestone" } },
 	{ id = 5, key = "bedrock", name = "Bedrock", hardness = -1, drop = false, textures = { all = "bedrock" } },
-	{ id = 6, key = "sand", name = "Sand", hardness = 0.5, tool = "shovel", textures = { all = "sand" } },
-	{ id = 7, key = "gravel", name = "Gravel", hardness = 0.6, tool = "shovel", textures = { all = "gravel" } },
+	{ id = 6, key = "sand", name = "Sand", hardness = 0.5, tool = "shovel", textures = { all = "sand" }, sound = "sand" },
+	{ id = 7, key = "gravel", name = "Gravel", hardness = 0.6, tool = "shovel", textures = { all = "gravel" }, sound = "gravel" },
 	{ id = 8, key = "sandstone", name = "Sandstone", hardness = 0.8, tool = "pickaxe", minTier = 1, textures = { top = "sandstone_top", side = "sandstone_side", bottom = "sandstone_top" } },
-	{ id = 9, key = "water", name = "Water", hardness = 100, drop = false, textures = { all = "water" }, solid = false, transparent = true, liquid = true },
-	{ id = 10, key = "lava", name = "Lava", hardness = 100, drop = false, textures = { all = "lava" }, solid = false, transparent = true, liquid = true },
-	{ id = 28, key = "snow_block", name = "Snow Block", hardness = 0.2, tool = "shovel", minTier = 1, drop = "snowball", dropMin = 4, dropMax = 4, textures = { all = "snow" } },
-	{ id = 29, key = "ice", name = "Ice", hardness = 0.5, tool = "pickaxe", drop = false, textures = { all = "ice" }, transparent = true },
-	{ id = 30, key = "clay", name = "Clay", hardness = 0.6, tool = "shovel", drop = "clay_ball", dropMin = 4, dropMax = 4, textures = { all = "clay" } },
-	{ id = 38, key = "snowy_grass_block", name = "Snowy Grass Block", hardness = 0.6, tool = "shovel", drop = "dirt", textures = { top = "snow", side = "snowy_grass_side", bottom = "dirt" } },
+	{ id = 9, key = "water", name = "Water", hardness = 100, drop = false, textures = { all = "water" }, solid = false, transparent = true, liquid = true, opacity = 1, sound = "water" },
+	{ id = 10, key = "lava", name = "Lava", hardness = 100, drop = false, textures = { all = "lava" }, solid = false, transparent = true, liquid = true, light = 15, sound = "lava" },
+	{ id = 28, key = "snow_block", name = "Snow Block", hardness = 0.2, tool = "shovel", minTier = 1, drop = "snowball", dropMin = 4, dropMax = 4, textures = { all = "snow" }, sound = "snow" },
+	{ id = 29, key = "ice", name = "Ice", hardness = 0.5, tool = "pickaxe", drop = false, textures = { all = "ice" }, transparent = true, opacity = 1, sound = "glass" },
+	{ id = 30, key = "clay", name = "Clay", hardness = 0.6, tool = "shovel", drop = "clay_ball", dropMin = 4, dropMax = 4, textures = { all = "clay" }, sound = "gravel" },
+	{ id = 38, key = "snowy_grass_block", name = "Snowy Grass Block", hardness = 0.6, tool = "shovel", drop = "dirt", textures = { top = "snow", side = "snowy_grass_side", bottom = "dirt" }, sound = "grass" },
 
 	-- Wood ------------------------------------------------------------------------------------
 	{ id = 11, key = "oak_log", name = "Oak Log", hardness = 2.0, tool = "axe", textures = { top = "oak_log_top", side = "oak_log", bottom = "oak_log_top" } },
-	{ id = 12, key = "oak_leaves", name = "Oak Leaves", hardness = 0.2, tool = "hoe", drop = false, textures = { all = "oak_leaves" }, bonusDrops = { { item = "apple", chance = 0.005 }, { item = "stick", chance = 0.02 } } },
+	{ id = 12, key = "oak_leaves", name = "Oak Leaves", hardness = 0.2, tool = "hoe", drop = false, textures = { all = "oak_leaves" }, bonusDrops = { { item = "apple", chance = 0.005 }, { item = "stick", chance = 0.02 } }, opacity = 1, sound = "grass" },
 	{ id = 13, key = "oak_planks", name = "Oak Planks", hardness = 2.0, tool = "axe", textures = { all = "oak_planks" } },
 	{ id = 14, key = "birch_log", name = "Birch Log", hardness = 2.0, tool = "axe", textures = { top = "birch_log_top", side = "birch_log", bottom = "birch_log_top" } },
-	{ id = 15, key = "birch_leaves", name = "Birch Leaves", hardness = 0.2, tool = "hoe", drop = false, textures = { all = "birch_leaves" }, bonusDrops = { { item = "stick", chance = 0.02 } } },
+	{ id = 15, key = "birch_leaves", name = "Birch Leaves", hardness = 0.2, tool = "hoe", drop = false, textures = { all = "birch_leaves" }, bonusDrops = { { item = "stick", chance = 0.02 } }, opacity = 1, sound = "grass" },
 	{ id = 16, key = "birch_planks", name = "Birch Planks", hardness = 2.0, tool = "axe", textures = { all = "birch_planks" } },
 	{ id = 17, key = "spruce_log", name = "Spruce Log", hardness = 2.0, tool = "axe", textures = { top = "spruce_log_top", side = "spruce_log", bottom = "spruce_log_top" } },
-	{ id = 18, key = "spruce_leaves", name = "Spruce Leaves", hardness = 0.2, tool = "hoe", drop = false, textures = { all = "spruce_leaves" }, bonusDrops = { { item = "stick", chance = 0.02 } } },
+	{ id = 18, key = "spruce_leaves", name = "Spruce Leaves", hardness = 0.2, tool = "hoe", drop = false, textures = { all = "spruce_leaves" }, bonusDrops = { { item = "stick", chance = 0.02 } }, opacity = 1, sound = "grass" },
 	{ id = 19, key = "spruce_planks", name = "Spruce Planks", hardness = 2.0, tool = "axe", textures = { all = "spruce_planks" } },
 
 	-- Ores ------------------------------------------------------------------------------------
@@ -78,13 +89,19 @@ local defs: { BlockDefInput } = {
 	{ id = 27, key = "volt_ore", name = "Volt Ore", hardness = 3.0, tool = "pickaxe", minTier = 3, drop = "volt_dust", dropMin = 4, dropMax = 5, textures = { all = "volt_ore" } },
 
 	-- Crafted / utility (used from phase 2-3 onward) -----------------------------------------
-	{ id = 31, key = "glass", name = "Glass", hardness = 0.3, drop = false, textures = { all = "glass" }, transparent = true },
+	{ id = 31, key = "glass", name = "Glass", hardness = 0.3, drop = false, textures = { all = "glass" }, transparent = true, sound = "glass" },
 	{ id = 32, key = "obsidian", name = "Obsidian", hardness = 50, tool = "pickaxe", minTier = 4, textures = { all = "obsidian" } },
 	{ id = 33, key = "crafting_table", name = "Crafting Table", hardness = 2.5, tool = "axe", textures = { top = "crafting_table_top", side = "crafting_table_side", bottom = "oak_planks" } },
 	{ id = 34, key = "furnace", name = "Furnace", hardness = 3.5, tool = "pickaxe", minTier = 1, textures = { top = "furnace_top", side = "furnace_side", bottom = "furnace_top" } },
 	{ id = 35, key = "chest", name = "Chest", hardness = 2.5, tool = "axe", textures = { all = "chest" } },
-	{ id = 36, key = "tnt", name = "TNT", hardness = 0, textures = { top = "tnt_top", side = "tnt_side", bottom = "tnt_top" } },
-	{ id = 37, key = "white_wool", name = "White Wool", hardness = 0.8, tool = "shears", textures = { all = "white_wool" } },
+	{ id = 36, key = "tnt", name = "TNT", hardness = 0, textures = { top = "tnt_top", side = "tnt_side", bottom = "tnt_top" }, sound = "grass" },
+	{ id = 39, key = "torch", name = "Torch", hardness = 0, textures = { all = "torch" }, solid = false, transparent = true, light = 14, opacity = 0, sound = "wood", shape = "torch" },
+	-- Torches on walls: one id per side, `facing` = the direction it leans (away from its wall).
+	{ id = 40, key = "wall_torch_east", name = "Torch", hardness = 0, drop = "torch", textures = { all = "torch" }, solid = false, transparent = true, light = 14, opacity = 0, sound = "wood", shape = "wall_torch", facing = "east" },
+	{ id = 41, key = "wall_torch_west", name = "Torch", hardness = 0, drop = "torch", textures = { all = "torch" }, solid = false, transparent = true, light = 14, opacity = 0, sound = "wood", shape = "wall_torch", facing = "west" },
+	{ id = 42, key = "wall_torch_south", name = "Torch", hardness = 0, drop = "torch", textures = { all = "torch" }, solid = false, transparent = true, light = 14, opacity = 0, sound = "wood", shape = "wall_torch", facing = "south" },
+	{ id = 43, key = "wall_torch_north", name = "Torch", hardness = 0, drop = "torch", textures = { all = "torch" }, solid = false, transparent = true, light = 14, opacity = 0, sound = "wood", shape = "wall_torch", facing = "north" },
+	{ id = 37, key = "white_wool", name = "White Wool", hardness = 0.8, tool = "shears", textures = { all = "white_wool" }, sound = "wool" },
 }
 
 return defs

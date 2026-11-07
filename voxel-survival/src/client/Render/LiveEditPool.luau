@@ -130,9 +130,10 @@ local function createSlot(): Slot?
 		mp.CanCollide = false
 		mp.CanQuery = false
 		mp.CanTouch = false
-		mp.CastShadow = true
+		mp.CastShadow = not Config.TEXTURES
 		mp.Material = style.material
-		mp.Color = if Config.USE_VERTEX_COLORS then Color3.new(1, 1, 1) else style.color
+		mp.Color = if Config.USE_VERTEX_COLORS or EditableMeshBackend.texturedMode() then Color3.new(1, 1, 1) else style.color
+		EditableMeshBackend.applyTexture(mp)
 		mp.Transparency = style.transparency
 		mp.CFrame = CFrame.new(0, -1000, 0) -- parked until first used (it has no faces anyway)
 		mp.Parent = folder -- stays parented for good (see header)
@@ -192,17 +193,17 @@ function LiveEditPool.write(slot: Slot, section: any, result: GreedyMesher.MeshR
 	slot.lastUsed = t
 	clear(slot)
 	local uncovered: { [string]: boolean } = {}
-	local caches: { [string]: { normals: { [number]: number }, uvs: { [number]: number } } } = {}
+	local caches: { [string]: { normals: { [number]: number }, uvs: { [number]: number }, colors: { [number]: number } } } = {}
 	for tex, quads in result.groups do
 		local key = EditableMeshBackend.groupKey(tex)
 		local sub = slot.subs[key]
 		if sub then
 			local c = caches[key]
 			if not c then
-				c = { normals = {}, uvs = {} }
+				c = { normals = {}, uvs = {}, colors = {} }
 				caches[key] = c
 			end
-			EditableMeshBackend.appendQuads(sub.em, tex, quads, CENTER, c.normals, c.uvs, sub.faces)
+			EditableMeshBackend.appendQuads(sub.em, tex, quads, CENTER, c.normals, c.uvs, sub.faces, c.colors)
 		else
 			uncovered[key] = true
 		end
@@ -272,9 +273,10 @@ function LiveEditPool.bake(slot: Slot, onDone: (any?, string?) -> ())
 				mp.CanCollide = false
 				mp.CanQuery = false
 				mp.CanTouch = false
-				mp.CastShadow = true
+				mp.CastShadow = sub.part.CastShadow
 				mp.Material = sub.part.Material
 				mp.Color = sub.part.Color
+				EditableMeshBackend.applyTexture(mp)
 				mp.Transparency = sub.part.Transparency
 				mp.CFrame = sub.part.CFrame
 				table.insert(handle.parts, mp)

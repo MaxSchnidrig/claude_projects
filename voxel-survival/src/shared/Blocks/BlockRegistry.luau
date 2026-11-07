@@ -25,6 +25,10 @@ export type BlockDef = {
 	bonusDrops: { { item: string, chance: number } },
 	-- texture index per face direction (see Directions below)
 	faceTexture: { number },
+	light: number, -- emitted light 0-15
+	sound: string, -- sound group (Audio/SoundConfig)
+	shape: string, -- "cube" | "torch" | "wall_torch"
+	facing: string?, -- wall torches
 }
 
 local BlockRegistry = {}
@@ -77,6 +81,12 @@ local isOpaque = table.create(256, false) :: { boolean }
 local isLiquid = table.create(256, false) :: { boolean }
 local cullSelf = table.create(256, true) :: { boolean }
 local isTransparentGroup = table.create(256, false) :: { boolean }
+local lightEmission = table.create(256, 0) :: { number }
+local lightOpacity = table.create(256, 0) :: { number }
+local isCube = table.create(256, true) :: { boolean }
+
+-- Sound group when a block doesn't name one: by its preferred tool.
+local SOUND_BY_TOOL = { pickaxe = "stone", axe = "wood", shovel = "gravel", hoe = "grass", shears = "wool" }
 
 for _, d in BlockDefs do
 	assert(d.id > 0 and d.id <= 255, `BlockRegistry: bad id {d.id} for {d.key}`)
@@ -115,6 +125,10 @@ for _, d in BlockDefs do
 		cullSelf = if d.cullSelf == nil then true else d.cullSelf,
 		bonusDrops = d.bonusDrops or {},
 		faceTexture = { sideTex, sideTex, texId(top), texId(bottom), sideTex, sideTex },
+		light = d.light or 0,
+		sound = d.sound or (d.tool and SOUND_BY_TOOL[d.tool]) or "stone",
+		shape = d.shape or "cube",
+		facing = d.facing,
 	}
 	byId[d.id] = def
 	byKey[d.key] = def
@@ -124,6 +138,9 @@ for _, d in BlockDefs do
 	isLiquid[d.id + 1] = def.liquid
 	cullSelf[d.id + 1] = def.cullSelf
 	isTransparentGroup[d.id + 1] = def.transparent
+	lightEmission[d.id + 1] = def.light
+	lightOpacity[d.id + 1] = d.opacity or (if isOpaque[d.id + 1] then 15 else 0)
+	isCube[d.id + 1] = def.shape == "cube"
 end
 
 BlockRegistry.byId = byId
@@ -134,6 +151,9 @@ BlockRegistry.isOpaque = isOpaque
 BlockRegistry.isLiquid = isLiquid
 BlockRegistry.cullSelf = cullSelf
 BlockRegistry.isTransparent = isTransparentGroup
+BlockRegistry.lightEmission = lightEmission
+BlockRegistry.lightOpacity = lightOpacity
+BlockRegistry.isCube = isCube
 
 -- Look up an ID by key; errors on typos so mistakes surface at load time.
 function BlockRegistry.id(key: string): number

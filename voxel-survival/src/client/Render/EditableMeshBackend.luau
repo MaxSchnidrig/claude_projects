@@ -119,24 +119,75 @@ local function groupKey(tex: number): string
 	return `{style.transparency}:{style.material.Name}`
 end
 
+-- Atlas UV corners per direction: (s, t) of each quad corner (quadCorners order) inside the tile,
+-- t = 0 at the top of the texture. Side faces show the texture upright and unmirrored seen from
+-- outside; tops/bottoms use x -> s, z -> t.
+local function tileST(d: number, x: number, y: number, z: number, bx: number, by: number, bz: number): (number, number)
+	if d == 1 then
+		return 1 - (z - bz), 1 - (y - by)
+	elseif d == 2 then
+		return z - bz, 1 - (y - by)
+	elseif d == 5 then
+		return x - bx, 1 - (y - by)
+	elseif d == 6 then
+		return 1 - (x - bx), 1 - (y - by)
+	elseif d == 3 then
+		return x - bx, z - bz
+	else
+		return x - bx, 1 - (z - bz)
+	end
+end
+
+local Q = GreedyMesher.QUAD
+local TextureAtlas = require(script.Parent.TextureAtlas)
+
+-- Textured terrain needs the atlas; without it (e.g. no editable-image budget) faces fall back
+-- to their flat colour, still lit and shaded.
+local function texturedMode(): boolean
+	return Config.TEXTURES and TextureAtlas.content ~= nil
+end
+Backend.texturedMode = texturedMode
+
 -- Append all quads of one texture to an EditableMesh. Returns vertices/triangles added.
+-- Textured mode: atlas UVs per face and per-corner brightness (light x AO x face shade) as vertex
+-- colours; flat mode: world-aligned UVs and the texture's colour.
 local function appendQuads(
 	em: any,
 	tex: number,
 	quads: { number },
 	center: Vector3,
 	normalIds: { [number]: number },
-	uvIds: { [number]: number },
-	faceList: { number }? -- optional: collects the created face ids (live meshes remove them later)
+	uvIds: { [any]: number },
+	faceList: { number }?, -- optional: collects the created face ids (live meshes remove them later)
+	colorIds: { [number]: number }?
 ): (number, number)
 	local style = RenderStyle.forTexture(tex)
-	local colorIds: { [number]: number } = {}
+	local textured = texturedMode()
+	local u0, v0, u1, v1 = 0, 0, 1, 1
+	if textured then
+		u0, v0, u1, v1 = TextureAtlas.uvRect(tex)
+	end
+	local colors = colorIds or {}
 	local function uv(u: number, v: number): number
-		local key = (u + 512) * 2048 + (v + 512)
-		local id = uvIds[key]
+		local key = if textured then (tex * 4 + u * 2 + v) else (u + 512) * 2048 + (v + 512)
+		local keyed = if textured then -key - 1 else key
+		local id = uvIds[keyed]
 		if not id then
-			id = em:AddUV(Vector2.new(u, v))
-			uvIds[key] = id
+			id = em:AddUV(if textured then Vector2.new(u0 + (u1 - u0) * u, v0 + (v1 - v0) * v) else Vector2.new(u, v))
+			uvIds[keyed] = id
+		end
+		return id
+	end
+	local function color(d: number, b: number): number
+		local key = d * 256 + b
+		local id = colors[key]
+		if not id then
+			local s = DIR_SHADE[d] * b / 255
+			local col = if textured then Color3.new(s, s, s)
+				elseif Config.USE_VERTEX_COLORS then Color3.new(style.color.R * s, style.color.G * s, style.color.B * s)
+				else Color3.new(s, s, s)
+			id = em:AddColor(col, 1)
+			colors[key] = id
 		end
 		return id
 	end
@@ -144,55 +195,63 @@ local function appendQuads(
 	local cx, cy, cz = center.X, center.Y, center.Z
 	local flip = Config.FLIP_WINDING
 	local verts, tris = 0, 0
-	for q = 1, #quads, 6 do
+	for q = 1, #quads, Q do
 		local d = quads[q]
 		local c = GreedyMesher.quadCorners(d, quads[q + 1], quads[q + 2], quads[q + 3], quads[q + 4], quads[q + 5])
+		local bx = math.min(c[1], c[4], c[7], c[10])
+		local by = math.min(c[2], c[5], c[8], c[11])
+		local bz = math.min(c[3], c[6], c[9], c[12])
 		local vIds = table.create(4, 0)
 		local uvs = table.create(4, 0)
+		local cols = table.create(4, 0)
 		for k = 0, 3 do
 			local x, y, z = c[k * 3 + 1], c[k * 3 + 2], c[k * 3 + 3]
 			vIds[k + 1] = em:AddVertex(Vector3.new((x - cx) * BS, (y - cy) * BS, (z - cz) * BS))
-			-- World-aligned UVs: one texture tile per block, "up" is +Y on side faces.
-			if d <= 2 then
-				uvs[k + 1] = uv(z, -y)
+			if textured then
+				local s, t = tileST(d, x, y, z, bx, by, bz)
+				uvs[k + 1] = uv(math.round(s), math.round(t))
+			elseif d <= 2 then
+				uvs[k + 1] = uv(z, -y) -- world-aligned UVs: one texture tile per block
 			elseif d >= 5 then
 				uvs[k + 1] = uv(x, -y)
 			else
 				uvs[k + 1] = uv(x, z)
 			end
+			cols[k + 1] = color(d, quads[q + 6 + k] or 255)
 		end
 		local nId = normalIds[d]
 		if not nId then
 			nId = em:AddNormal(DIR_NORMALS[d])
 			normalIds[d] = nId
 		end
-		local colId = colorIds[d]
-		if not colId then
-			local s = DIR_SHADE[d]
-			local col = if Config.USE_VERTEX_COLORS
-				then Color3.new(style.color.R * s, style.color.G * s, style.color.B * s)
-				else Color3.new(s, s, s)
-			colId = em:AddColor(col, 1)
-			colorIds[d] = colId
+		-- split along the brighter diagonal so ambient occlusion shades evenly
+		local b0, b1, b2, b3 = quads[q + 6] or 255, quads[q + 7] or 255, quads[q + 8] or 255, quads[q + 9] or 255
+		local rot = b0 + b2 < b1 + b3
+		local i1, i2, i3, i4 = 1, 2, 3, 4
+		if rot then
+			i1, i2, i3, i4 = 2, 3, 4, 1
 		end
-		local a, b, c2, e = vIds[1], vIds[2], vIds[3], vIds[4]
-		local ua, ub, uc, ue = uvs[1], uvs[2], uvs[3], uvs[4]
+		local a, b, c2, e = vIds[i1], vIds[i2], vIds[i3], vIds[i4]
+		local ua, ub, uc, ue = uvs[i1], uvs[i2], uvs[i3], uvs[i4]
+		local ca, cb, cc, ce = cols[i1], cols[i2], cols[i3], cols[i4]
 		local f1, f2
 		if flip then
 			f1 = em:AddTriangle(a, c2, b)
 			f2 = em:AddTriangle(a, e, c2)
 			em:SetFaceUVs(f1, { ua, uc, ub })
 			em:SetFaceUVs(f2, { ua, ue, uc })
+			em:SetFaceColors(f1, { ca, cc, cb })
+			em:SetFaceColors(f2, { ca, ce, cc })
 		else
 			f1 = em:AddTriangle(a, b, c2)
 			f2 = em:AddTriangle(a, c2, e)
 			em:SetFaceUVs(f1, { ua, ub, uc })
 			em:SetFaceUVs(f2, { ua, uc, ue })
+			em:SetFaceColors(f1, { ca, cb, cc })
+			em:SetFaceColors(f2, { ca, cc, ce })
 		end
 		em:SetFaceNormals(f1, { nId, nId, nId })
 		em:SetFaceNormals(f2, { nId, nId, nId })
-		em:SetFaceColors(f1, { colId, colId, colId })
-		em:SetFaceColors(f2, { colId, colId, colId })
 		if faceList then
 			table.insert(faceList, f1)
 			table.insert(faceList, f2)
@@ -210,7 +269,7 @@ local function groupCenter(texList: { number }, groups: { [number]: { number } }
 	local maxX, maxY, maxZ = -math.huge, -math.huge, -math.huge
 	for _, tex in texList do
 		local quads = groups[tex]
-		for q = 1, #quads, 6 do
+		for q = 1, #quads, GreedyMesher.QUAD do
 			local c = GreedyMesher.quadCorners(quads[q], quads[q + 1], quads[q + 2], quads[q + 3], quads[q + 4], quads[q + 5])
 			for v = 1, 12, 3 do
 				minX, maxX = math.min(minX, c[v]), math.max(maxX, c[v])
@@ -243,7 +302,8 @@ function Backend.build(
 	onDone: (Handle?, string?, boolean) -> (),
 	priority: boolean?
 )
-	-- Group textures that can share a mesh.
+	-- Group textures that can share a mesh, then split groups so no mesh exceeds
+	-- Config.MESH_MAX_TRIANGLES (EditableMesh size limit; one textured face = 2 triangles).
 	local byKey: { [string]: { number } } = {}
 	local keys: { string } = {}
 	for tex in result.groups do
@@ -254,27 +314,62 @@ function Backend.build(
 		end
 		table.insert(byKey[k], tex)
 	end
+	type Piece = { key: string, groups: { [number]: { number } }, texList: { number } }
+	local pieces: { Piece } = {}
+	local maxQuads = Config.MESH_MAX_TRIANGLES // 2
+	for _, k in keys do
+		local cur: Piece = { key = k, groups = {}, texList = {} }
+		local count = 0
+		for _, tex in byKey[k] do
+			local quads = result.groups[tex]
+			local first = 1
+			while first <= #quads do
+				local room = maxQuads - count
+				if room <= 0 then
+					table.insert(pieces, cur)
+					cur = { key = k, groups = {}, texList = {} }
+					count = 0
+					room = maxQuads
+				end
+				local n = math.min(room, (#quads - first + 1) // GreedyMesher.QUAD)
+				local last = first + n * GreedyMesher.QUAD - 1
+				local sub = if first == 1 and last == #quads then quads else table.move(quads, first, last, 1, {})
+				local existing = cur.groups[tex]
+				if existing then
+					table.move(sub, 1, #sub, #existing + 1, existing)
+				else
+					cur.groups[tex] = sub
+					table.insert(cur.texList, tex)
+				end
+				count += n
+				first = last + 1
+			end
+		end
+		if #cur.texList > 0 then
+			table.insert(pieces, cur)
+		end
+	end
 
 	type Built = { em: any, key: string, center: Vector3, tris: number, liveBytes: number, style: RenderStyle.Style }
 	local built: { Built } = {}
 	local budgetHit = false
 	local ok, err = pcall(function()
-		for _, k in keys do
-			local texList = byKey[k]
+		for _, piece in pieces do
+			local texList = piece.texList
 			local em = AssetService:CreateEditableMesh()
 			if not em then
 				budgetHit = true
 				error("CreateEditableMesh returned nil: editable memory budget exhausted")
 			end
 			trackCreate()
-			local center = groupCenter(texList, result.groups)
-			local normalIds, uvIds = {}, {}
+			local center = groupCenter(texList, piece.groups)
+			local normalIds, uvIds, colorIds = {}, {}, {}
 			local verts, tris = 0, 0
 			-- Register immediately so cleanup destroys it even if filling errors.
-			local entry: Built = { em = em, key = k, center = center, tris = 0, liveBytes = 0, style = RenderStyle.forTexture(texList[1]) }
+			local entry: Built = { em = em, key = piece.key, center = center, tris = 0, liveBytes = 0, style = RenderStyle.forTexture(texList[1]) }
 			table.insert(built, entry)
 			for _, tex in texList do
-				local v, t = appendQuads(em, tex, result.groups[tex], center, normalIds, uvIds)
+				local v, t = appendQuads(em, tex, piece.groups[tex], center, normalIds, uvIds, nil, colorIds)
 				verts += v
 				tris += t
 			end
@@ -320,9 +415,10 @@ function Backend.build(
 					part.CanCollide = false
 					part.CanQuery = false
 					part.CanTouch = false
-					part.CastShadow = true
+					part.CastShadow = not Config.TEXTURES -- Java terrain casts no shadows
 					part.Material = b.style.material
-					part.Color = if Config.USE_VERTEX_COLORS then Color3.new(1, 1, 1) else b.style.color
+					part.Color = if Config.USE_VERTEX_COLORS or texturedMode() then Color3.new(1, 1, 1) else b.style.color
+					Backend.applyTexture(part)
 					part.Transparency = b.style.transparency
 					part.CFrame = CFrame.new(originStuds + b.center * BS)
 					table.insert(handle.parts, part)
@@ -454,6 +550,19 @@ local function upload(em: any): (MeshPart?, string?, boolean)
 		end
 	end
 	return nil, lastErr, s.bakeMode == "static"
+end
+
+-- Put the block atlas on a terrain MeshPart (textured mode).
+function Backend.applyTexture(part: MeshPart)
+	if not texturedMode() then
+		return
+	end
+	local content = TextureAtlas.content
+	if content then
+		pcall(function()
+			(part :: any).TextureContent = content
+		end)
+	end
 end
 
 -- Shared with LiveEditPool (instant edits write into live meshes with the same code).

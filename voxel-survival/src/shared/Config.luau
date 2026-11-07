@@ -66,15 +66,21 @@ Config.TEXTURE_STYLE = {
 	glass = { transparency = 0.6 },
 	lava = { neon = true },
 }
--- Per-direction brightness multipliers baked into vertex colours (cheap fake lighting).
+-- Per-direction brightness baked into vertex colours (Java's directional face shading).
 Config.FACE_SHADE = {
 	top = 1.0,
-	bottom = 0.55,
+	bottom = 0.5,
 	north = 0.8,
 	south = 0.8,
-	east = 0.7,
-	west = 0.7,
+	east = 0.6,
+	west = 0.6,
 }
+-- Phase 7: textured terrain (atlas, one quad per face with smooth light + ambient occlusion).
+-- false = the old flat colours with merged quads (lighter on weak devices; also the F4 Parts mode).
+Config.TEXTURES = true
+Config.MESH_MAX_TRIANGLES = 19000 -- split a section into several meshes above this
+Config.TORCH_POINT_LIGHTS = 24 -- nearest torches that also carry a Roblox PointLight
+Config.CLOUD_Y = 132 -- cloud layer height (blocks); low enough to stay inside the fog distance
 
 -- Player & interaction (phase 2) -----------------------------------------------------------
 Config.REACH = 4.5 -- blocks, from the eye (classic survival reach)

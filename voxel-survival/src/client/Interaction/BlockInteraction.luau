@@ -30,6 +30,7 @@ local SurvivalRules = require(Shared.Gameplay.SurvivalRules)
 local Combat = require(Shared.Gameplay.Combat)
 local MobClient = require(script.Parent.Parent.Mobs.MobClient)
 local MovementController = require(script.Parent.Parent.Player.MovementController)
+local TorchRules = require(Shared.Blocks.TorchRules)
 
 local EAT_SECONDS = 1.6
 
@@ -44,6 +45,13 @@ local INTERACTABLE = {
 local isLiquid = BlockRegistry.isLiquid
 
 local BlockInteraction = {}
+-- Events for sounds, particles and the first-person hand:
+--   placed(x, y, z, id)  broken(x, y, z, id)  digging(x, y, z, id) every 4 ticks while mining
+--   swing()  each attack / placement and continuously while mining
+BlockInteraction.placed = Instance.new("BindableEvent")
+BlockInteraction.broken = Instance.new("BindableEvent")
+BlockInteraction.digging = Instance.new("BindableEvent")
+BlockInteraction.swing = Instance.new("BindableEvent")
 BlockInteraction.target = nil :: VoxelRaycast.Hit?
 BlockInteraction.mobTarget = nil :: number? -- mob under the crosshair within melee reach
 
@@ -60,7 +68,26 @@ local nextPlaceAt = 0
 local highlightPart: Part
 local selection: SelectionBox
 local crackPart: Part
+local crackLabels: { ImageLabel } = {}
+local lastDigSound = 0
+local TextureAtlas = require(script.Parent.Parent.Render.TextureAtlas)
 
+-- Show crack stage 0..9 on the mining overlay (nil hides it).
+local function setCrack(stage: number?)
+	if not stage or not TextureAtlas.content then
+		crackPart.Transparency = 1
+		for _, l in crackLabels do
+			l.Visible = false
+		end
+		return
+	end
+	local offset, size = TextureAtlas.crackRect(stage)
+	for _, l in crackLabels do
+		l.Visible = true
+		l.ImageRectOffset = offset
+		l.ImageRectSize = size
+	end
+end
 local function stopsRay(id: number): boolean
 	return id ~= AIR and not isLiquid[id + 1]
 end
@@ -96,6 +123,7 @@ local function attackMob(id: number)
 		MovementController.stopSprint() -- Java: a sprint hit ends the sprint
 	end
 	Remotes.get("AttackMob"):FireServer(id, crit)
+	BlockInteraction.swing:Fire()
 end
 
 -- Java: switching to a different item restarts the attack cooldown.
@@ -107,8 +135,8 @@ RunService.Heartbeat:Connect(function()
 	end
 end)
 
-local function send(action: string, x: number, y: number, z: number)
-	Remotes.get("BlockAction"):FireServer(action, x, y, z)
+local function send(action: string, x: number, y: number, z: number, nx: number?, ny: number?, nz: number?)
+	Remotes.get("BlockAction"):FireServer(action, x, y, z, nx, ny, nz)
 end
 
 local function makeVisuals()
@@ -141,6 +169,27 @@ local function makeVisuals()
 	crackPart.Color = Color3.fromRGB(12, 10, 10)
 	crackPart.Size = Vector3.one * (BS + 0.04)
 	crackPart.Transparency = 1
+	-- crack stages from the block atlas on all six sides
+	for _, face in Enum.NormalId:GetEnumItems() do
+		local gui = Instance.new("SurfaceGui")
+		gui.Face = face
+		gui.CanvasSize = Vector2.new(64, 64)
+		gui.LightInfluence = 1
+		gui.Adornee = crackPart
+		local label = Instance.new("ImageLabel")
+		label.Size = UDim2.fromScale(1, 1)
+		label.BackgroundTransparency = 1
+		label.ResampleMode = Enum.ResamplerMode.Pixelated
+		label.Visible = false
+		pcall(function()
+			if TextureAtlas.content then
+				(label :: any).ImageContent = TextureAtlas.content
+			end
+		end)
+		label.Parent = gui
+		gui.Parent = crackPart
+		table.insert(crackLabels, label)
+	end
 	crackPart.Parent = workspace
 end
 
@@ -153,7 +202,7 @@ local function cancelMining()
 		send("cancel", mining.x, mining.y, mining.z)
 	end
 	mining = nil
-	crackPart.Transparency = 1
+	setCrack(nil)
 end
 
 -- Rough local check so we don't request placements inside our own body.
@@ -280,14 +329,21 @@ local function update(dt: number)
 			cur.progress = if total <= 0 then 1 else cur.progress + dt / total
 			if cur.progress >= 1 then
 				send("finish", cur.x, cur.y, cur.z)
+				local brokenId = hit.id
 				ClientWorld.setBlock(cur.x, cur.y, cur.z, AIR, true) -- instant prediction; server corrects if wrong
 				cooldownUntil = now + (if total <= 0 then 0.05 else Config.BREAK_COOLDOWN)
 				mining = nil
-				crackPart.Transparency = 1
+				setCrack(nil)
+				BlockInteraction.broken:Fire(cur.x, cur.y, cur.z, brokenId)
 			else
 				local stage = math.floor(cur.progress * 10) -- 0..9
 				crackPart.CFrame = blockCFrame(cur.x, cur.y, cur.z)
-				crackPart.Transparency = 0.92 - stage * 0.06
+				setCrack(stage)
+				if now - lastDigSound >= 0.2 then
+					lastDigSound = now
+					BlockInteraction.digging:Fire(cur.x, cur.y, cur.z, hit.id)
+				end
+				BlockInteraction.swing:Fire()
 			end
 		end
 	elseif mining and (not breakHeld or not hit) then
@@ -302,8 +358,13 @@ local function update(dt: number)
 			local current = ClientWorld.getBlock(x, y, z)
 			local solid = BlockRegistry.isSolid[item.block + 1]
 			if current ~= nil and (current == AIR or isLiquid[current + 1]) and not (solid and overlapsSelf(x, y, z)) then
-				send("place", x, y, z)
-				ClientWorld.setBlock(x, y, z, item.block, true) -- instant prediction
+				local placeId = TorchRules.placement(item.block, x, y, z, hit.nx, hit.ny, hit.nz, ClientWorld.getBlock)
+				if placeId then
+					send("place", x, y, z, hit.nx, hit.ny, hit.nz)
+					ClientWorld.setBlock(x, y, z, placeId, true) -- instant prediction
+					BlockInteraction.placed:Fire(x, y, z, placeId)
+					BlockInteraction.swing:Fire()
+				end
 				nextPlaceAt = now + Config.PLACE_REPEAT
 			end
 		end

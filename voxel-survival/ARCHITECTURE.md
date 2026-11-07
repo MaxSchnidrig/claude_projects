@@ -11,7 +11,7 @@
   - a power-wire logic system
 - **Names:** plain real-world words where the classic game uses them (Grass Block, Stone, Oak Log, Iron Ore, Zombie, Cow, TNT, Furnace…).
 - **Never used:** Mojang-coined names or designs (e.g. Creeper, Enderman, Ender Dragon, Steve, Redstone, Nether, Netherite), and their textures, sounds, music, logo or UI art. Where such a thing fills a gameplay role, we make an original equivalent with its own name and design (see 9, *pending approval*).
-- **Look:** all art is original 16×16 pixel art in a blocky style. Until Phase 7 every face is a flat placeholder colour.
+- **Look:** all art is ROCRAFT's own 16×16 pixel art in a blocky style, generated from code (Phase 7).
 - **Player look:** the player's own Roblox avatar. There's no default skin.
 
 ## 1. Core decisions
@@ -297,6 +297,21 @@ every other tool 1 (before: 1 for everything); hitting a mob costs swords 1, oth
 
 Sword sweep attacks, experience, Voidlings picking up blocks, block light (torches),
 status effects (spider eye poison), and the attack-cooldown reset on swings that hit nothing.
+
+## 5g. Phase 7: graphics and sound (built)
+
+| Piece | Design |
+|---|---|
+| Textures | `TextureGen`: every block texture is generated from a small recipe of our own (noise, Voronoi cells, bands, rings, blobs) in ROCRAFT's palette; ores = our stone + mineral blobs. Item icons (`ItemIconGen`): tool and material shapes drawn by code. Nothing is copied from another game. |
+| Atlas | `TextureAtlas`: 1024² EditableImage, each 16² texture scaled 7× into a 128 px cell with an 8 px copied border (Roblox filters 3D textures; the scale keeps pixels sharp, the border stops bleeding, also in mips). 10 crack stages included. Baked to static content (frees the editable budget). Icons: a 16 px-per-icon sheet for UI (Pixelated). |
+| Why one quad per face | A texture atlas can't tile across greedy-merged faces, and one MeshPart per texture would be ~2,500 parts at render distance 6 instead of ~800. So textured terrain uses one quad per face (bench: 259 vs 89 quads per section, ~2.9×); see-through specials (water, lava, glass, ice) still merge. Sections over 19,000 triangles split into several meshes. `Config.TEXTURES = false` restores flat merged meshes. |
+| Light | `LightEngine` (shared, tested): per-chunk light buffer, sky (high nibble) + block (low nibble). Sky enters columns at 15 and falls without loss through clear blocks (leaves/water/ice −1); both spread −max(1, opacity) per step. Sources: torch 14, lava 15. Edits relight incrementally (remove + refill flood) across chunk borders and re-mesh only touched sections. A chunk meshes once it and its 4 neighbours are lit. ~32 ms per chunk in the interpreter, time-sliced. |
+| Shading | Per vertex: light curve (Java-like, with the default brightness lift and a small floor) × ambient occlusion (0.5 / 0.66 / 0.82 / 1 by occluders) × face shade (top 1, N/S 0.8, E/W 0.6, bottom 0.5); quads split along the brighter diagonal. No Roblox shadows on terrain. Day/night darkening is global lighting (the baked sky light is static). |
+| Torches | Standing and wall variants (ids 39–43, `TorchRules`: the clicked face decides, they drop when their support breaks). Small Part models; the nearest 24 carry a PointLight. The server estimates torch light (level − Manhattan distance) to stop hostile spawns at block light > 0. |
+| Sky | Fog ends at the render distance with a time-of-day horizon colour (sunset glow); a large glowing zenith plane above the camera gives the sky colour and the fog fades it into the horizon. Square sun and moon on a circle around the camera, hidden behind blocks; stars at night; Roblox's own sun/moon/stars are off. `Clouds`: 12×12-block cells, 4 blocks thick, at y = 132, drifting west, from our hash noise. |
+| First person | `ViewModel`: blocky arm in the avatar's arm colour, held block as a small textured cube / torch model / item icon card; 6-tick swing, equip dip, Java view bobbing. |
+| Effects | Crack overlay from the atlas stages; break bursts (3×3×3) and dig flecks in the block's own texture colours (pooled anchored Parts). |
+| Sound | `SoundConfig`: every sound and music track with id, volume, pitch range and a Toolbox search term (SOUNDS.md). `AudioClient`: footsteps per material (~1 per block), dig/break/place per material, eating, hurt, landing, chest open/close, lava pops, mob hurt/death/idle, Sneaker fuse, Voidling teleport/anger, explosions, crits; music with 10–20 min gaps. Empty ids are silent. |
 
 ## 6. Mechanics spec (later phases)
 

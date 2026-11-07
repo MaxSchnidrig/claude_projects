@@ -1,12 +1,15 @@
 --!strict
--- Placeholder item icons drawn from Frames (phase 7 replaces them with generated pixel art):
---   block items  -> a tile in the block's colour with a darker lower band
---   tools        -> a handle + coloured head glyph, shaped by tool kind
---   other items  -> a round swatch
+-- Item icons from ROCRAFT's generated pixel art (Render/TextureAtlas):
+--   block items  -> the block's side texture from the block atlas
+--   other items  -> the item's 16x16 icon from the icon sheet
+-- Both are drawn with Pixelated resampling (sharp pixels). Until the atlas exists (or if
+-- textures are off) the old flat drawings below are used.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local ItemRegistry = require(Shared.Items.ItemRegistry)
+local BlockRegistry = require(Shared.Blocks.BlockRegistry)
+local TextureAtlas = require(script.Parent.Parent.Render.TextureAtlas)
 
 local ItemIcon = {}
 
@@ -21,10 +24,48 @@ function ItemIcon.clear(icon: Frame)
 	icon.BackgroundTransparency = 1
 end
 
+-- Pixel-art icon; returns false if the art isn't available.
+local function drawArt(icon: Frame, def: ItemRegistry.ItemDef): boolean
+	local content: Content? = nil
+	local offset: Vector2?, size: Vector2? = nil, nil
+	if def.block then
+		local b = BlockRegistry.byId[def.block]
+		content = TextureAtlas.content
+		if b then
+			offset, size = TextureAtlas.pixelRect(b.faceTexture[BlockRegistry.Dir.EAST])
+		end
+	else
+		content = TextureAtlas.iconContent
+		offset, size = TextureAtlas.iconRect(def.key)
+	end
+	if not content or not offset or not size then
+		return false
+	end
+	local img = Instance.new("ImageLabel")
+	img.Name = "Art"
+	img.BackgroundTransparency = 1
+	img.Size = UDim2.fromScale(1, 1)
+	img.ResampleMode = Enum.ResamplerMode.Pixelated
+	img.ImageRectOffset = offset
+	img.ImageRectSize = size
+	local ok = pcall(function()
+		(img :: any).ImageContent = content
+	end)
+	if not ok then
+		img:Destroy()
+		return false
+	end
+	img.Parent = icon
+	return true
+end
+
 function ItemIcon.draw(icon: Frame, itemKey: string)
 	ItemIcon.clear(icon)
 	local def = ItemRegistry.get(itemKey)
 	if not def then
+		return
+	end
+	if drawArt(icon, def) then
 		return
 	end
 	local color = rgb(def.color)

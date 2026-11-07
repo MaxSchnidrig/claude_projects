@@ -44,10 +44,14 @@ type Mob = {
 	fire: Fire?,
 	walkSpeed: number?,
 	flagsAirborne: boolean?,
+	nextIdle: number?,
 }
 
 local MobClient = {}
 MobClient.count = 0
+-- Sound hooks: ("fuse", mobKey, position) when a fuse starts, ("idle", mobKey, position) now and
+-- then for nearby mobs (Java: about every 8 s on average per mob).
+MobClient.events = Instance.new("BindableEvent")
 -- Diagnostics for F3: mobs the client knows about vs. mobs with a model in the world.
 MobClient.stats = { packets = 0, known = 0, visible = 0, buildErrors = 0, lastBuildError = "", lastHit = "-" }
 
@@ -360,7 +364,22 @@ local function update(dt: number)
 			m.walkPhase += speed * dt * 3.2
 			m.flagsAirborne = math.abs(pos.Y - m.pos.Y) > 0.02
 			m.pos, m.yaw, m.pitch = pos, yaw, pitch
-			m.flags = s[#s].flags
+			local newFlags = s[#s].flags
+			if bit32.band(newFlags, FLAG.FUSING) ~= 0 and bit32.band(m.flags, FLAG.FUSING) == 0 then
+				MobClient.events:Fire("fuse", m.def.key, pos)
+			end
+			m.flags = newFlags
+			if m.def.category ~= "projectile" and not m.dying then
+				local idleAt = m.nextIdle or (now + 4 + math.random() * 12)
+				m.nextIdle = idleAt
+				if now >= idleAt then
+					m.nextIdle = now + 4 + math.random() * 12
+					local cam = workspace.CurrentCamera
+					if cam and (cam.CFrame.Position - pos).Magnitude < 16 * BS then
+						MobClient.events:Fire("idle", m.def.key, pos)
+					end
+				end
+			end
 		end
 		pose(m, now)
 	end
@@ -419,6 +438,16 @@ function MobClient.raycast(origin: Vector3, dir: Vector3, maxDist: number): (num
 		end
 	end
 	return bestId, bestT
+end
+
+function MobClient.keyOf(id: any): string?
+	local m = if typeof(id) == "number" then mobs[id] else nil
+	return if m then m.def.key else nil
+end
+
+function MobClient.positionOf(id: any): Vector3?
+	local m = if typeof(id) == "number" then mobs[id] else nil
+	return if m then m.pos else nil
 end
 
 function MobClient.init()

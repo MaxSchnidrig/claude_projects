@@ -869,6 +869,132 @@ test("player physics: Java walk, sprint and sprint-jump speeds", function()
 	eq(bx, 0); near(bz, -0.2)
 end)
 
+local LightEngine = Loader.require("src/shared/World/LightEngine")
+local TextureGen = Loader.require("src/shared/Blocks/TextureGen")
+local ItemIconGen = Loader.require("src/shared/Items/ItemIconGen")
+test("light: open sky, torches, roofs, enclosures, chunk borders", function()
+	local STONE, TORCH = BlockRegistry.id("stone"), BlockRegistry.id("torch")
+	local world: { [string]: any } = {}
+	for cx = 0, 1 do
+		local c = ChunkData.new(cx, 0)
+		for y = 0, 10 do
+			for z = 0, 15 do
+				for x = 0, 15 do
+					ChunkData.set(c, x, y, z, STONE)
+				end
+			end
+		end
+		world[`{cx},0`] = c
+	end
+	local changed = 0
+	local engine = LightEngine.new(function(cx, cz)
+		local c = world[`{cx},{cz}`]
+		return if c and c.light then c else nil
+	end, function()
+		changed += 1
+	end)
+	engine:lightChunk(world["0,0"])
+	engine:lightChunk(world["1,0"])
+	local sky, blk = engine:get(5, 20, 5)
+	eq(sky, 15); eq(blk, 0)
+	eq((engine:get(5, 10, 5)), 0) -- inside stone
+	-- torch: 14 at the torch, one less per step
+	local function set(x, y, z, id)
+		local c = world[`{x // 16},0`]
+		ChunkData.set(c, x % 16, y, z % 16, id)
+		engine:blockChanged(x, y, z)
+	end
+	set(5, 11, 5, TORCH)
+	eq(select(2, engine:get(5, 11, 5)), 14)
+	eq(select(2, engine:get(6, 11, 5)), 13)
+	eq(select(2, engine:get(8, 11, 5)), 11)
+	-- torch near the border lights the next chunk
+	set(15, 11, 8, TORCH)
+	eq(select(2, engine:get(17, 11, 8)), 12)
+	-- a roof: the cell below gets sky light from the side (15 - 1)
+	set(3, 13, 3, STONE)
+	eq((engine:get(3, 12, 3)), 14)
+	-- seal the air cell (10, 11, 10) (floor below is stone): no sky or block light inside
+	for _, o in { { 0, 1, 0 }, { 1, 0, 0 }, { -1, 0, 0 }, { 0, 0, 1 }, { 0, 0, -1 } } do
+		set(10 + o[1], 11 + o[2], 10 + o[3], STONE)
+	end
+	local s2, b2 = engine:get(10, 11, 10)
+	eq(s2, 0)
+	eq(b2, 0)
+	-- removing the torch removes its light
+	set(5, 11, 5, 0)
+	assert(select(2, engine:get(6, 11, 5)) < 13, "torch light gone")
+	assert(changed > 0)
+end)
+test("textures and icons: every block texture and item icon is generated", function()
+	for _, key in BlockRegistry.textureKeys do
+		local img = TextureGen.generate(key, nil)
+		eq(buffer.len(img), 16 * 16 * 4)
+		assert(TextureGen.hasRecipe(key), `no texture recipe for {key}`)
+	end
+	-- deterministic
+	eq(buffer.tostring(TextureGen.generate("stone")), buffer.tostring(TextureGen.generate("stone")))
+	for stage = 0, 9 do
+		eq(buffer.len(TextureGen.crack(stage)), 1024)
+	end
+	for _, def in ItemRegistry.list() do
+		if not def.block then
+			local icon = ItemIconGen.generate(def)
+			local opaque = 0
+			for i = 0, 255 do
+				if buffer.readu8(icon, i * 4 + 3) > 0 then
+					opaque += 1
+				end
+			end
+			assert(opaque > 4, `icon for {def.key} is empty`)
+		end
+	end
+end)
+test("lit mesher: one quad per face, AO darkens corners, specials merge", function()
+	local padded = buffer.create(SectionSampler.VOLUME)
+	local light = buffer.create(SectionSampler.VOLUME)
+	buffer.fill(light, 0, 15)
+	local P = SectionSampler.SIZE
+	local function at(x, y, z, id)
+		buffer.writeu8(padded, (x + 1) + (z + 1) * P + (y + 1) * P * P, id)
+	end
+	local STONE = BlockRegistry.id("stone")
+	-- a 3x1x3 floor and one block on top of its centre
+	for x = 0, 2 do
+		for z = 0, 2 do
+			at(x, 0, z, STONE)
+		end
+	end
+	at(1, 1, 1, STONE)
+	local r = GreedyMesher.meshLit(padded, light, {}, nil)
+	local quads = r.groups[BlockRegistry.byId[STONE].faceTexture[3]]
+	-- top faces: 8 floor tops + 1 on the upper block
+	local tops = 0
+	local minB, maxB = 255, 0
+	for q = 1, #quads, GreedyMesher.QUAD do
+		if quads[q] ~= 3 then
+			continue
+		end
+		tops += 1
+		for c = 0, 3 do
+			minB = math.min(minB, quads[q + 6 + c])
+			maxB = math.max(maxB, quads[q + 6 + c])
+		end
+	end
+	eq(tops, 9)
+	eq(maxB, 255)
+	assert(minB < 230, "floor corners next to the upper block are occluded")
+	-- water merges
+	local WATER = BlockRegistry.id("water")
+	buffer.fill(padded, 0, 0)
+	for x = 0, 3 do
+		at(x, 0, 0, WATER)
+	end
+	local wt = BlockRegistry.byId[WATER].faceTexture[3]
+	local rw = GreedyMesher.meshLit(padded, light, { [wt] = true }, nil)
+	eq(#rw.groups[wt] // GreedyMesher.QUAD, 6) -- 1 merged quad per side
+end)
+
 print(`\n{passed} passed, {failed} failed`)
 if failed > 0 then
 	process.exit(1)

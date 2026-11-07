@@ -8,7 +8,8 @@
 --     a mob spawns if the spot is 24..128 blocks from the nearest player, has a solid floor,
 --     room for its height (no liquid) and is dark enough:
 --       fail if sky light > random(0..31), then pass if (sky light - sky darkening) <= random(0..7)
---     (no block light exists yet; sky light is 15 under open sky, 0 elsewhere)
+--     and no torch light (block light 0; estimated from nearby torches); sky light is 15 under
+--     open sky, 0 elsewhere
 --   * the kind (weighted: zombie 95, skeleton/spider/sneaker 100, voidling 10) is chosen
 --     per pack; a pack stops at the kind's group size
 -- Animals:
@@ -97,6 +98,9 @@ local function placementOk(def: MobDefs.MobDef, x: number, y: number, z: number)
 end
 
 local function hostileRulesOk(x: number, y: number, z: number): boolean
+	if WorldService.blockLightAt(x, y, z) > 0 then
+		return false -- Java: monsters only spawn at block light 0 (torches keep areas safe)
+	end
 	local sky = S.skyExposed(x, y, z)
 	return SkyLight.monsterCanSpawn(sky, S.timeOfDay(), math.random(0, 31), math.random(0, 7))
 end

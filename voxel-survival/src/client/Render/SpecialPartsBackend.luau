@@ -71,7 +71,7 @@ function Backend.build(groups: { [number]: { number } }, padded: buffer, originS
 	local handle: Handle = { parts = {} }
 	for tex, quads in groups do
 		local style = RenderStyle.forTexture(tex)
-		for q = 1, #quads, 6 do
+		for q = 1, #quads, GreedyMesher.QUAD do
 			local d, k, i, j, w, h = quads[q], quads[q + 1], quads[q + 2], quads[q + 3], quads[q + 4], quads[q + 5]
 			local dir = GreedyMesher.DIRS[d]
 			local size = { 0, 0, 0 }

@@ -2,10 +2,14 @@
 --!native
 -- Face-culled greedy mesher (Mikola Lysenko's algorithm) for one 16^3 section.
 --
--- Output: quads grouped by texture index. Each quad is 6 numbers in a flat array:
---     dir, k, i, j, w, h
+-- Output: quads grouped by texture index. Each quad is GreedyMesher.QUAD (10) numbers:
+--     dir, k, i, j, w, h, b0, b1, b2, b3
 -- dir  1..6 (BlockRegistry.Dir), k = slice along the face normal axis, (i, j) = start on the
 -- face's (u, v) axes, (w, h) = size along (u, v). All in section-local block units.
+-- b0..b3: brightness 0..255 at the 4 corners (quadCorners order): smooth light x ambient
+-- occlusion. `mesh` (merged, used by tests, the bench and the Parts backend) writes 255.
+-- `meshLit` (textured terrain) emits one quad per block face with lighting, because a texture
+-- atlas can't tile across merged faces; see-through specials (water, lava, glass, ice) still merge.
 --
 -- Merging only joins faces with the same texture, which lets a backend tile one texture over a
 -- whole merged quad (see ARCHITECTURE.md, "why one MeshPart per texture").
@@ -22,6 +26,7 @@ local P2 = P * P
 local isOpaque = BlockRegistry.isOpaque
 local isLiquid = BlockRegistry.isLiquid
 local cullSelf = BlockRegistry.cullSelf
+local isCube = BlockRegistry.isCube
 
 -- Per direction: normal axis (0 x, 1 y, 2 z), sign, and the (u, v) axes with u x v = normal.
 -- This ordering gives counter-clockwise winding seen from outside (see quadCorners).
@@ -45,6 +50,7 @@ for id, def in BlockRegistry.byId do
 end
 
 local GreedyMesher = {}
+GreedyMesher.QUAD = 10
 GreedyMesher.DIRS = DIRS
 GreedyMesher.STRIDE = STRIDE -- padded-buffer stride per axis (0 x, 1 y, 2 z)
 
@@ -142,7 +148,7 @@ function GreedyMesher.mesh(padded: buffer, checkpoint: (() -> ())?): MeshResult
 				for _ = 0, SS - 1 do
 					local b = buffer.readu8(padded, p)
 					local m = 0
-					if b ~= 0 then
+					if b ~= 0 and isCube[b + 1] then
 						local n = buffer.readu8(padded, p + nOff)
 						-- inlined faceVisible(b, n)
 						if n == 0 or (
@@ -206,6 +212,10 @@ function GreedyMesher.mesh(padded: buffer, checkpoint: (() -> ())?): MeshResult
 							list[n + 4] = j
 							list[n + 5] = w
 							list[n + 6] = h
+							list[n + 7] = 255
+							list[n + 8] = 255
+							list[n + 9] = 255
+							list[n + 10] = 255
 							quadCount += 1
 							i += w
 						end
@@ -218,6 +228,174 @@ function GreedyMesher.mesh(padded: buffer, checkpoint: (() -> ())?): MeshResult
 		end
 	end
 
+	return { groups = groups, quadCount = quadCount, faceCount = faceCount }
+end
+
+-- Lit, per-face meshing ------------------------------------------------------------------------
+
+-- Java-like light curve (level 0..15 -> 0..1) with the default brightness setting's lift, and a
+-- small floor so pitch-black caves still show a hint of shape.
+local CURVE = table.create(16 * 4 + 1, 0)
+for i = 0, 60 do
+	local l = i / 4 -- quarter-level steps (corner averages)
+	local f = l / 15
+	local base = f / (4 - 3 * f)
+	local v = base * 0.5 + (1 - (1 - base) ^ 4) * 0.5
+	CURVE[i + 1] = 0.035 + 0.965 * v
+end
+-- Ambient occlusion factor by number of occluders around a corner (0 = fully enclosed).
+local AO = { [0] = 0.5, [1] = 0.66, [2] = 0.82, [3] = 1.0 }
+-- corner -> (sign along u, sign along v), matching quadCorners order
+local CU = { -1, 1, 1, -1 }
+local CV = { -1, -1, 1, 1 }
+
+-- `light`: 18^3 padded max(sky, block) levels (LightEngine.fillPadded). `merge`: textures that
+-- are merged instead (see-through specials). Faces of non-cube blocks (torches) are skipped.
+function GreedyMesher.meshLit(padded: buffer, light: buffer, merge: { [number]: boolean }, checkpoint: (() -> ())?): MeshResult
+	local groups: { [number]: { number } } = {}
+	local quadCount, faceCount = 0, 0
+	for d = 1, 6 do
+		local dir = DIRS[d]
+		local sA, sU, sV = STRIDE[dir.axis], STRIDE[dir.u], STRIDE[dir.v]
+		local nOff = sA * dir.sign
+		for k = 0, SS - 1 do
+			local any = false
+			local sliceBase = (k + 1) * sA + sU + sV
+			local mi = 1
+			for j = 0, SS - 1 do
+				local p = sliceBase + j * sV
+				for i = 0, SS - 1 do
+					local b = buffer.readu8(padded, p)
+					local m = 0
+					if b ~= 0 and isCube[b + 1] then
+						local n = buffer.readu8(padded, p + nOff)
+						if n == 0 or (
+							not isOpaque[n + 1]
+							and (n ~= b or not cullSelf[b + 1])
+							and not (n ~= b and isLiquid[b + 1] and isLiquid[n + 1])
+						) then
+							local tex = faceTex[b * 6 + d]
+							faceCount += 1
+							if merge[tex] then
+								m = tex
+								any = true
+							else
+								-- one lit quad for this face
+								local q = p + nOff
+								local list = groups[tex]
+								if not list then
+									list = {}
+									groups[tex] = list
+								end
+								local nl = #list
+								list[nl + 1] = d
+								list[nl + 2] = k
+								list[nl + 3] = i
+								list[nl + 4] = j
+								list[nl + 5] = 1
+								list[nl + 6] = 1
+								local centre = buffer.readu8(light, q)
+								for c = 1, 4 do
+									local o1 = q + CU[c] * sU
+									local o2 = q + CV[c] * sV
+									local oc = o1 + CV[c] * sV
+									local s1 = isOpaque[buffer.readu8(padded, o1) + 1]
+									local s2 = isOpaque[buffer.readu8(padded, o2) + 1]
+									local sc = isOpaque[buffer.readu8(padded, oc) + 1]
+									local ao
+									if s1 and s2 then
+										ao = 0
+									else
+										ao = 3 - ((if s1 then 1 else 0) + (if s2 then 1 else 0) + (if sc then 1 else 0))
+									end
+									local sum, cnt = centre, 1
+									if not s1 then
+										sum += buffer.readu8(light, o1)
+										cnt += 1
+									end
+									if not s2 then
+										sum += buffer.readu8(light, o2)
+										cnt += 1
+									end
+									if not sc and not (s1 and s2) then
+										sum += buffer.readu8(light, oc)
+										cnt += 1
+									end
+									local level4 = math.floor(sum / cnt * 4 + 0.5)
+									list[nl + 6 + c] = math.floor(CURVE[level4 + 1] * AO[ao] * 255 + 0.5)
+								end
+								quadCount += 1
+							end
+						end
+					end
+					mask[mi] = m
+					mi += 1
+					p += sU
+				end
+			end
+			if any then
+				for j = 0, SS - 1 do
+					local row = j * SS + 1
+					local i = 0
+					while i < SS do
+						local m = mask[row + i]
+						if m == 0 then
+							i += 1
+						else
+							local w = 1
+							while i + w < SS and mask[row + i + w] == m do
+								w += 1
+							end
+							local h = 1
+							local grow = true
+							while j + h < SS and grow do
+								local r2 = row + h * SS + i
+								for t = 0, w - 1 do
+									if mask[r2 + t] ~= m then
+										grow = false
+										break
+									end
+								end
+								if grow then
+									h += 1
+								end
+							end
+							for jj = 0, h - 1 do
+								local r2 = row + jj * SS + i
+								for t = 0, w - 1 do
+									mask[r2 + t] = 0
+								end
+							end
+							-- uniform brightness from the light in front of the first face
+							local pFront = (k + 1) * sA + sU + sV + j * sV + i * sU + nOff
+							local bright = math.floor(CURVE[buffer.readu8(light, pFront) * 4 + 1] * 255 + 0.5)
+							local list = groups[m]
+							if not list then
+								list = {}
+								groups[m] = list
+							end
+							local n = #list
+							list[n + 1] = d
+							list[n + 2] = k
+							list[n + 3] = i
+							list[n + 4] = j
+							list[n + 5] = w
+							list[n + 6] = h
+							list[n + 7] = bright
+							list[n + 8] = bright
+							list[n + 9] = bright
+							list[n + 10] = bright
+							quadCount += 1
+							i += w
+						end
+					end
+				end
+			end
+		end
+		if checkpoint then
+			checkpoint()
+		end
+	end
 	return { groups = groups, quadCount = quadCount, faceCount = faceCount }
 end
 

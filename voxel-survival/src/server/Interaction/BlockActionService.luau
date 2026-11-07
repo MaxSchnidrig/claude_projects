@@ -12,6 +12,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local SneakPose = require(Shared.Gameplay.SneakPose)
+local TorchRules = require(Shared.Blocks.TorchRules)
 local Config = require(Shared.Config)
 local Remotes = require(Shared.Net.Remotes)
 local BlockRegistry = require(Shared.Blocks.BlockRegistry)
@@ -170,7 +171,7 @@ end
 -- They are re-checked every frame for a short while, so the server's view of the jump can
 -- catch up with the client's, instead of rejecting the block at once.
 local DEFER_SECONDS = 0.6
-type Deferred = { player: Player, x: number, y: number, z: number, untilT: number }
+type Deferred = { player: Player, x: number, y: number, z: number, untilT: number, face: { number } }
 local deferred: { Deferred } = {}
 
 local function broadcast(key: number, x: number, y: number, z: number, id: number, requester: Player)
@@ -261,9 +262,16 @@ local function finishBreak(player: Player, st: PState, x: number, y: number, z: 
 	end
 	BlockActionService.stats.accepted += 1
 	broadcast(key, x, y, z, AIR, player)
+	-- torches that hung on this block fall off and drop
+	for _, t in TorchRules.dependents(x, y, z, WorldService.getBlock) do
+		local tkey = WorldService.setBlock(t[1], t[2], t[3], AIR)
+		ItemEntityService.spawn({ item = "torch", count = 1 }, Vector3.new(t[1] + 0.5, t[2] + 0.5, t[3] + 0.5) * BS)
+		broadcast(tkey, t[1], t[2], t[3], AIR, player)
+	end
 end
 
-local function place(player: Player, x: number, y: number, z: number, retry: boolean?): boolean
+local function place(player: Player, x: number, y: number, z: number, retry: boolean?, face: { number }?): boolean
+	local f = face or { 0, 1, 0 }
 	local eye = eyeOf(player)
 	if not eye then
 		correct(player, x, y, z, "no character")
@@ -303,7 +311,7 @@ local function place(player: Player, x: number, y: number, z: number, retry: boo
 		if overlap then
 			if not byOther and not retry then
 				if #deferred < 64 then
-					table.insert(deferred, { player = player, x = x, y = y, z = z, untilT = os.clock() + DEFER_SECONDS })
+					table.insert(deferred, { player = player, x = x, y = y, z = z, untilT = os.clock() + DEFER_SECONDS, face = f })
 				else
 					correct(player, x, y, z, "too many pending placements")
 				end
@@ -315,22 +323,28 @@ local function place(player: Player, x: number, y: number, z: number, retry: boo
 			return true
 		end
 	end
+	-- torches pick their standing / wall form from the clicked face (TorchRules)
+	local placeId = TorchRules.placement(item.block, x, y, z, f[1], f[2], f[3], WorldService.getBlock)
+	if not placeId then
+		correct(player, x, y, z, "a torch can't go here")
+		return true
+	end
 	if not InventoryService.consumeSelected(player, 1) then
 		correct(player, x, y, z, "no item")
 		return true
 	end
-	local key = WorldService.setBlock(x, y, z, item.block)
-	local kind = BlockEntityService.kindOf(item.block)
+	local key = WorldService.setBlock(x, y, z, placeId)
+	local kind = BlockEntityService.kindOf(placeId)
 	if kind then
 		BlockEntityService.ensure(x, y, z, kind)
 	end
 	BlockActionService.stats.accepted += 1
-	broadcast(key, x, y, z, item.block, player)
+	broadcast(key, x, y, z, placeId, player)
 	return true
 end
 
 function BlockActionService.init()
-	Remotes.get("BlockAction").OnServerEvent:Connect(function(player: Player, action: any, x: any, y: any, z: any)
+	Remotes.get("BlockAction").OnServerEvent:Connect(function(player: Player, action: any, x: any, y: any, z: any, nx: any, ny: any, nz: any)
 		if typeof(action) ~= "string" or not isInt(x) or not isInt(y) or not isInt(z) then
 			return
 		end
@@ -348,7 +362,10 @@ function BlockActionService.init()
 		elseif action == "finish" then
 			finishBreak(player, st, x, y, z)
 		elseif action == "place" then
-			place(player, x, y, z)
+			local face = if isInt(nx) and isInt(ny) and isInt(nz) and math.abs(nx) + math.abs(ny) + math.abs(nz) == 1
+				then { nx, ny, nz }
+				else nil
+			place(player, x, y, z, nil, face)
 		end
 	end)
 	Players.PlayerRemoving:Connect(function(p)
@@ -373,7 +390,7 @@ function BlockActionService.init()
 			local d = deferred[i]
 			if not d.player.Parent then
 				table.remove(deferred, i)
-			elseif place(d.player, d.x, d.y, d.z, true) then
+			elseif place(d.player, d.x, d.y, d.z, true, d.face) then
 				table.remove(deferred, i)
 			elseif now > d.untilT then
 				table.remove(deferred, i)

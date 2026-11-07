@@ -21,7 +21,14 @@ local byKey: { [string]: ItemDef } = {}
 ItemRegistry.byKey = byKey
 
 -- Blocks that are never items (fluids).
-local NOT_ITEMS = { water = true, lava = true }
+local NOT_ITEMS = {
+	water = true,
+	lava = true,
+	wall_torch_east = true,
+	wall_torch_west = true,
+	wall_torch_south = true,
+	wall_torch_north = true,
+}
 
 for _, def in BlockRegistry.byId do
 	if not NOT_ITEMS[def.key] then
@@ -54,6 +61,18 @@ for _, def in BlockRegistry.byId do
 	if def.drop then
 		assert(byKey[def.drop], `ItemRegistry: block {def.key} drops unknown item '{def.drop}'`)
 	end
+end
+
+-- Every item, sorted by key (stable order for icon sheets).
+local sorted: { ItemDef } = {}
+for _, def in byKey do
+	table.insert(sorted, def)
+end
+table.sort(sorted, function(a, b)
+	return a.key < b.key
+end)
+function ItemRegistry.list(): { ItemDef }
+	return sorted
 end
 
 function ItemRegistry.get(key: string?): ItemDef?

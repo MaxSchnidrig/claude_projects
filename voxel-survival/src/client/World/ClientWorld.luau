@@ -20,6 +20,9 @@ local TerrainGen = require(Shared.World.TerrainGen)
 local Scheduler = require(Shared.Util.Scheduler)
 local Remotes = require(Shared.Net.Remotes)
 local ChunkRenderer = require(script.Parent.Parent.Render.ChunkRenderer)
+local LightEngine = require(Shared.World.LightEngine)
+local TorchRules = require(Shared.Blocks.TorchRules)
+local TorchRenderer = require(script.Parent.Parent.Render.TorchRenderer)
 
 local CS = Config.CHUNK_SIZE
 local SS = Config.SECTION_SIZE
@@ -35,11 +38,13 @@ type Rec = {
 	generating: boolean,
 	diffsReady: boolean,
 	minSurface: number, -- lowest generated surface height in the chunk (for cave culling)
+	lit: boolean, -- light computed (LightEngine); meshing waits for it
+	lighting: boolean?, -- light job handed out
 	sections: { ChunkRenderer.Section },
 }
 
 local ClientWorld = {}
-ClientWorld.stats = { generated = 0, genTime = 0, loaded = 0, pendingGen = 0, pendingMesh = 0 }
+ClientWorld.stats = { generated = 0, genTime = 0, loaded = 0, pendingGen = 0, pendingMesh = 0, lit = 0, lightTime = 0 }
 -- Average milliseconds per frame spent in our Heartbeat work (for the overlay).
 ClientWorld.profile = { refresh = 0, scheduler = 0, other = 0, total = 0 }
 
@@ -92,6 +97,7 @@ local function getRec(cx: number, cz: number): Rec
 			generating = false,
 			diffsReady = false,
 			minSurface = 0,
+			lit = false,
 			sections = ChunkRenderer.newSections(cx, cz),
 		}
 		chunks[key] = rec
@@ -118,6 +124,68 @@ local function neighborsReady(rec: Rec): boolean
 		and dataAt(rec.cx - 1, rec.cz) ~= nil
 		and dataAt(rec.cx, rec.cz + 1) ~= nil
 		and dataAt(rec.cx, rec.cz - 1) ~= nil
+end
+
+local function litAt(cx: number, cz: number): boolean
+	local rec = chunks[ChunkData.key(cx, cz)]
+	return rec ~= nil and rec.lit
+end
+
+-- Meshing waits until this chunk and its 4 neighbours are lit (light crosses borders).
+local function lightReady(rec: Rec): boolean
+	return rec.lit and litAt(rec.cx + 1, rec.cz) and litAt(rec.cx - 1, rec.cz)
+		and litAt(rec.cx, rec.cz + 1) and litAt(rec.cx, rec.cz - 1)
+end
+
+-- Light changed at a block: the sections that sample it (its own, and across a border) re-mesh.
+local function lightChanged(wx: number, wy: number, wz: number)
+	local cx, cz = wx // CS, wz // CS
+	local lx, lz = wx - cx * CS, wz - cz * CS
+	local sy = wy // SS
+	local function mark(ccx: number, ccz: number, s: number)
+		local rec = chunks[ChunkData.key(ccx, ccz)]
+		if rec and s >= 0 and s < NSEC then
+			local sec = rec.sections[s + 1]
+			if not sec.renderDirty then
+				sec.renderDirty = true
+			end
+		end
+	end
+	mark(cx, cz, sy)
+	local ly = wy % SS
+	if ly == 0 then
+		mark(cx, cz, sy - 1)
+	elseif ly == SS - 1 then
+		mark(cx, cz, sy + 1)
+	end
+	if lx == 0 then
+		mark(cx - 1, cz, sy)
+	elseif lx == CS - 1 then
+		mark(cx + 1, cz, sy)
+	end
+	if lz == 0 then
+		mark(cx, cz - 1, sy)
+	elseif lz == CS - 1 then
+		mark(cx, cz + 1, sy)
+	end
+end
+
+local light = LightEngine.new(function(cx: number, cz: number)
+	local rec = chunks[ChunkData.key(cx, cz)]
+	return if rec and rec.lit then rec.data else nil
+end, lightChanged)
+ClientWorld.light = light
+
+local function lightJob(rec: Rec): () -> ()
+	return function()
+		if chunks[rec.key] == rec and rec.data and not rec.lit then
+			local t = os.clock()
+			rec.lit = true -- visible to the engine as lit while it fills (neighbours pull from it)
+			light:lightChunk(rec.data, Scheduler.checkpoint)
+			ClientWorld.stats.lightTime += os.clock() - t
+			ClientWorld.stats.lit += 1
+		end
+	end
 end
 
 -- Jobs ---------------------------------------------------------------------------------------
@@ -225,7 +293,10 @@ local function pickJob(): (() -> ())?
 			if not rec.generating then
 				return generateJob(rec)
 			end
-		elseif o.d2 <= meshLimit and rec.diffsReady and neighborsReady(rec) then
+		elseif rec.diffsReady and not rec.lit and not rec.lighting then
+			rec.lighting = true
+			return lightJob(rec)
+		elseif o.d2 <= meshLimit and rec.diffsReady and neighborsReady(rec) and lightReady(rec) then
 			for _, s in rec.sections do
 				if s.renderDirty then
 					-- Nearest sections are asked first, so they get EditableMesh slots first.
@@ -276,6 +347,7 @@ local function refresh()
 			for _, s in rec.sections do
 				ChunkRenderer.destroySection(s)
 			end
+			TorchRenderer.clearChunk(rec.cx, rec.cz)
 			chunks[key] = nil
 			if rec.data then
 				table.insert(pendingUnload, key)
@@ -411,6 +483,12 @@ local function onDiffs(list: any)
 				for idx in diffs do
 					local x, y, z = ChunkData.unindex(idx)
 					markDirty(rec.cx * CS + x, y, rec.cz * CS + z)
+					if TorchRules.isTorch(diffs[idx]) then
+						TorchRenderer.set(rec.cx * CS + x, y, rec.cz * CS + z, diffs[idx])
+					end
+					if rec.lit then
+						light:blockChanged(rec.cx * CS + x, y, rec.cz * CS + z)
+					end
 				end
 			end
 			rec.diffsReady = true
@@ -501,6 +579,10 @@ function ClientWorld.init()
 	player:GetAttributeChangedSignal("RenderDistance"):Connect(applyRenderDistance)
 
 	ChunkRenderer.init()
+	TorchRenderer.init()
+	ChunkRenderer.setLightSource(function(out: buffer, chunk: any, sy: number)
+		light:fillPadded(out, chunk, sy)
+	end)
 	Remotes.get("ChunkDiffs").OnClientEvent:Connect(onDiffs)
 	-- Authoritative block changes (other players' edits, and confirmations/corrections of ours).
 	Remotes.get("BlockChanged").OnClientEvent:Connect(function(x: any, y: any, z: any, id: any)
@@ -573,11 +655,26 @@ function ClientWorld.setBlock(wx: number, wy: number, wz: number, id: number, in
 	if not data then
 		return
 	end
+	local old = ChunkData.get(data, lx, wy, lz)
 	ChunkData.set(data, lx, wy, lz, id)
+	if TorchRules.isTorch(id) or TorchRules.isTorch(old) then
+		TorchRenderer.set(wx, wy, wz, id)
+	end
+	if data.light then
+		light:blockChanged(wx, wy, wz) -- before the instant rebuild, so it shows the new light
+	end
 	local touched = markDirty(wx, wy, wz)
 	if instant then
 		rebuildNow(touched)
 	end
+end
+
+-- Light levels at a block (sky, block), 0..15; (15, 0) where the chunk isn't lit yet.
+function ClientWorld.lightAt(wx: number, wy: number, wz: number): (number, number)
+	if not litAt(wx // CS, wz // CS) then
+		return 15, 0
+	end
+	return light:get(wx, wy, wz)
 end
 
 function ClientWorld.biomeAt(wx: number, wz: number): number?

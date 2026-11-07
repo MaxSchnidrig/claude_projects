@@ -16,6 +16,8 @@ local Config = require(Shared.Config)
 local ChunkData = require(Shared.World.ChunkData)
 local TerrainGen = require(Shared.World.TerrainGen)
 local Scheduler = require(Shared.Util.Scheduler)
+local TorchRules = require(Shared.Blocks.TorchRules)
+local BlockRegistry = require(Shared.Blocks.BlockRegistry)
 
 local CS = Config.CHUNK_SIZE
 local BS = Config.BLOCK_SIZE
@@ -31,6 +33,23 @@ local wantedOrder: { number } = {} -- wanted keys, nearest to a player first
 local populated: { [number]: boolean } = {} -- chunks that already had their first load (animals)
 local loadedListeners: { (key: number, firstTime: boolean) -> () } = {}
 local blockSetListeners: { (chunkKey: number) -> () } = {}
+-- Light sources placed by players (torches), per chunk: block index -> light level. The server has
+-- no light engine; hostile spawning checks an estimate from these (see blockLightAt).
+local sources: { [number]: { [number]: number } } = {}
+
+local function noteSource(key: number, idx: number, id: number)
+	local level = BlockRegistry.lightEmission[id + 1]
+	local list = sources[key]
+	if level > 0 and TorchRules.isTorch(id) then
+		if not list then
+			list = {}
+			sources[key] = list
+		end
+		(list :: { [number]: number })[idx] = level
+	elseif list then
+		list[idx] = nil
+	end
+end
 -- Saved-data gate (Persistence): a chunk may only be generated once its saved edits are loaded.
 local gate: { ready: (number) -> boolean, request: (number) -> (), ensure: (number) -> () }? = nil
 local unloadedListeners: { (key: number) -> () } = {}
@@ -210,6 +229,7 @@ function WorldService.installDiffs(key: number, d: { [number]: number })
 	for idx, id in d do
 		if mine[idx] == nil then -- edits made this session win
 			mine[idx] = id
+			noteSource(key, idx, id)
 		end
 	end
 	local chunk = chunks[key]
@@ -223,6 +243,26 @@ end
 
 function WorldService.getDiffs(key: number): { [number]: number }?
 	return diffs[key]
+end
+
+-- Estimated block light at a block from nearby torches: level - Manhattan distance (walls are
+-- ignored, so this errs on the lit side, which only makes spawning rarer next to torches).
+function WorldService.blockLightAt(x: number, y: number, z: number): number
+	local best = 0
+	local cx, cz = x // CS, z // CS
+	for dz = -1, 1 do
+		for dx = -1, 1 do
+			local list = sources[ChunkData.key(cx + dx, cz + dz)]
+			if list then
+				for idx, level in list do
+					local lx, ly, lz = ChunkData.unindex(idx)
+					local d = math.abs((cx + dx) * CS + lx - x) + math.abs(ly - y) + math.abs((cz + dz) * CS + lz - z)
+					best = math.max(best, level - d)
+				end
+			end
+		end
+	end
+	return best
 end
 
 function WorldService.onBlockSet(fn: (chunkKey: number) -> ())
@@ -280,6 +320,7 @@ function WorldService.setBlock(wx: number, wy: number, wz: number, id: number): 
 		chunk.diffs = d
 	end
 	d[ChunkData.index(lx, wy, lz)] = id
+	noteSource(key, ChunkData.index(lx, wy, lz), id)
 	for _, fn in blockSetListeners do
 		fn(key)
 	end

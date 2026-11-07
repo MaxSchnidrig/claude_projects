@@ -4,7 +4,7 @@ A voxel survival sandbox for Roblox, managed with [Rojo](https://rojo.space). Th
 mechanics follow the classic block-survival formula. All art, sounds, UI and every invented name
 are original to this project (see `ARCHITECTURE.md` → "Naming rules").
 
-**Status:** Phase 6 (saving: player-owned worlds in reserved servers, friends can join, inventories, containers and changed chunks saved) ready for testing. Next: Phase 7 (polish).
+**Status:** Phase 7 (graphics and sound: original 16×16 textures, smooth lighting, torches, sky, hand, particles, sound system) ready for testing.
 
 ## Structure
 
@@ -16,11 +16,12 @@ voxel-survival/
 ├── src/
 │   ├── shared/  -> ReplicatedStorage.Shared          pure, deterministic, used by both sides
 │   │   ├── Config, GameInfo
-│   │   ├── Blocks/    BlockDefs (data), TexturePalette, BlockRegistry (lookups)
-│   │   ├── Items/     ItemDefs, ItemRegistry, Recipes (data), Crafting, SlotLogic, FurnaceLogic
+│   │   ├── Blocks/    BlockDefs (data), TexturePalette, TextureGen (our 16x16 art), BlockRegistry, TorchRules
+│   │   ├── Items/     ItemDefs, ItemRegistry, ItemIconGen, Recipes (data), Crafting, SlotLogic, FurnaceLogic
+│   │   ├── Audio/     SoundConfig (every sound and music id, swappable)
 │   │   ├── Gameplay/  Mining, SurvivalRules (hunger, regen, falls), Combat (melee, explosions)
 │   │   ├── Mobs/      MobDefs (data), MobPhysics (box vs voxels), Pathfinder (A*)
-│   │   ├── World/     Noise, ChunkData, Biomes, TerrainGen, Features/{Ores,Trees}, VoxelRaycast, SkyLight
+│   │   ├── World/     Noise, ChunkData, Biomes, TerrainGen, Features/{Ores,Trees}, VoxelRaycast, SkyLight, LightEngine
 │   │   ├── Meshing/   SectionSampler, GreedyMesher, BoxMerger
 │   │   ├── Persistence/ SaveFormat (keys, region/player records)
 │   │   ├── Net/       Remotes
@@ -37,9 +38,10 @@ voxel-survival/
 │   │   └── Lobby/     LobbyService (own world, friends' worlds, reserved servers)
 │   └── client/  -> StarterPlayer.StarterPlayerScripts  rendering, input, UI
 │       ├── Main.client.luau   the only client LocalScript
-│       ├── World/     ClientWorld (streaming, generation, job picking)
-│       ├── Render/    ChunkRenderer, EditableMeshBackend, PartsBackend, CollisionBuilder, RenderStyle
-│       ├── Player/    CameraController, MovementController, InventoryClient
+│       ├── World/     ClientWorld (streaming, generation, lighting, job picking), Clouds
+│       ├── Render/    ChunkRenderer, EditableMeshBackend, TextureAtlas, TorchRenderer, Particles, PartsBackend, CollisionBuilder, RenderStyle
+│       ├── Player/    CameraController, MovementController, ViewModel (hand, bobbing), InventoryClient
+│       ├── Audio/     AudioClient (sounds, music)
 │       ├── Interaction/ BlockInteraction (targeting, mining, placing)
 │       ├── UI/        Hotbar, Crosshair, InventoryUI, ItemIcon, CoreGuiSetup
 │       ├── Survival/  SurvivalClient, SurvivalHUD (pips, death screen), DayNightClient (lighting)
@@ -65,6 +67,17 @@ Every system is a ModuleScript. There is exactly one bootstrap script per side.
 5. Press **Play**. Terrain streams in around you, and the character spawns once the ground under it has collision.
 
 Build a place file without Studio: `rojo build -o rocraft.rbxl`.
+
+### Graphics and sound (phase 7)
+
+- All block textures and item icons are ROCRAFT's own 16×16 pixel art, generated from code
+  (`Blocks/TextureGen`, `Items/ItemIconGen`): recognisable materials, not copies of any game's art.
+- Smooth lighting with ambient occlusion, sky light (caves are dark) and block light: craft
+  **torches** (coal or charcoal over a stick → 4) and place them on floors or walls.
+- Sky gradient, fog, square sun and moon, stars, blocky clouds; first-person hand and held item,
+  view bobbing, crack overlay, break particles.
+- Sounds: see **SOUNDS.md**. Every id is in `src/shared/Audio/SoundConfig.luau`; most are empty
+  placeholders with a Toolbox search term until you choose licensed sounds.
 
 ### Saving (phase 6)
 
@@ -132,3 +145,4 @@ lune run tests/lune/compile_all
 - `run`: unit tests.
 - `bench`: terrain statistics, timings, and instance counts for each rendering approach.
 - `compile_all`: syntax-checks every file, including Roblox-only ones.
+- `bench_lit` (`lune run tests/lune/bench_lit`): lighting and lit-meshing timings (phase 7).

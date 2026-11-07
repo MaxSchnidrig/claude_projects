@@ -20,6 +20,7 @@ local Config = require(Shared.Config)
 local Scheduler = require(Shared.Util.Scheduler)
 local SectionSampler = require(Shared.Meshing.SectionSampler)
 local GreedyMesher = require(Shared.Meshing.GreedyMesher)
+local BlockRegistry = require(Shared.Blocks.BlockRegistry)
 local EditableMeshBackend = require(script.Parent.EditableMeshBackend)
 local PartsBackend = require(script.Parent.PartsBackend)
 local LiveEditPool = require(script.Parent.LiveEditPool)
@@ -73,6 +74,26 @@ ChunkRenderer.keepTemp = false
 local paddedRender = buffer.create(SectionSampler.VOLUME)
 local paddedCollision = buffer.create(SectionSampler.VOLUME)
 local paddedUrgent = buffer.create(SectionSampler.VOLUME) -- urgent builds may interrupt a yielded job
+local lightRender = buffer.create(SectionSampler.VOLUME)
+local lightUrgent = buffer.create(SectionSampler.VOLUME)
+-- Light for a section's padded volume (ClientWorld's LightEngine); nil until set.
+local lightFill: ((out: buffer, chunk: any, sy: number) -> ())? = nil
+-- See-through specials stay merged quads (they become Parts, see SpecialPartsBackend).
+local mergeSet: { [number]: boolean } = {}
+
+function ChunkRenderer.setLightSource(fn: (out: buffer, chunk: any, sy: number) -> ())
+	lightFill = fn
+end
+
+-- Mesh a padded section: lit, per-face quads for textured terrain, else merged flat quads.
+local function meshSection(padded: buffer, light: buffer, chunk: any, sy: number, checkpoint: (() -> ())?): GreedyMesher.MeshResult
+	local fill = lightFill
+	if Config.TEXTURES and fill then
+		fill(light, chunk, sy)
+		return GreedyMesher.meshLit(padded, light, mergeSet, checkpoint)
+	end
+	return GreedyMesher.mesh(padded, checkpoint)
+end
 
 local centerX, centerZ = 0, 0
 -- Sections currently rendered with EditableMesh in live (unbaked) mode, for demotion.
@@ -93,6 +114,11 @@ function ChunkRenderer.init()
 	collisionFolder.Parent = rootFolder
 	rootFolder.Parent = workspace
 	LiveEditPool.init(renderFolder)
+	for tex in BlockRegistry.textureKeys do
+		if SpecialPartsBackend.isSpecial(tex) then
+			mergeSet[tex] = true
+		end
+	end
 end
 
 function ChunkRenderer.setCenter(cx: number, cz: number)
@@ -211,7 +237,7 @@ local function splitResult(result: GreedyMesher.MeshResult): (GreedyMesher.MeshR
 			(special :: any)[tex] = quads
 		else
 			opaque.groups[tex] = quads
-			opaque.quadCount += #quads // 6
+			opaque.quadCount += #quads // GreedyMesher.QUAD
 		end
 	end
 	return opaque, special
@@ -371,7 +397,7 @@ function ChunkRenderer.renderSection(section: Section, chunk: any, neighbors: Se
 
 	if mode == "editable" then
 		local t = os.clock()
-		local full = GreedyMesher.mesh(paddedRender, Scheduler.checkpoint)
+		local full = meshSection(paddedRender, lightRender, chunk, section.sy, Scheduler.checkpoint)
 		ChunkRenderer.stats.meshTime += os.clock() - t
 		ChunkRenderer.stats.sectionsMeshed += 1
 		ChunkRenderer.stats.quads += full.quadCount
@@ -467,7 +493,7 @@ function ChunkRenderer.renderUrgent(section: Section, chunk: any, neighbors: Sec
 	else
 		section.editPending = true
 		section.editTime = os.clock()
-		local result, special = splitResult(GreedyMesher.mesh(paddedUrgent))
+		local result, special = splitResult(meshSection(paddedUrgent, lightUrgent, chunk, section.sy, nil))
 		-- Water/ice/glass/lava are plain Parts: rebuilt on this frame, no hand-over ever.
 		setSpecial(section, special, paddedUrgent)
 		local slot = LiveEditPool.acquire(section)

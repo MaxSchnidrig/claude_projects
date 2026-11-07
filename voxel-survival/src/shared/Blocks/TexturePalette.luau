@@ -1,6 +1,6 @@
 --!strict
--- PLACEHOLDER texture colours (RGB 0-255), one per texture key.
--- Phase 7 replaces these with original 16x16 pixel art; until then each face is a flat colour.
+-- Average colour (RGB 0-255) per texture key: used for item icons of blocks without art, the Parts
+-- debug backend, map-like uses and as a check for the generated 16x16 art (Blocks/TextureGen).
 
 local palette: { [string]: { number } } = {
 	stone = { 125, 125, 125 },
@@ -52,6 +52,7 @@ local palette: { [string]: { number } } = {
 	tnt_top = { 200, 60, 50 },
 	tnt_side = { 210, 70, 55 },
 	white_wool = { 236, 236, 236 },
+	torch = { 250, 200, 90 },
 }
 
 return palette
