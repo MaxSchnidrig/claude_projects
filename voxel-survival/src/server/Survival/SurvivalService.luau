@@ -16,6 +16,7 @@ local BlockRegistry = require(Shared.Blocks.BlockRegistry)
 local ItemRegistry = require(Shared.Items.ItemRegistry)
 local SurvivalRules = require(Shared.Gameplay.SurvivalRules)
 local Combat = require(Shared.Gameplay.Combat)
+local SneakPose = require(Shared.Gameplay.SneakPose)
 local WorldService = require(script.Parent.Parent.World.WorldService)
 local InventoryService = require(script.Parent.Parent.Player.InventoryService)
 local SpawnService = require(script.Parent.Parent.Player.SpawnService)
@@ -49,6 +50,7 @@ type State = {
 	hurt: Combat.HurtState, -- 0.5 s invulnerability after a hit
 	grounded: boolean,
 	inLiquid: boolean,
+	sneaking: boolean,
 	burning: number, -- seconds of fire left (after lava)
 	fireTimer: number,
 }
@@ -76,6 +78,7 @@ local function newState(): State
 		hurt = { invulnUntil = 0, lastHurt = 0 },
 		grounded = true,
 		inLiquid = false,
+		sneaking = false,
 		burning = 0,
 		fireTimer = 0,
 	}
@@ -147,6 +150,10 @@ function SurvivalService.movement(p: Player): (boolean, boolean, boolean)
 	return s.sprinting, s.grounded, s.inLiquid
 end
 
+function SurvivalService.isSneaking(p: Player): boolean
+	return state(p).sneaking
+end
+
 -- The client stopped sprinting because of an attack (Java: sprint hits end the sprint).
 function SurvivalService.stopSprint(p: Player)
 	state(p).sprinting = false
@@ -171,7 +178,7 @@ local function stepPlayer(p: Player, s: State, dt: number)
 	local bx, bz = math.floor(pos.X / BS), math.floor(pos.Z / BS)
 	local feetBlock = block(bx, math.floor((feetY + 0.1) / BS), bz)
 	local bodyBlock = block(bx, math.floor((pos.Y) / BS), bz)
-	local eyeBlock = block(bx, math.floor((pos.Y + Config.EYE_HEIGHT) / BS), bz)
+	local eyeBlock = block(bx, math.floor((pos.Y + SneakPose.eyeHeight(p.Character)) / BS), bz)
 	local belowY = math.floor((feetY - 0.1) / BS)
 	local grounded = isSolid[block(bx, belowY, bz) + 1] and feetY - (belowY + 1) * BS <= 0.4
 
@@ -280,7 +287,18 @@ local function onAction(p: Player, a: any)
 		end
 		table.clear(s.heights) -- a fall is only counted once
 	elseif t == "sprint" then
-		s.sprinting = a.on == true and SurvivalRules.canSprint(s.hunger)
+		s.sprinting = a.on == true and SurvivalRules.canSprint(s.hunger) and not s.sneaking
+	elseif t == "sneak" then
+		-- pose for everyone else (the owner already shows it); eye height for reach checks
+		s.sneaking = a.on == true
+		if s.sneaking then
+			s.sprinting = false
+		end
+		local character = p.Character
+		if character then
+			character:SetAttribute("Sneaking", s.sneaking)
+			SneakPose.apply(character, s.sneaking)
+		end
 	elseif t == "eatStart" then
 		s.eatingSince = os.clock()
 		s.eatingSlot = InventoryService.selectedSlot(p)
@@ -313,6 +331,7 @@ local function onAction(p: Player, a: any)
 end
 
 local function onCharacter(p: Player, character: Model)
+	SneakPose.remember(character)
 	local s = state(p)
 	-- A fresh life: full health and hunger (classic respawn).
 	local fresh = newState()

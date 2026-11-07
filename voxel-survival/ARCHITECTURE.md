@@ -276,9 +276,20 @@ matched. Durability loss now follows Java: breaking a block with hardness > 0 co
 every other tool 1 (before: 1 for everything); hitting a mob costs swords 1, other tools 2, shears 0
 (before: shears 2).
 
+### 0.5.3 additions
+
+| Value | Before | Java (now) |
+|---|---|---|
+| Gravity | Roblox default 196.2 studs/s² | 96 studs/s² (0.08 blocks/tick²), terminal 3.92 blocks/tick |
+| Eye height | 1.53 blocks | 1.62 standing, 1.27 sneaking (eases in) |
+| Sprint start | W pressed within 0.3 s of its release | second W press within 7 ticks of the first; holding W after a sprint ends doesn't resume it |
+| Sneaking | none | Left Shift: ×0.3 speed, no sprint, 1.5-block body, edge stop (no support within 0.6 blocks below the feet box), forced while no room to stand, mobs notice you at 80 % range, pose seen by everyone |
+| Using items | full speed | ×0.2 speed, sprint stops |
+| Towering | placement rejected if the server's lagging view still overlapped you | the server re-checks such a placement every frame for 0.6 s before rejecting it |
+
 ### Not replicated yet
 
-Sword sweep attacks, experience, Voidlings picking up blocks, sneaking, block light (torches),
+Sword sweep attacks, experience, Voidlings picking up blocks, block light (torches),
 status effects (spider eye poison), and the attack-cooldown reset on swings that hit nothing.
 
 ## 6. Mechanics spec (later phases)

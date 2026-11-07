@@ -67,20 +67,21 @@ Build a place file without Studio: `rojo build -o rocraft.rbxl`.
 |---|---|
 | Mouse | Look (mouse is locked to the centre) |
 | WASD / Space | Move / jump (jump height 1.2 blocks) |
-| Double-tap W, or Ctrl+W | Sprint (until you release W, stop, hit a wall, or are too hungry) |
+| Double-tap W, or Ctrl+W | Sprint (until you release W, stop, hit a wall, sneak, eat, or are too hungry; holding W again does not resume it) |
+| Left Shift (hold) | Sneak: 30 % speed, lower eyes, 1.5-block body, can't walk off edges |
 | Left mouse (hold) | Mine the targeted block |
 | Left mouse on a mob (3 blocks) | Attack (full damage once the weapon has recharged; critical hit ×1.5 while falling after a jump) |
 | Right mouse (hold) | Place the held block (repeats) |
 | 1–9 / mouse wheel | Select hotbar slot |
 | E | Inventory (2×2 crafting). Esc or E closes |
-| Right mouse on Crafting Table / Furnace / Chest | Open it (Shift + right mouse places against it) |
+| Right mouse on Crafting Table / Furnace / Chest | Open it (sneaking + right mouse places against it) |
 | In a window | Left: pick up/put/merge/swap · Right: take half/put one · Shift-click: quick-move · Result slot: craft (Shift: craft all) · Click outside: drop carried stack · Drag with a stack: left spreads it evenly, right puts one per slot · Double-click: gather matching items into the cursor |
 | Q / Ctrl+Q | Drop one / the whole held stack (in a window: of the hovered slot) |
-| Right mouse (hold) with food | Eat (1.6 s, only when not full) |
+| Right mouse (hold) with food | Eat (1.6 s, only when not full; you move at 20 % speed meanwhile) |
 | Space in water | Swim up |
 | V | Camera: first person → behind → front (`Config.KEY_CAMERA`) |
 | Gamepad | R2 mine, L2 place, R1/L1 hotbar, L3 sprint, right stick look |
-| Touch | Drag to look, "Mine"/"Place" buttons, tap a slot |
+| Touch | Drag to look, "Mine"/"Place"/"Sneak" buttons, tap a slot |
 
 In Studio you spawn with a test kit (pickaxes of each tier, blocks) from `Config.STUDIO_STARTER_KIT`; live servers start empty.
 

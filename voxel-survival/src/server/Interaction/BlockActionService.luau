@@ -11,6 +11,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local SneakPose = require(Shared.Gameplay.SneakPose)
 local Config = require(Shared.Config)
 local Remotes = require(Shared.Net.Remotes)
 local BlockRegistry = require(Shared.Blocks.BlockRegistry)
@@ -74,7 +75,7 @@ local function eyeOf(player: Player): Vector3?
 	if not root or not humanoid or humanoid.Health <= 0 then
 		return nil
 	end
-	return (root.Position + Vector3.new(0, Config.EYE_HEIGHT, 0)) / BS
+	return (root.Position + Vector3.new(0, SneakPose.eyeHeight(root.Parent), 0)) / BS
 end
 
 local function stopsRay(id: number): boolean
@@ -136,7 +137,7 @@ end
 --   * any position in the last 0.5 s is clear of the block (you've been above it), or
 --   * you're moving upward and your feet are above the block's lower half.
 -- Other players are checked at their current position with no tolerance.
-local function overlapsCharacter(x: number, y: number, z: number, requester: Player): boolean
+local function overlapsCharacter(x: number, y: number, z: number, requester: Player): (boolean, boolean)
 	local minP = Vector3.new(x, y, z) * BS
 	local maxP = minP + Vector3.one * BS
 	for _, player in Players:GetPlayers() do
@@ -144,7 +145,7 @@ local function overlapsCharacter(x: number, y: number, z: number, requester: Pla
 		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 		if root and boxOverlaps(root.Position, minP, maxP) then
 			if player ~= requester then
-				return true
+				return true, true
 			end
 			local clear = false
 			for _, h in history[player] or {} do
@@ -158,12 +159,19 @@ local function overlapsCharacter(x: number, y: number, z: number, requester: Pla
 				clear = true
 			end
 			if not clear then
-				return true
+				return true, false
 			end
 		end
 	end
-	return false
+	return false, false
 end
+
+-- Placements that overlapped only the requester's (server-side, lagging) body: towering up.
+-- They are re-checked every frame for a short while, so the server's view of the jump can
+-- catch up with the client's, instead of rejecting the block at once.
+local DEFER_SECONDS = 0.6
+type Deferred = { player: Player, x: number, y: number, z: number, untilT: number }
+local deferred: { Deferred } = {}
 
 local function broadcast(key: number, x: number, y: number, z: number, id: number, requester: Player)
 	local remote = Remotes.get("BlockChanged")
@@ -255,19 +263,22 @@ local function finishBreak(player: Player, st: PState, x: number, y: number, z: 
 	broadcast(key, x, y, z, AIR, player)
 end
 
-local function place(player: Player, x: number, y: number, z: number)
+local function place(player: Player, x: number, y: number, z: number, retry: boolean?): boolean
 	local eye = eyeOf(player)
 	if not eye then
-		return correct(player, x, y, z, "no character")
+		correct(player, x, y, z, "no character")
+		return true
 	end
 	local stack = InventoryService.selectedStack(player)
 	local item = stack and ItemRegistry.get(stack.item)
 	if not item or not item.block then
-		return correct(player, x, y, z, "not holding a block")
+		correct(player, x, y, z, "not holding a block")
+		return true
 	end
 	local current = WorldService.getBlock(x, y, z)
 	if current ~= AIR and not isLiquid[current + 1] then
-		return correct(player, x, y, z, "cell occupied")
+		correct(player, x, y, z, "cell occupied")
+		return true
 	end
 	-- must be placed against an existing block
 	local supported = false
@@ -279,17 +290,34 @@ local function place(player: Player, x: number, y: number, z: number)
 		end
 	end
 	if not supported then
-		return correct(player, x, y, z, "nothing to place against")
+		correct(player, x, y, z, "nothing to place against")
+		return true
 	end
 	local ok, why = canReach(eye, x, y, z, true)
 	if not ok then
-		return correct(player, x, y, z, why)
+		correct(player, x, y, z, why)
+		return true
 	end
-	if BlockRegistry.isSolid[item.block + 1] and overlapsCharacter(x, y, z, player) then
-		return correct(player, x, y, z, "would overlap a player")
+	if BlockRegistry.isSolid[item.block + 1] then
+		local overlap, byOther = overlapsCharacter(x, y, z, player)
+		if overlap then
+			if not byOther and not retry then
+				if #deferred < 64 then
+					table.insert(deferred, { player = player, x = x, y = y, z = z, untilT = os.clock() + DEFER_SECONDS })
+				else
+					correct(player, x, y, z, "too many pending placements")
+				end
+				return true
+			elseif not byOther and retry then
+				return false -- still waiting (the caller times out)
+			end
+			correct(player, x, y, z, "would overlap a player")
+			return true
+		end
 	end
 	if not InventoryService.consumeSelected(player, 1) then
-		return correct(player, x, y, z, "no item")
+		correct(player, x, y, z, "no item")
+		return true
 	end
 	local key = WorldService.setBlock(x, y, z, item.block)
 	local kind = BlockEntityService.kindOf(item.block)
@@ -298,6 +326,7 @@ local function place(player: Player, x: number, y: number, z: number)
 	end
 	BlockActionService.stats.accepted += 1
 	broadcast(key, x, y, z, item.block, player)
+	return true
 end
 
 function BlockActionService.init()
@@ -338,6 +367,17 @@ function BlockActionService.init()
 				while #h > 0 and now - h[1].t > HISTORY_SECONDS do
 					table.remove(h, 1)
 				end
+			end
+		end
+		for i = #deferred, 1, -1 do
+			local d = deferred[i]
+			if not d.player.Parent then
+				table.remove(deferred, i)
+			elseif place(d.player, d.x, d.y, d.z, true) then
+				table.remove(deferred, i)
+			elseif now > d.untilT then
+				table.remove(deferred, i)
+				correct(d.player, d.x, d.y, d.z, "would overlap a player")
 			end
 		end
 	end)

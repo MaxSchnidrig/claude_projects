@@ -17,6 +17,15 @@ Startup.run("server", {
 	{ name = "AssetDiagnostics", run = function()
 		require(Shared.Util.AssetDiagnostics).init()
 	end },
+	{ name = "Physics", run = function()
+		workspace.Gravity = Config.GRAVITY -- Java: 32 blocks/s^2
+		-- sneaking moves the visual body parts into a group that doesn't collide (SneakPose)
+		local PhysicsService = game:GetService("PhysicsService")
+		local SneakPose = require(Shared.Gameplay.SneakPose)
+		PhysicsService:RegisterCollisionGroup(SneakPose.GHOST_GROUP)
+		PhysicsService:CollisionGroupSetCollidable(SneakPose.GHOST_GROUP, "Default", false)
+		PhysicsService:CollisionGroupSetCollidable(SneakPose.GHOST_GROUP, SneakPose.GHOST_GROUP, false)
+	end },
 	-- Phase 6 replaces the default seed with the owning player's world seed (reserved servers).
 	{ name = "WorldService", run = function()
 		require(server.World.WorldService).init(Config.DEFAULT_SEED)

@@ -30,6 +30,7 @@ local VoxelRaycast = require(Shared.World.VoxelRaycast)
 local SurvivalRules = require(Shared.Gameplay.SurvivalRules)
 local SkyLight = require(Shared.World.SkyLight)
 local MobSnapshotCodec = require(Shared.Mobs.MobSnapshotCodec)
+local SneakPose = require(Shared.Gameplay.SneakPose)
 local WorldService = require(script.Parent.Parent.World.WorldService)
 local ItemEntityService = require(script.Parent.Parent.World.ItemEntityService)
 local ExplosionService = require(script.Parent.Parent.World.ExplosionService)
@@ -156,7 +157,7 @@ function MobService.lineOfSight(a: Vector3, b: Vector3): boolean
 end
 
 -- Living players with their positions (block units: feet centre, eye).
-export type Target = { player: Player, feet: Vector3, eye: Vector3, root: BasePart, look: Vector3 }
+export type Target = { player: Player, feet: Vector3, eye: Vector3, root: BasePart, look: Vector3, sneaking: boolean }
 function MobService.targets(): { Target }
 	local list = {}
 	for _, p in Players:GetPlayers() do
@@ -168,7 +169,8 @@ function MobService.targets(): { Target }
 			table.insert(list, {
 				player = p,
 				feet = Vector3.new(pos.X, pos.Y - 3, pos.Z) / BS,
-				eye = (pos + Vector3.new(0, Config.EYE_HEIGHT, 0)) / BS,
+				eye = (pos + Vector3.new(0, SneakPose.eyeHeight(c), 0)) / BS,
+					sneaking = c:GetAttribute("Sneaking") == true,
 				root = root,
 			})
 		end
@@ -566,7 +568,7 @@ local function onAttack(p: Player, id: any, critClaim: any)
 	if not m or not m.alive or m.def.category == "projectile" or not h or not root or h.Health <= 0 then
 		return
 	end
-	local eye = (root.Position + Vector3.new(0, Config.EYE_HEIGHT, 0)) / BS
+	local eye = (root.Position + Vector3.new(0, SneakPose.eyeHeight(c), 0)) / BS
 	-- distance from the eye to the mob's box
 	local hw = m.def.width / 2
 	local closest = Vector3.new(
@@ -608,6 +610,7 @@ local function onAttack(p: Player, id: any, critClaim: any)
 	if crit then
 		broadcastEvent({ type = "crit", id = m.id }, Vector3.new(m.x, m.y, m.z))
 	end
+	Remotes.get("MobEvent"):FireClient(p, { type = "hit", id = m.id, damage = dealt, crit = crit, charge = charge })
 	-- Sprint hit at full strength: extra 0.5 knockback along the attacker's facing; sprint ends.
 	if fresh and sprinting and charge > Combat.CRIT_MIN_CHARGE and m.alive then
 		local look = root.CFrame.LookVector

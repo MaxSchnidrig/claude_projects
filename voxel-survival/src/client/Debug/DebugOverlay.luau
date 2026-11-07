@@ -183,7 +183,8 @@ function DebugOverlay.init()
 			targetLine() .. (if BlockInteraction.mobTarget then `   aiming at mob #{BlockInteraction.mobTarget}` else ""),
 			string.format("mobs: known %d, with visible model %d   snapshot packets %d   model build errors %d%s",
 				MobClient.stats.known, MobClient.stats.visible, MobClient.stats.packets, MobClient.stats.buildErrors,
-				if MobClient.stats.lastBuildError ~= "" then ` ({MobClient.stats.lastBuildError})` else ""),
+				if MobClient.stats.lastBuildError ~= "" then ` ({MobClient.stats.lastBuildError})` else "")
+				.. `   last hit: {MobClient.stats.lastHit}`,
 			string.format("survival: health %s  food %d  saturation %.1f  air %.1f s  sprint %s   time %s (tick %d)",
 				healthText(), SurvivalClient.food, SurvivalClient.saturation, SurvivalClient.air,
 				if SurvivalClient.canSprint then "ok" else "too hungry", DayNightClient.clockText(), DayNightClient.timeOfDay),

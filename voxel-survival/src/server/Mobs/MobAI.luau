@@ -191,7 +191,9 @@ local function acquire(m: any, targets: { any }, now: number): any?
 	local pos = Vector3.new(m.x, m.y, m.z)
 	for _, c in targets do
 		local d = (c.feet - pos).Magnitude
-		if d <= bestD and math.abs(c.feet.Y - m.y) <= 4 + def.height and canSee(m, c) then
+		-- Java: sneaking players are noticed at 80 % of the range
+		local range = if c.sneaking then def.followRange * 0.8 else def.followRange
+		if d <= math.min(bestD, range) and math.abs(c.feet.Y - m.y) <= 4 + def.height and canSee(m, c) then
 			best, bestD = c, d
 		end
 	end

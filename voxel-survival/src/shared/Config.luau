@@ -84,13 +84,19 @@ Config.BREAK_LATENCY_SLACK = 0.1 -- seconds of extra slack on top of that
 Config.BREAK_COOLDOWN = 0.25 -- seconds between finishing one block and starting the next
 Config.PLACE_REPEAT = 0.2 -- seconds between placements while right mouse is held
 Config.ACTIONS_PER_SECOND = 30 -- server rate limit for block actions
-Config.EYE_HEIGHT = 1.6 -- studs above HumanoidRootPart centre (feet + 4.6 studs ≈ 1.53 blocks)
+Config.EYE_HEIGHT = 1.86 -- studs above HumanoidRootPart centre (feet + 4.86 studs = Java 1.62 blocks)
+Config.EYE_HEIGHT_SNEAK = 0.81 -- sneaking: feet + 3.81 studs = Java 1.27 blocks
 
 Config.WALK_SPEED = 12.95 -- studs/s (Java 4.317 blocks/s)
 Config.SPRINT_SPEED = 16.84 -- studs/s (Java 5.612 blocks/s)
 Config.JUMP_HEIGHT = 3.757 -- studs (Java 1.2522 blocks): clears 1-block steps, never 2
 Config.KEY_SPRINT = "LeftControl" -- hold while walking forward; double-tapping W also sprints
-Config.SPRINT_DOUBLE_TAP = 0.3 -- seconds between W release and re-press that start a sprint
+Config.SPRINT_DOUBLE_TAP = 0.35 -- Java: a second W press within 7 ticks of the first starts a sprint
+Config.KEY_SNEAK = "LeftShift" -- hold to sneak
+Config.SNEAK_SPEED_FACTOR = 0.3 -- Java sneaking: movement input x 0.3
+Config.ITEM_USE_SPEED_FACTOR = 0.2 -- Java: movement input x 0.2 while eating / using an item
+Config.GRAVITY = 96 -- studs/s^2 (Java 0.08 blocks/tick^2 = 32 blocks/s^2)
+Config.TERMINAL_FALL_SPEED = 235 -- studs/s (Java 3.92 blocks/tick)
 Config.KEY_CAMERA = "V" -- cycle first person -> third person behind -> third person front
 Config.MOUSE_SENSITIVITY = 0.2 -- degrees per pixel (multiplied by Roblox's own sensitivity setting)
 Config.TOUCH_SENSITIVITY = 0.25 -- degrees per pixel of touch drag

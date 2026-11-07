@@ -56,6 +56,10 @@ function SurvivalClient.setSprinting(on: boolean)
 	send({ type = "sprint", on = on })
 end
 
+function SurvivalClient.setSneaking(on: boolean)
+	send({ type = "sneak", on = on })
+end
+
 function SurvivalClient.eatStart()
 	send({ type = "eatStart" })
 end

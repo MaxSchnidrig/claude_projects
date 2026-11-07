@@ -223,6 +223,7 @@ local function update(dt: number)
 		stopEating()
 	end
 	updateEating(dt)
+	MovementController.usingItem = eating ~= nil -- Java: slows you to 20 % and stops sprinting
 	if InventoryClient.uiOpen or SurvivalClient.dead then
 		-- a window is open: no mining/placing, no highlight
 		breakHeld, placeHeld = false, false
@@ -344,7 +345,7 @@ local function makeTouchButtons()
 	end)
 	button("Place", UDim2.new(1, -120, 1, -130), function()
 		local hit = BlockInteraction.target
-		if hit and INTERACTABLE[hit.id] then
+		if hit and INTERACTABLE[hit.id] and not MovementController.sneaking then
 			InventoryClient.openBlock(hit.x, hit.y, hit.z)
 			return
 		end
@@ -359,6 +360,9 @@ local function makeTouchButtons()
 		placeHeld = false
 		useHeld = false
 	end)
+	button("Sneak", UDim2.new(1, -216, 1, -130), function()
+		MovementController.toggleSneak()
+	end, function() end)
 	gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
 end
 
@@ -378,7 +382,8 @@ function BlockInteraction.init()
 			breakHeld = true
 		elseif t == Enum.UserInputType.MouseButton2 or input.KeyCode == Enum.KeyCode.ButtonL2 then
 			local hit = BlockInteraction.target
-			local shift = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+			local shift = MovementController.sneaking or UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+				or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
 			local held = ItemRegistry.get(InventoryClient.heldItem())
 			if hit and INTERACTABLE[hit.id] and not shift then
 				InventoryClient.openBlock(hit.x, hit.y, hit.z) -- server opens the window; the UI follows

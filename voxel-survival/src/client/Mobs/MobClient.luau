@@ -21,6 +21,7 @@ local MobSnapshotCodec = require(Shared.Mobs.MobSnapshotCodec)
 local BlockRegistry = require(Shared.Blocks.BlockRegistry)
 local VoxelRaycast = require(Shared.World.VoxelRaycast)
 local ClientWorld = require(script.Parent.Parent.World.ClientWorld)
+local MovementController = require(script.Parent.Parent.Player.MovementController)
 
 local BS = Config.BLOCK_SIZE
 local INTERP_DELAY = 0.15
@@ -48,7 +49,7 @@ type Mob = {
 local MobClient = {}
 MobClient.count = 0
 -- Diagnostics for F3: mobs the client knows about vs. mobs with a model in the world.
-MobClient.stats = { packets = 0, known = 0, visible = 0, buildErrors = 0, lastBuildError = "" }
+MobClient.stats = { packets = 0, known = 0, visible = 0, buildErrors = 0, lastBuildError = "", lastHit = "-" }
 
 local mobs: { [number]: Mob } = {}
 local folder: Folder
@@ -117,33 +118,56 @@ local function flashAt(pos: Vector3, color: Color3, size: number, duration: numb
 	end)
 end
 
--- Critical hit: a burst of small sparks around the mob (original effect).
-local function critSparks(center: Vector3)
-	for _ = 1, 14 do
-		local p = Instance.new("Part")
-		p.Anchored = true
-		p.CanCollide = false
-		p.CanQuery = false
-		p.CanTouch = false
-		p.CastShadow = false
-		p.Material = Enum.Material.Neon
-		p.Color = Color3.fromRGB(255, 236, 170)
-		p.Size = Vector3.one * 0.35
-		local dir = Vector3.new(math.random() - 0.5, math.random() * 0.8, math.random() - 0.5)
-		dir = if dir.Magnitude > 0.01 then dir.Unit else Vector3.yAxis
-		local start = center + dir * 0.8
-		p.CFrame = CFrame.new(start) * CFrame.Angles(math.random() * 6, math.random() * 6, 0)
-		p.Parent = folder
-		local t = 0.35 + math.random() * 0.25
-		TweenService:Create(p, TweenInfo.new(t, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-			CFrame = CFrame.new(start + dir * (3 + math.random() * 3)),
-			Size = Vector3.one * 0.08,
-			Transparency = 1,
-		}):Play()
-		task.delay(t, function()
-			p:Destroy()
-		end)
-	end
+-- Critical hit (original take on the Java effect): for 3 ticks a burst of small pale star-
+-- shaped sparks shoots out of the mob in all directions, then drifts down and fades.
+local function critSparks(center: Vector3, size: Vector3)
+	task.spawn(function()
+		for _ = 1, 3 do
+			for _ = 1, 12 do
+				local dir = Vector3.new(math.random() * 2 - 1, math.random() * 2 - 1, math.random() * 2 - 1)
+				dir = if dir.Magnitude > 0.01 then dir.Unit else Vector3.yAxis
+				local start = center + Vector3.new(
+					(math.random() - 0.5) * size.X,
+					(math.random() - 0.5) * size.Y,
+					(math.random() - 0.5) * size.Z
+				)
+				local spark = Instance.new("Model")
+				local s = 0.25 + math.random() * 0.2
+				local parts = {}
+				for k = 1, 2 do -- two crossed bars = a little 4-point star
+					local p = Instance.new("Part")
+					p.Anchored = true
+					p.CanCollide = false
+					p.CanQuery = false
+					p.CanTouch = false
+					p.CastShadow = false
+					p.Material = Enum.Material.Neon
+					p.Color = if math.random() < 0.5 then Color3.fromRGB(235, 235, 245) else Color3.fromRGB(190, 200, 215)
+					p.Size = if k == 1 then Vector3.new(s * 3, s, s) else Vector3.new(s, s * 3, s)
+					p.Parent = spark
+					parts[k] = p
+				end
+				spark.PrimaryPart = parts[1]
+				local cf = CFrame.lookAt(start, start + dir) * CFrame.Angles(0, 0, math.random() * 6)
+				for _, p in parts do
+					p.CFrame = cf
+				end
+				spark.Parent = folder
+				local t = 0.45 + math.random() * 0.3
+				local goal = cf + dir * (2.5 + math.random() * 3) - Vector3.new(0, 1.5, 0)
+				for _, p in parts do
+					TweenService:Create(p, TweenInfo.new(t, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+						CFrame = goal,
+						Transparency = 1,
+					}):Play()
+				end
+				task.delay(t, function()
+					spark:Destroy()
+				end)
+			end
+			task.wait(0.05)
+		end
+	end)
 end
 
 local function onSnapshot(packet: any)
@@ -176,7 +200,12 @@ local function onEvent(e: any)
 	if e.type == "hurt" and m then
 		m.hurtUntil = os.clock() + 0.35
 	elseif e.type == "crit" and m then
-		critSparks(m.pos + Vector3.new(0, m.def.height * BS / 2, 0))
+		critSparks(m.pos + Vector3.new(0, m.def.height * BS / 2, 0),
+			Vector3.new(m.def.width, m.def.height, m.def.width) * BS)
+	elseif e.type == "hit" then
+		-- our own hit, confirmed by the server (F3 line)
+		MobClient.stats.lastHit = string.format("%s%.1f damage (charge %d%%)",
+			if e.crit then "CRITICAL x1.5, " else "", tonumber(e.damage) or 0, math.floor((tonumber(e.charge) or 0) * 100))
 	elseif e.type == "died" and m then
 		m.dying = os.clock()
 	elseif e.type == "teleport" then

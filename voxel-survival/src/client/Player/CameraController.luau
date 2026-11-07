@@ -13,6 +13,7 @@ local UserInputService = game:GetService("UserInputService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
+local MovementController = require(script.Parent.MovementController)
 
 local MODES = { "first", "back", "front" }
 local MAX_PITCH = math.rad(89)
@@ -42,7 +43,7 @@ function CameraController.getEyeAndLook(): (Vector3?, Vector3)
 	if not root then
 		return nil, look
 	end
-	return root.Position + Vector3.new(0, Config.EYE_HEIGHT, 0), look
+	return root.Position + Vector3.new(0, MovementController.eyeHeight, 0), look
 end
 
 local function setLocalTransparency(character: Model, value: number)
@@ -106,7 +107,7 @@ local function update(dt: number)
 		root.CFrame = CFrame.new(root.Position) * CFrame.Angles(0, yaw, 0)
 	end
 
-	local eye = root.Position + Vector3.new(0, Config.EYE_HEIGHT, 0)
+	local eye = root.Position + Vector3.new(0, MovementController.eyeHeight, 0)
 	local look = rot.LookVector
 	local mode = CameraController.mode
 	if mode == "first" then
