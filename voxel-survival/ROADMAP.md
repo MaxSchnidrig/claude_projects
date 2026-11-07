@@ -1,143 +1,405 @@
-# ROCRAFT roadmap (Phase 8+)
+# ROCRAFT roadmap: complete Java Edition gameplay
 
-What ROCRAFT still lacks compared with Java Edition, grouped into phases and ordered by what
-players miss most. That order follows the first hours of a typical survival game: shelter,
-night, food, armour and caves first; magic, machines and dimensions later.
+**Goal:** replicate Java Edition gameplay completely: mechanics, values, recipes, AI and
+world-generation rules.
 
-Rules for every phase stay the same:
-- Java Edition values and behaviour.
-- Only names, models, textures and sounds are original.
-- No Mojang-coined names or designs. Every new original equivalent (a mob, item or dimension
-  block) gets a name proposal for your approval before it's built.
+**Original, always:**
+- Names Mojang invented.
+- Mob designs.
+- Textures, sounds and music.
+- Structure designs.
 
-Effort: S = a session, M = 2–3 sessions, L = 4+ sessions.
+Every new original equivalent gets a name proposal for approval before it's built. Never copies,
+never slightly altered copies. Real-world names stay (cow, zombie, iron, village...).
 
-## Phase 8 – Everyday survival (L)
+**Skipped on purpose:**
+1. Trial chambers, with their mobs, items and mechanics.
+2. The deep dark and ancient cities, with their mobs, blocks and mechanics (including anything
+   that depends on them).
+3. The sulfur cave update content.
 
-The gaps a new player notices in the first night.
+**Effort:** S = one session · M = 2–3 sessions · L = 4–6 sessions · XL = 7+ sessions.
+**⚠ Roblox** marks a planned compromise for performance or platform reasons. Each one is
+listed again at the end.
 
-| Feature | Notes |
+**Release:** one public release when everything below is done. Friends tests between phases
+are fine.
+
+---
+
+## Phase 7.2 – Fixes from the 0.7.1 test (S)
+
+| Issue | Cause | Fix |
+|---|---|---|
+| Visible box walls at the render distance | The fog shell panels sit just past the fog end and are lit and shaded by Roblox, so they don't come out as exactly the fog colour | Remove the shell. Hide Roblox's skybox a different way, and make the sky dome itself fade fully into the fog colour (a horizon band plus the zenith plane), checked in all four directions |
+| Torch light arrives late | The torch's own section rebuilds at once; neighbouring sections whose light changed rebuild in the background | Rebuild light-changed sections on the same frame through the live-edit pool, up to a per-frame cap; background bakes only for the rest |
+
+## Phase 8 – Survival foundations (XL)
+
+**Liquids and gravity blocks**
+- Java flow for water and lava: source and flowing levels, 7-block spread, lava 3 in the
+  overworld, flow ticks, infinite water sources, waterlogging basics.
+- Where liquids meet: obsidian, cobblestone, stone (basalt comes in phase 16).
+- Currents push entities and items; buckets (empty, water, lava, plus fish/axolotl buckets
+  later).
+- Gravity blocks: sand, gravel, concrete powder (phase 12) fall and break on non-full blocks.
+- ⚠ Roblox: flow is ticked in batches on the server; the client predicts nothing.
+
+**Sleep and spawn**
+- Beds in 16 colours: skip the night, need monsters away, set the spawn point.
+- Phantom-role insomnia counter (the mob arrives in phase 14).
+- Respawn rules.
+
+**Combat gear**
+- Armour: leather (dyeable), chainmail, iron, gold, diamond, with Java points, toughness,
+  durability and the knockback resistance foundation.
+- Armour slots, armour shown on the avatar.
+- Shield: blocking, axe disabling, durability, banner patterns later.
+
+**Ranged weapons**
+- Bow: draw, power, crit arrows, pickup rules, arrows stuck in entities.
+- Crossbow: charging, multishot foundation.
+
+**Fire and explosives**
+- Fire: flint and steel, spread, burn-out, fire damage, setting entities on fire.
+- Campfire: cooking, smoke.
+- TNT: ignition by fire, the Volt system later and explosions; chain reactions.
+
+**Building blocks**
+- Doors, trapdoors, fence gates, ladders, climbing and vines.
+- Fences, walls, glass panes, iron bars.
+- Slabs and stairs: the first non-cube shapes. ⚠ Roblox: the mesher gains a shape system;
+  collision builds boxes per shape.
+
+**Text and items**
+- Signs and hanging signs. ⚠ Roblox: all player text goes through `TextService` filtering.
+- Item frames, glow item frames.
+
+**Game setup**
+- Difficulty: Peaceful, Easy, Normal and Hard with Java rules; Hardcore.
+- Main menu, pause menu, settings (render distance, FOV, sensitivity, volumes, GUI scale,
+  bobbing, brightness), world settings (friends can join, difficulty).
+
+## Phase 9 – Farming, food, weather, status effects (L)
+
+**Farming**
+- Farmland with hydration and trampling.
+- Crops: wheat, carrots, potatoes, beetroot, pumpkins, melons (stems), sugar cane, cactus,
+  bamboo, sweet berries, cocoa.
+- Growth by random ticks and light; bone meal.
+- Saplings and tree growth (all trees of the current biomes); mushrooms (incl. huge mushrooms);
+  flowers, tall grass, ferns, dead bushes.
+
+**Food**
+- Every Java food with its hunger and saturation values: cake, cookies, pie, stews, suspicious
+  stew, golden carrot, honey bottle, dried kelp...
+
+**Status effects and weather**
+- The status-effect system with Java durations and amplifiers for all effects, plus golden
+  and enchanted golden apples.
+- Weather: rain, snow, thunderstorms, lightning (fire, conversions, the charged Sneaker),
+  weather effects on mobs and crops.
+
+**Animals**
+- Breeding, babies and growth for every animal that exists so far.
+- Shearing; dyes and 16 colours (wool, carpets, beds, glass).
+- Milk, eggs (thrown, hatching), leads, name tags, saddles.
+
+**Fishing**
+- Fishing rod with the Java loot table (fish, treasure, junk), plus cod, salmon, pufferfish and
+  tropical fish as items.
+
+## Phase 10 – Experience, enchanting, anvils, smithing (L)
+
+**Experience**
+- XP orbs (mobs, ores, smelting, breeding, fishing, trading).
+- Java level curve; dropping on death.
+
+**Enchanting**
+- Enchanting table, bookshelves (power), lapis, Java offer generation.
+- Every enchantment with its levels, weights, conflicts and treasure-only flags. Excluded:
+  trial-chamber and deep-dark enchantments (Wind Burst, Density, Breach, Swift Sneak).
+  Mending and other treasure enchantments come from loot and trading.
+
+**Repair and upgrades**
+- Anvil: repair, combining, renaming, prior-work penalty, damage.
+- Grindstone, books.
+- Smithing table and the top-tier upgrade (with the phase 16 material).
+- Armour trims: Java mechanics; template and pattern art all our own designs.
+
+## Phase 11 – Volt system: power and machines (XL)
+
+**Signal parts**
+- Volt Dust (signal 0–15, −1 per block, connection shapes), Volt Torch (burnout), Volt Block.
+- Volt Relay (the repeater: delay, locking) and Volt Comparator (compare/subtract, reading
+  containers).
+
+**Inputs**
+- Levers, buttons (wood/stone), pressure plates (incl. weighted), tripwire and hooks.
+- Daylight detector, target block, trapped chest, lectern output.
+
+**Machines**
+- Pistons and sticky pistons with Java push rules (12-block limit, immovable blocks), slime and
+  honey blocks.
+- Observers; hoppers (transfer timing, minecart hoppers); droppers, dispensers (all dispense
+  behaviours).
+- Note blocks (instrument by block; our own sounds), jukebox (our own music discs), redstone
+  lamp, copper doors/trapdoors/grates/bulbs.
+- Crafter and copper bulb: they came in the same update as trial chambers but aren't part of
+  the chambers, so they're included unless you'd rather drop them.
+
+**Rails**
+- Rails, powered, detector and activator rails; minecarts (normal, chest, hopper, furnace, TNT,
+  command later); boats and chest boats.
+
+**Timing and performance**
+- Java tick timing: 20 ticks per second, 2-tick relay steps, block update order,
+  quasi-connectivity, zero-tick behaviour where Java has it.
+- ⚠ Roblox: a dedicated 20 TPS logic loop on the server and a budget for very large
+  contraptions.
+- ⚠ Roblox: minecarts and boats are custom kinematic vehicles, not Roblox physics.
+
+## Phase 12 – Complete overworld block set and decoration (L)
+
+**Stone**
+- Granite, diorite, andesite, calcite, tuff, deepslate (and cobbled/polished/bricks/tiles),
+  smooth stone.
+- Stone bricks (mossy/cracked/chiseled), bricks, mud bricks, packed mud, prismarine set
+  (phase 13 ocean monument).
+
+**Wood**
+- Every wood set: oak, spruce, birch, jungle, acacia, dark oak, mangrove, cherry, bamboo;
+  crimson and warped in phase 16.
+- For each: log, wood, stripped variants, planks, slab, stairs, fence, gate, door, trapdoor,
+  button, pressure plate, sign, hanging sign, boat.
+
+**Colours**
+- Terracotta and 16 glazed terracotta (our own patterns), concrete and concrete powder,
+  stained glass and panes, candles.
+
+**Light, utility and decoration**
+- Light and utility: lanterns, soul variants, chains, torches of each type, end rod-role (phase
+  18), sea lantern-role, glowstone-role (phase 16), shroomlight-role.
+- Decoration:
+  - Flower pots, paintings (all our own art), armour stands, banners (patterns: Java crafting
+    rules, our own pattern art), loom, cartography table, fletching table.
+  - Composter, barrel, smoker, blast furnace, stonecutter, bell, scaffolding.
+  - Chiseled bookshelf, lectern, decorated pots and sherds (our own designs).
+  - Moss, dripleaf, spore blossom, azalea, glow lichen, hanging roots (with lush caves in
+    phase 13).
+- Snow layers, powder snow (freezing), ice types, coral blocks, kelp, seagrass, sea pickles.
+
+**Stonecutter recipes and colour recipes for all of the above.**
+
+## Phase 13 – Overworld generation overhaul (XL)
+
+**Terrain**
+- Java 1.18+ multi-noise terrain: continents, erosion, peaks and valleys, rivers, aquifers,
+  noise caves (cheese, spaghetti and noodle).
+- Java ore distribution by height and biome.
+- ⚠ Roblox: world height −64 to 320 (from 0–127) is the biggest change in this plan: 3× the
+  blocks per chunk, plus memory, meshing load, a save-format migration and mobile limits. We
+  measure on mobile first; fallback options are a smaller vertical range or lower view
+  distance on phones. Existing worlds must be converted (a versioned migration, tested before
+  release).
+
+**Biomes:** all overworld biomes with Java temperatures, colours (grass, foliage and water
+tints) and features.
+- Plains and forests: plains (and sunflower), forests (flower, birch, old-growth birch, dark),
+  taiga (old-growth pine and spruce, snowy).
+- Hot and wet: jungle (sparse, bamboo), savanna (windswept, plateau), badlands (eroded, wooded),
+  desert, swamp, mangrove swamp, mushroom fields.
+- Mountains: meadow, cherry grove, grove, snowy slopes, frozen, jagged and stony peaks,
+  windswept hills (gravelly, forest).
+- Snow and coast: snowy plains and ice spikes, beaches (stony, snowy), rivers (frozen).
+- Oceans: warm, lukewarm, cold, frozen and their deep versions.
+- Caves: lush caves, dripstone caves. The deep dark is excluded.
+
+**Features**
+- Every tree shape.
+- Flowers per biome, icebergs, ice spikes, coral reefs, kelp forests, geodes (amethyst),
+  fossils, lava lakes, springs, mossy boulders, dripstone.
+
+**Structures** (Java placement rules and loot tables; buildings all our own designs)
+- Villages in 5 styles; pillager outposts.
+- Mineshafts (incl. badlands), dungeons with spawners.
+- Desert pyramid, jungle temple, swamp hut, igloo.
+- Shipwrecks, ocean ruins, buried treasure with maps, ocean monument.
+- Woodland mansion, ruined portals, strongholds.
+- Trail ruins and archaeology (brush, suspicious sand and gravel).
+- ⚠ Roblox: big structures generate in time slices across chunks, with a deterministic jigsaw
+  layout so client and server agree.
+
+## Phase 14 – All overworld mobs (XL)
+
+Original designs throughout; a name proposal wherever the Java name is Mojang's own.
+
+**Passive and neutral**
+- Rabbit, horse, donkey, mule (riding, taming, stats, breeding genetics, horse armour), llama
+  and trader llama, cat, ocelot.
+- Wolf (taming, wolf armour from armadillo scutes, variants), parrot (dancing, imitation), fox,
+  panda (personalities), polar bear, turtle (eggs, scute, helmet), frog and tadpole (froglights),
+  axolotl.
+- Goat (ramming, horns: our own sounds), bee (hives, pollination, honey, anger), camel,
+  armadillo.
+- Squid, glow squid, dolphin, the four fish, bat.
+- Snow golem-role, iron golem-role (designs and names to approve).
+- Mooshroom-role, sniffer-role (ancient seeds, torchflower and pitcher plant: names to
+  approve), allay-role (name to approve).
+
+**Hostile**
+- Zombie variants: husk, drowned (trident, conversion), zombie villager (phase 15 curing).
+- Stray, cave spider, slime, witch, silverfish (infested blocks), guardian and elder guardian
+  roles (mining fatigue).
+- Phantom role (insomnia from phase 8; name to approve), endermite role (with the Voidling).
+- Spawners for all dungeon mobs.
+- Excluded: Bogged, Breeze (trial chambers), Warden (deep dark).
+
+**AI and mechanics:** Java goals, sensing, pathfinding for land, swimming and flying mobs;
+riding, taming, leashing; mob equipment and drop chances; spawn tables per biome.
+- ⚠ Roblox: flying and swimming pathfinding are new systems.
+- ⚠ Roblox: per-player mob caps stay at Java values, but simulation detail drops for mobs far
+  from all players.
+
+## Phase 15 – Villagers, trading, raids (L)
+
+**Villagers**
+- Professions from job-site blocks, Java trade tables and levels, restocking, demand and
+  pricing, gossip and reputation.
+- Schedules (work, gather, sleep), breeding by beds and food, iron golem-role spawning.
+- Zombie sieges, zombie villager curing (weakness + golden apple).
+- Wandering trader and trader llamas.
+
+**Raids**
+- Illager-role mobs: pillager, vindicator, evoker (fangs, vex-role), ravager-role, witch.
+  Names and designs to approve.
+- Patrols, outposts, the Bad Omen effect, raid waves by difficulty, Hero of the Village.
+- Woodland mansion inhabitants.
+
+## Phase 16 – The Abyss (the fire dimension) (XL)
+
+**Biomes:** all five. Equivalents of Nether wastes, soul sand valley, crimson and warped
+forests, basalt deltas (names to approve).
+
+**Blocks:** Scorchstone, Ashsand, soul soil-role, basalt, blackstone set, Ember Quartz ore and
+quartz blocks, gold ore variant, Lumen Crystal, magma, the wart-role crop and blocks.
+- The fungi, nylium, roots, vines, stems and hyphae (two wood sets), shroomlight-role.
+- Respawn anchor-role, lodestone-role, ancient debris-role leading to Cindersteel.
+
+**Structures** (all our own designs): fortress-role, bastion-role, ruined portals.
+
+**Mobs:** original equivalents of ghast, blaze, magma cube, piglin and piglin brute (bartering
+table, gold rules), zombified piglin, hoglin and zoglin, wither skeleton, strider (riding with
+warped fungus on a stick).
+
+**Mechanics**
+- Portal ignition and shape rules, 1:8 coordinate linking and portal search.
+- No water, beds explode, lava spreads further, compasses spin.
+- ⚠ Roblox: all dimensions run on the same server as separate worlds (own chunk sets, mobs,
+  saving), so friends stay together. The alternative, separate places, would split groups
+  across servers. The cost is memory when players are in several dimensions at once, so we
+  set a per-dimension view radius.
+
+## Phase 17 – Brewing and all potions (M)
+
+- Brewing stand and blaze powder-role fuel.
+- Every Java potion and its modifiers (extended, level II, splash, lingering) with Java
+  durations.
+- Tipped arrows, cauldrons (filling, dyeing leather, washing banners), dragon's breath-role
+  (phase 18).
+
+## Phase 18 – The Void and the Voidwyrm (XL)
+
+**Getting there:** Rift Shard + blaze-powder-role → a tracker item (name to approve) thrown to
+find strongholds; end portal-role frame, filling and activation.
+
+**The boss:** the Voidwyrm fight with Java behaviour (crystals and cages, perching, breath,
+charging, healing). Respawning the boss with crystals, the egg-role trophy, and gateway portals.
+
+**The outer islands:** chorus-role plants and fruit (teleport), purpur-role blocks, end
+rod-role, and the city-role and ship-role structures (our own designs).
+- Shulker-role mob and shulker box-role storage.
+- **The glider** (our elytra equivalent: Java flight model, durability, repair, firework
+  boosting, kinetic damage).
+
+**Mechanics:** fireworks (stars, colours, shapes, boosting) and end crystals.
+- ⚠ Roblox: glider flight is client-simulated with server-side speed and position checks.
+
+## Phase 19 – The second boss, beacons, conduits (L)
+
+- Second boss (Wither-role; name and design to approve): summoning shape, phases, explosions,
+  the star-role drop.
+- Beacon: pyramid tiers, powers, beam.
+- Conduit: heart-role, prismarine frame, attacks.
+- Respawn anchor and lodestone finishing touches if not done.
+
+## Phase 20 – Navigation, books, maps, remaining items (M)
+
+- Maps:
+  - Exploring and zoom levels, locked and cloned maps, banners on maps, item frame display.
+  - Explorer maps from cartographers.
+  - ⚠ Roblox: map pixels are drawn with EditableImage, and the number of maps open at once is
+    capped (editable memory budget).
+- Compass, lodestone compass, clock, spyglass, recovery compass excluded (deep dark).
+- Book and quill and written books. ⚠ Roblox: text filtering.
+- Trident (loyalty, riptide, channeling), goat horns and music discs (our own sounds and
+  music), name tags, saddles, totems (evoker-role drop), bundles.
+
+## Phase 21 – Game modes, game rules, commands, multiplayer (L)
+
+- Game modes: Survival, Creative (flight, instant break, creative inventory with search, pick
+  block), Adventure, Spectator, Hardcore.
+- All Java game rules (keepInventory, doDaylightCycle, doMobSpawning, mobGriefing,
+  randomTickSpeed, doFireTick, naturalRegeneration, playersSleepingPercentage, ...).
+- Commands with Java syntax and entity selectors:
+  - Player and world: `/gamemode /tp /give /clear /time /weather /gamerule /difficulty
+    /kill /effect /enchant /xp /spawnpoint /setworldspawn`.
+  - Blocks and entities: `/summon /setblock /fill /clone /locate /seed /data`.
+  - Logic and chat: `/execute /scoreboard /tellraw` (subset per need).
+  - ⚠ Roblox: only the world owner and players they trust can run commands, through
+    TextChatService; every chat message is filtered.
+- Advancements (our own titles and icons where Java's are Mojang wording), statistics, death
+  messages.
+- Chat, player list, PvP toggle, per-world friend/trust lists, banning from your world.
+
+## Phase 22 – Remodeling (L–XL)
+
+A consistent, polished look for everything, all our own original designs:
+- **Mobs:** every model redone, with Java-style animations (walk, attack, idle, special moves).
+- **Textures:** every block texture, plus connected details (grass/foliage biome tints, animated
+  water, lava, fire and portals).
+- **Items and held items:** every item icon; held items as 3D extruded pixel sprites; third-person
+  held items; armour and trims on avatars.
+- **Effects and UI:**
+  - A full Java-style particle set.
+  - Every menu and container screen (furnaces, brewing, enchanting, anvil, loom, villager
+    trading, beacon...) in one visual style.
+  - HUD polish, accessibility (colour-blind-safe UI, subtitles for sounds).
+- **Audio:** final licensed sounds for every slot and a complete licensed music set.
+
+## Phase 23 – Release preparation (M)
+
+- **Performance pass:** mobile memory and FPS, view distance per device, server load with full
+  servers in several dimensions.
+- **Tests:** DataStore budget and save-migration tests, long-session stability.
+- **Store and platform:** Roblox platform requirements (experience questionnaire, text
+  filtering audit), store page with our own art, how-to-play screens, bug reporting,
+  localization.
+- **Public release.**
+
+---
+
+## Roblox compromises (summary)
+
+| Area | Compromise |
 |---|---|
-| Flowing water and lava | Java flow rules: source/flowing levels, 8-block spread, lava 4 in the overworld, infinite water sources, cobblestone/stone/obsidian when they meet, drowning in flow, items carried by water |
-| Buckets | Empty, water and lava buckets; milk comes in phase 9 |
-| Beds | Sleep from dusk to skip the night, needs no hostile mob within 8 blocks, sets your spawn point; respawn there; bed colours later |
-| Armour | Leather, chainmail (loot only), iron, gold and diamond: helmet, chestplate, leggings, boots. Java armour points and toughness (the damage formula already exists in `Combat`), durability, armour slots in the inventory, armour on avatars |
-| Shield | Blocking, knockback, axe disabling it, durability |
-| Player bow and arrows | Draw time, power, critical arrows, picking arrows up |
-| Building blocks | Doors, trapdoors, ladders (climbing), fences and gates, slabs and stairs (first non-cube shapes), glass panes, bricks, stone bricks, smooth stone, more wood types |
-| Signs | Text must go through Roblox's `TextService` filtering (a platform rule) |
-| Fire | Flint and steel, fire spread and burn-out, catching fire, TNT ignition (TNT already exists) |
-| Menus and settings | Main menu, pause menu, and settings: render distance, field of view, sensitivity, music/sound volumes, GUI scale, view bobbing toggle. In-game world settings: friends can join, difficulty (Peaceful/Easy/Normal/Hard) |
-| Polish carried over | Fill in sounds (`SOUNDS.md`), better hand/item/particle look, held item in third person, textured dropped items |
-
-## Phase 9 – Farming and animals (M)
-
-| Feature | Notes |
-|---|---|
-| Crops | Hoe tilling, farmland with hydration, wheat (seeds from grass), carrots, potatoes, beetroot, growth stages and light rules, trampling |
-| Bone meal | Made from bones; grows crops, saplings and grass |
-| Trees from saplings | Saplings drop from leaves, grow by Java rules |
-| Plants | Sugar cane (paper), pumpkins, melons, cactus, flowers, mushrooms |
-| Breeding | Love mode, babies that grow up, Java breeding foods; leads |
-| Animal products | Shearing sheep, dyes and 16 wool colours, milk, eggs (thrown eggs hatch chicks), feathers into arrows |
-| Food | Bread already exists; add cake, cookies, pumpkin pie and mushroom stew |
-| Status effects | The shared base for later phases: poison (spider eye), saturation, regeneration, and golden apples |
-
-## Phase 10 – Experience and enchanting (M)
-
-| Feature | Notes |
-|---|---|
-| Experience | Orbs from mobs, ores, smelting and breeding; Java level formula; XP bar; dropped on death |
-| Enchanting | Enchanting table, bookshelves (power), lapis cost, three offers, Java enchantment pool and levels (Sharpness, Efficiency, Unbreaking, Protection, Fortune, Silk Touch, Looting, Power, Feather Falling…) |
-| Anvil and grindstone | Repair, combining, renaming and cost; grindstone removes enchantments |
-| Books | Books and enchanted books |
-
-## Phase 11 – Volt system (the power-wire logic) (L)
-
-| Feature | Notes |
-|---|---|
-| Power and wiring | Volt Dust wire (signal 0–15, −1 per block), Volt Torch, Volt Relay (repeater), Volt Comparator, lever, button, pressure plates, Volt Block |
-| Machines | Pistons and sticky pistons, observers, hoppers, droppers, dispensers, note blocks |
-| Timing | Java update order and timing (2 game ticks per relay step), quasi-connectivity: needed for builds to behave as players expect |
-| Rails | Rails and minecarts, powered/detector rails |
-
-## Phase 12 – Villages and trading (L)
-
-| Feature | Notes |
-|---|---|
-| Villages | Generated villages per biome style |
-| Villagers | Professions from job blocks, Java trading (emeralds, levels, restocks), breeding, gossip |
-| Defenders and threats | A village defender (original design), zombie sieges, raids with original raider mobs (names to approve) |
-| Wandering trader | Original design |
-
-## Phase 13 – World generation and more mobs (L)
-
-| Feature | Notes |
-|---|---|
-| Biomes | Jungle, swamp, savanna, badlands, taiga, mountains, deep oceans, rivers |
-| Structures | Dungeons with spawners, mineshafts, desert/jungle temples, shipwrecks, ruined portals, strongholds (needed for phase 16) |
-| Caves | Bigger cave systems and aquifers, as in modern Java. Raising the world height (to −64…320) would be a separate, bigger decision: it affects saving and performance |
-| Mobs | Witch, slime and the zombie/skeleton variants for deserts, oceans and snow. All get original designs; names to approve where the Java name is Mojang's own |
-
-## Phase 14 – The Abyss (the fire dimension) (L)
-
-| Feature | Notes |
-|---|---|
-| Getting there | Obsidian portal lit with fire, linked portals (1:8 coordinates) |
-| The dimension | Scorchstone, Ashsand, Lumen Crystal, Ember Quartz, lava seas, a fortress equivalent |
-| Mobs | Original equivalents of the Java Nether mobs (names to approve) |
-| Cindersteel | The top-tier material: its ore, the smithing table and an upgrade template equivalent |
-
-## Phase 15 – Brewing (M)
-
-Brewing stand, an original brewing ingredient from The Abyss, and Java potion recipes,
-durations and splash/lingering potions, built on the phase 9 status effects.
-
-## Phase 16 – The Void and the Voidwyrm (L)
-
-| Feature | Notes |
-|---|---|
-| Getting there | Finding a stronghold with a Rift Shard-based tracker item, the portal room |
-| The dimension | The Void's floating islands |
-| Boss | The Voidwyrm fight with Java-like phases and crystals |
-| After the fight | The outer islands, a city structure, and a glider item (original design) |
-
-## Phase 17 and later
-
-- A second boss.
-- Beacons.
-- Creative mode, advancements and statistics, maps.
-- Chat moderation tools, more world-management options.
-- LOD for longer view distances.
-
-## First public release
-
-**Recommended: after Phase 9 (farming and animals), as an Early Access release.**
-
-By then the full early-game loop works the way a Java player expects:
-- trees, tools, caves and ores;
-- a bed and safe nights, armour, a bow;
-- water and lava that flow;
-- a food farm and breeding;
-- your own saved world, and friends can join.
-
-That covers what most players do in their first several hours. Releasing earlier (after Phase 8)
-is possible as a closed test with friends. Without crops and breeding, though, food runs out
-and the game feels unfinished.
-
-Must-haves before going public, besides Phases 8 and 9:
-1. **Sounds:** every slot in `SOUNDS.md` filled with licensed audio, plus a few music tracks.
-2. **Menus:** main menu and settings (render distance and volume especially), and a working
-   mobile control layout tested on a real phone.
-3. **Load test:** a server with 4–8 players exploring in different directions (server chunk
-   radius 8 and up to 70 hostile mobs per player), and a check of the DataStore budget during
-   the test.
-4. **Text filtering:** every player-written text (signs, world names, any chat we add) goes
-   through `TextService`. Roblox requires this.
-5. **Store page:** the experience questionnaire, icon and thumbnails (made from our own art),
-   and a short "how to play" screen.
-6. **Bugs:** a bug-report path (a simple in-game report button that logs to a DataStore, or a
-   group wall).
-
-XP and enchanting (Phase 10) and the Volt system (Phase 11) make good first big updates after
-the release.
+| World height −64…320 | 3× the blocks; needs a mobile memory check, a save migration, and possibly a lower view distance on phones |
+| Tick rate | Game logic (Volt system, fluids, crops, mobs) runs in our own 20 TPS loops, not on Roblox's frame rate |
+| Volt system | Very large machines get a per-tick work budget; Java order and timing are replicated, raw speed may differ |
+| Vehicles | Minecarts, boats, horses and the glider are custom kinematic movement, not Roblox physics |
+| Dimensions | One server holds all dimensions (friends stay together); memory limits per-dimension view radius |
+| Text | Every player-written text (signs, books, chat, names) uses Roblox filtering; commands only for the owner and players they trust |
+| Maps | EditableImage memory budget caps the number of maps visible at once |
+| Mobs | Java caps are kept; mobs far from players are simulated in less detail |
+| Skins | Players use their Roblox avatar (blocky R6); armour is drawn over it |
+| Audio and art | Licensed or our own only; music discs, note-block instruments, mob sounds and all art are our own |
