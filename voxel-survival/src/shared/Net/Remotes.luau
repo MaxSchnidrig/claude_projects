@@ -12,6 +12,10 @@
 --   SurvivalSync  S -> C  { food, saturation, air, maxAir, canSprint, event? = "hurt" | "died", cause? }
 --   SurvivalAction C -> S { type = "sprint", on } | { type = "eatStart" | "eatFinish" | "eatCancel" } | { type = "respawn" }
 --   DebugAction   C -> S  { type = "skipTime" | "hurtSelf" }  (Studio only)
+--   MobSnapshot   S -> C  (unreliable, 10 Hz) flat list: id, code, x, y, z, yaw, pitch, flags, ...
+--   MobEvent      S -> C  { type = "hurt" | "died" | "explode" | "teleport", id, ... }
+--   AttackMob     C -> S  (mobId)
+--   Knockback     S -> C  (velocity: Vector3) pushes the local character
 
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -28,7 +32,12 @@ local NAMES = {
 	"SurvivalSync",
 	"SurvivalAction",
 	"DebugAction",
+	"MobEvent",
+	"AttackMob",
+	"Knockback",
 }
+-- High-frequency state where a lost packet doesn't matter (the next one replaces it).
+local UNRELIABLE = { "MobSnapshot" }
 
 local Remotes = {}
 
@@ -49,8 +58,20 @@ if RunService:IsServer() then
 			r.Parent = folder
 		end
 	end
+	for _, name in UNRELIABLE do
+		if not folder:FindFirstChild(name) then
+			local r = Instance.new("UnreliableRemoteEvent")
+			r.Name = name
+			r.Parent = folder
+		end
+	end
 else
 	folder = ReplicatedStorage:WaitForChild("Remotes") :: Folder
+end
+
+function Remotes.getUnreliable(name: string): UnreliableRemoteEvent
+	assert(table.find(UNRELIABLE, name), `Remotes: unknown unreliable remote '{name}'`)
+	return folder:WaitForChild(name) :: UnreliableRemoteEvent
 end
 
 function Remotes.get(name: string): RemoteEvent

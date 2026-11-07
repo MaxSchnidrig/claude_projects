@@ -68,6 +68,16 @@ function MovementController.init()
 	Players.LocalPlayer.CharacterAdded:Connect(function(character)
 		configure(character:WaitForChild("Humanoid") :: Humanoid)
 	end)
+
+	-- Knockback from hits/explosions (the client simulates its own character's physics).
+	local Remotes = require(Shared.Net.Remotes)
+	Remotes.get("Knockback").OnClientEvent:Connect(function(vel: any)
+		local character = Players.LocalPlayer.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		if typeof(vel) == "Vector3" and root and not root.Anchored then
+			root.AssemblyLinearVelocity = Vector3.new(vel.X, math.max(vel.Y, root.AssemblyLinearVelocity.Y), vel.Z)
+		end
+	end)
 	if Players.LocalPlayer.Character then
 		local h = Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
 		if h then

@@ -482,6 +482,26 @@ test("furnace smelts with fuel, classic timings", function()
 	eq(p.slots[3].item, "glass"); eq(p.slots[3].count, 1)
 end)
 
+test("drag: left splits evenly with remainder, right places one each, Java rules", function()
+	local a = { [1] = { item = "dirt", count = 60 }, [3] = { item = "stone", count = 1 } }
+	local cur = SlotLogic.drag({
+		{ slots = a, index = 1 }, -- 60 dirt: room for 4
+		{ slots = a, index = 2 }, -- empty
+		{ slots = a, index = 2 }, -- duplicate, ignored
+		{ slots = a, index = 3 }, -- stone: not eligible
+		{ slots = a, index = 4 }, -- empty
+	}, { item = "dirt", count = 10 }, "left")
+	-- 3 eligible slots: 10 // 3 = 3 each; slot 1 can only take 3 of its 4 room
+	eq(a[1].count, 63); eq(a[2].count, 3); eq(a[4].count, 3); eq(a[3].item, "stone")
+	assert(cur and cur.count == 1, "remainder stays on the cursor")
+	local b = {}
+	local cur2 = SlotLogic.drag({ { slots = b, index = 1 }, { slots = b, index = 2 }, { slots = b, index = 3 } }, { item = "sand", count = 2 }, "right")
+	eq(b[1].count, 1); eq(b[2].count, 1); eq(b[3], nil); eq(cur2, nil)
+	local c = {}
+	local cur3 = SlotLogic.drag({ { slots = c, index = 1 }, { slots = c, index = 2 }, { slots = c, index = 3 } }, { item = "sand", count = 2 }, "left")
+	eq(cur3.count, 2); eq(c[1], nil) -- more slots than items: nothing happens
+end)
+
 print("Survival rules")
 local SurvivalRules = Loader.require("src/shared/Gameplay/SurvivalRules")
 test("exhaustion drains saturation first, then food", function()
@@ -530,6 +550,76 @@ test("fall damage and sprint threshold", function()
 	assert(not SurvivalRules.canSprint(h))
 	h.food = 7
 	assert(SurvivalRules.canSprint(h))
+end)
+
+print("Mobs / combat")
+local MobPhysics = Loader.require("src/shared/Mobs/MobPhysics")
+local Pathfinder = Loader.require("src/shared/Mobs/Pathfinder")
+local Combat = Loader.require("src/shared/Gameplay/Combat")
+local MobDefs = Loader.require("src/shared/Mobs/MobDefs")
+-- flat floor at y = 0 (solid y <= 0), a wall at x = 5 from y = 1..2 for z = -10..10
+local function world(x: number, y: number, z: number): boolean
+	if y <= 0 then
+		return true
+	end
+	if x == 5 and y <= 2 and z >= -10 and z <= 10 then
+		return true
+	end
+	return false
+end
+test("mob physics: falls onto the floor, stops at walls", function()
+	local x, y, z, vx, vy, vz, ground = 0.5, 3, 0.5, 0, 0, 0, false
+	for _ = 1, 40 do
+		vy -= 32 * 0.05
+		x, y, z, vx, vy, vz, ground = MobPhysics.move(world, x, y, z, vx, vy, vz, 0.6, 1.9, 0.05)
+	end
+	assert(math.abs(y - 1) < 1e-6, "feet on the floor top, got " .. y)
+	assert(ground, "on ground")
+	local hit
+	for _ = 1, 40 do
+		x, y, z, vx, vy, vz, ground, hit = MobPhysics.move(world, x, y, z, 3, 0, 0, 0.6, 1.9, 0.05)
+	end
+	assert(x <= 5 - 0.3 and x > 4.6, "stopped at the wall, x = " .. x)
+	assert(hit, "hit wall")
+end)
+test("pathfinder walks around a wall and steps up", function()
+	local path, reached = Pathfinder.find(world, 0, 1, 0, 9, 1, 0, { height = 2, maxNodes = 2000 })
+	assert(path and reached, "path around the 21-long wall")
+	for _, c in path do
+		assert(not (c[1] == 5 and c[3] >= -10 and c[3] <= 10), "walked through the wall")
+	end
+	-- single block step
+	local function step(x: number, y: number, z: number): boolean
+		return y <= 0 or (x >= 3 and y <= 1)
+	end
+	local p2, r2 = Pathfinder.find(step, 0, 1, 0, 6, 2, 0, { height = 2 })
+	assert(p2 and r2, "step up onto the ledge")
+	eq(p2[#p2][2], 2)
+	-- and back down a 2-block drop
+	local function cliff(x: number, y: number, z: number): boolean
+		return y <= 0 or (x <= 2 and y <= 2)
+	end
+	local p3, r3 = Pathfinder.find(cliff, 0, 3, 0, 6, 1, 0, { height = 2 })
+	assert(p3 and r3, "walk off a 2-block ledge")
+	eq(p3[#p3][2], 1)
+	local p4, r4 = Pathfinder.find(cliff, 0, 3, 0, 6, 1, 0, { height = 2, maxDrop = 1 })
+	assert(not r4, "a 2-block drop is too far with maxDrop 1")
+	_ = p4
+end)
+test("combat: charged damage, explosions, item stats", function()
+	local d, cd = Combat.attackStats("diamond_sword")
+	eq(d, 7); eq(cd, 0.625)
+	eq(Combat.attackStats(nil), 1)
+	eq(Combat.scaledDamage(7, 1, 0.625), 7)
+	assert(math.abs(Combat.scaledDamage(10, 0, 1) - 2) < 1e-9, "uncharged = 20%")
+	eq(Combat.explosionDamage(3, 0), 43) -- classic point-blank power-3 explosion
+	eq(Combat.explosionDamage(3, 6), 0)
+	assert(MobDefs.byKey.cinderhusk and MobDefs.byCode[4].key == "cinderhusk")
+	for _, m in MobDefs.list do
+		for _, drop in m.drops do
+			assert(ItemRegistry.get(drop.item), `{m.key} drops unknown item {drop.item}`)
+		end
+	end
 end)
 
 print(`\n{passed} passed, {failed} failed`)

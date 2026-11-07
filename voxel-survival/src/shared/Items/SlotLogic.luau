@@ -8,6 +8,10 @@
 --                cursor: put ONE item down (empty slot or same item with room), else swap
 --   quickMove    (shift-click) move a whole stack into other slot ranges: first merge into
 --                matching stacks, then fill empty slots
+--   drag         (Java Edition "quick craft") press with a carried stack and drag over slots:
+--                left = split evenly (each slot gets floor(count / slots), capped at the stack
+--                limit; the rest stays on the cursor), right = one item per slot. Only slots that
+--                are empty or hold the same item with room count.
 
 local ItemRegistry = require(script.Parent.ItemRegistry)
 
@@ -149,6 +153,69 @@ function SlotLogic.quickMove(from: Slots, i: number, targets: { { slots: Slots, 
 		from[i] = nil
 	end
 	return s.count ~= before
+end
+
+export type DragTarget = { slots: Slots, index: number }
+
+-- Can `stack` be dropped into this slot during a drag?
+function SlotLogic.dragAccepts(slot: Stack?, stack: Stack): boolean
+	return slot == nil or (SlotLogic.sameKind(slot, stack) and slot.count < SlotLogic.maxStack(stack.item))
+end
+
+-- Apply a drag. `targets` in visit order (duplicates ignored). Returns the new cursor.
+function SlotLogic.drag(targets: { DragTarget }, cursor: Stack?, button: string): Stack?
+	if not cursor or cursor.count <= 0 then
+		return cursor
+	end
+	local c = cursor :: Stack
+	local seen: { [any]: { [number]: boolean } } = {}
+	local eligible: { DragTarget } = {}
+	for _, t in targets do
+		seen[t.slots] = seen[t.slots] or {}
+		if not seen[t.slots][t.index] then
+			seen[t.slots][t.index] = true
+			if SlotLogic.dragAccepts(t.slots[t.index], c) then
+				table.insert(eligible, t)
+			end
+		end
+	end
+	if #eligible == 0 then
+		return c
+	end
+	local max = SlotLogic.maxStack(c.item)
+	if button == "right" then
+		for _, t in eligible do
+			if c.count <= 0 then
+				break
+			end
+			local s = t.slots[t.index]
+			if s then
+				s.count += 1
+			else
+				t.slots[t.index] = SlotLogic.copy(c, 1)
+			end
+			c.count -= 1
+		end
+	else
+		local per = c.count // #eligible
+		if per == 0 then
+			return c -- more slots than items: classic clients prevent this; do nothing
+		end
+		for _, t in eligible do
+			local s = t.slots[t.index]
+			local have = if s then s.count else 0
+			local add = math.min(per, max - have)
+			if add > 0 then
+				if s then
+					s.count += add
+				else
+					t.slots[t.index] = SlotLogic.copy(c, add)
+				end
+				c.count -= add
+			end
+		end
+	end
+	return if c.count > 0 then c else nil
 end
 
 return SlotLogic

@@ -306,7 +306,7 @@ local function onCharacter(p: Player, character: Model)
 end
 
 function SurvivalService.init()
-	BlockActionService.setBlockBrokenCallback(function(p: Player)
+	BlockActionService.onBlockBroken(function(p: Player)
 		SurvivalService.addExhaustion(p, SurvivalRules.EXHAUSTION.breakBlock)
 	end)
 	Remotes.get("SurvivalAction").OnServerEvent:Connect(onAction)

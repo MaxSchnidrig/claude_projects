@@ -15,6 +15,8 @@ export type ToolDef = {
 	speed: number,
 	durability: number,
 	blockSpeeds: { [string]: number }?,
+	attack: number?, -- melee damage (HP); hand = 1
+	attackCooldown: number?, -- seconds for a full-strength hit
 }
 
 -- Food values (classic): hunger points restored and saturation gained.
@@ -48,6 +50,15 @@ local defs: { ItemDefInput } = {
 	{ key = "snowball", name = "Snowball", stack = 16, color = { 246, 250, 252 } },
 	{ key = "clay_ball", name = "Clay Ball", color = { 164, 170, 186 } },
 	-- Food
+	-- Mob drops
+	{ key = "leather", name = "Leather", color = { 150, 90, 50 } },
+	{ key = "feather", name = "Feather", color = { 240, 240, 236 } },
+	{ key = "bone", name = "Bone", color = { 226, 222, 206 } },
+	{ key = "arrow", name = "Arrow", color = { 170, 150, 120 } },
+	{ key = "string", name = "String", color = { 230, 230, 230 } },
+	{ key = "gunpowder", name = "Gunpowder", color = { 80, 80, 84 } },
+	{ key = "rift_shard", name = "Rift Shard", stack = 16, color = { 120, 90, 230 } },
+	{ key = "rotten_flesh", name = "Rotten Flesh", color = { 140, 90, 70 }, food = { hunger = 4, saturation = 0.8 } },
 	{ key = "apple", name = "Apple", color = { 210, 40, 40 }, food = { hunger = 4, saturation = 2.4 } },
 	{ key = "bread", name = "Bread", color = { 196, 150, 80 }, food = { hunger = 5, saturation = 6 } },
 	{ key = "raw_porkchop", name = "Raw Porkchop", color = { 236, 150, 150 }, food = { hunger = 3, saturation = 1.8 } },
@@ -73,14 +84,32 @@ local KINDS = {
 	{ kind = "axe", label = "Axe" },
 	{ kind = "shovel", label = "Shovel" },
 	{ kind = "hoe", label = "Hoe" },
+	{ kind = "sword", label = "Sword" },
 }
-for _, t in TIERS do
+-- Melee damage per tool kind and tier (wooden, stone, iron, golden, diamond), and seconds per
+-- full-strength hit. Classic values.
+local ATTACK = {
+	sword = { damage = { 4, 5, 6, 4, 7 }, cooldown = 0.625 },
+	axe = { damage = { 7, 9, 9, 7, 9 }, cooldown = 1.1 },
+	pickaxe = { damage = { 2, 3, 4, 2, 5 }, cooldown = 0.83 },
+	shovel = { damage = { 2.5, 3.5, 4.5, 2.5, 5.5 }, cooldown = 1.0 },
+	hoe = { damage = { 1, 1, 1, 1, 1 }, cooldown = 1.0 },
+}
+for tierIndex, t in TIERS do
 	for _, k in KINDS do
+		local atk = ATTACK[k.kind]
 		table.insert(defs, {
 			key = `{t.prefix}_{k.kind}`,
 			name = `{t.label} {k.label}`,
 			stack = 1,
-			tool = { kind = k.kind, tier = t.tier, speed = t.speed, durability = t.durability },
+			tool = {
+				kind = k.kind,
+				tier = t.tier,
+				speed = t.speed,
+				durability = t.durability,
+				attack = atk.damage[tierIndex],
+				attackCooldown = atk.cooldown,
+			},
 			color = t.color,
 		})
 	end

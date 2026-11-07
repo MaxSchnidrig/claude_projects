@@ -27,6 +27,8 @@ local InventoryClient = require(script.Parent.Parent.Player.InventoryClient)
 local SurvivalClient = require(script.Parent.Parent.Survival.SurvivalClient)
 local SurvivalHUD = require(script.Parent.Parent.Survival.SurvivalHUD)
 local SurvivalRules = require(Shared.Gameplay.SurvivalRules)
+local Combat = require(Shared.Gameplay.Combat)
+local MobClient = require(script.Parent.Parent.Mobs.MobClient)
 
 local EAT_SECONDS = 1.6
 
@@ -42,6 +44,7 @@ local isLiquid = BlockRegistry.isLiquid
 
 local BlockInteraction = {}
 BlockInteraction.target = nil :: VoxelRaycast.Hit?
+BlockInteraction.mobTarget = nil :: number? -- mob under the crosshair within melee reach
 
 type MiningState = { x: number, y: number, z: number, item: string?, progress: number, started: boolean }
 
@@ -198,6 +201,17 @@ local function update(dt: number)
 	end
 	BlockInteraction.target = hit
 
+	-- A mob in front of the block (and within 3 blocks melee reach) takes the click instead.
+	BlockInteraction.mobTarget = nil
+	if eye then
+		local mobId, mobDist = MobClient.raycast(eye, look, Combat.MELEE_REACH * BS)
+		if mobId and (not hit or mobDist < hit.distance * BS) then
+			BlockInteraction.mobTarget = mobId
+			hit = nil -- no block highlight / mining through the mob
+			BlockInteraction.target = nil
+		end
+	end
+
 	-- Highlight
 	if hit then
 		highlightPart.CFrame = blockCFrame(hit.x, hit.y, hit.z)
@@ -281,6 +295,10 @@ local function makeTouchButtons()
 		b.Parent = gui
 	end
 	button("Mine", UDim2.new(1, -24, 1, -200), function()
+		if BlockInteraction.mobTarget then
+			Remotes.get("AttackMob"):FireServer(BlockInteraction.mobTarget)
+			return
+		end
 		breakHeld = true
 	end, function()
 		breakHeld = false
@@ -314,7 +332,10 @@ function BlockInteraction.init()
 			return
 		end
 		local t = input.UserInputType
-		if t == Enum.UserInputType.MouseButton1 or input.KeyCode == Enum.KeyCode.ButtonR2 then
+		if (t == Enum.UserInputType.MouseButton1 or input.KeyCode == Enum.KeyCode.ButtonR2) and BlockInteraction.mobTarget then
+			-- attack: one hit per click (damage scales with how long since the last swing)
+			Remotes.get("AttackMob"):FireServer(BlockInteraction.mobTarget)
+		elseif t == Enum.UserInputType.MouseButton1 or input.KeyCode == Enum.KeyCode.ButtonR2 then
 			breakHeld = true
 		elseif t == Enum.UserInputType.MouseButton2 or input.KeyCode == Enum.KeyCode.ButtonL2 then
 			local hit = BlockInteraction.target

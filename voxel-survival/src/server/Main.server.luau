@@ -45,4 +45,7 @@ Startup.run("server", {
 	{ name = "SurvivalService", run = function()
 		require(server.Survival.SurvivalService).init()
 	end },
+	{ name = "MobService", run = function()
+		require(server.Mobs.MobService).init()
+	end },
 })

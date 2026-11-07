@@ -4,7 +4,7 @@ A voxel survival sandbox for Roblox, managed with [Rojo](https://rojo.space). Th
 mechanics follow the classic block-survival formula. All art, sounds, UI and every invented name
 are original to this project (see `ARCHITECTURE.md` → "Naming rules").
 
-**Status:** Phase 4 (survival: health, hunger, fall damage, drowning, lava, day/night, death and respawn) ready for Studio testing. Next: Phase 5 (mobs).
+**Status:** Phase 5 (mobs, combat, explosions) + inventory drag-to-spread ready for Studio testing. Next: Phase 6 (saving).
 
 ## Structure
 
@@ -18,7 +18,8 @@ voxel-survival/
 │   │   ├── Config, GameInfo
 │   │   ├── Blocks/    BlockDefs (data), TexturePalette, BlockRegistry (lookups)
 │   │   ├── Items/     ItemDefs, ItemRegistry, Recipes (data), Crafting, SlotLogic, FurnaceLogic
-│   │   ├── Gameplay/  Mining (break-time formula, harvest tiers), SurvivalRules (hunger, regen, fall damage)
+│   │   ├── Gameplay/  Mining, SurvivalRules (hunger, regen, falls), Combat (melee, explosions)
+│   │   ├── Mobs/      MobDefs (data), MobPhysics (box vs voxels), Pathfinder (A*)
 │   │   ├── World/     Noise, ChunkData, Biomes, TerrainGen, Features/{Ores,Trees}, VoxelRaycast
 │   │   ├── Meshing/   SectionSampler, GreedyMesher, BoxMerger
 │   │   ├── Net/       Remotes
@@ -29,7 +30,8 @@ voxel-survival/
 │   │   ├── Interaction/ BlockActionService (validates break/place)
 │   │   ├── World/     (+) ItemEntityService (dropped items), BlockEntityService (furnaces, chests)
 │   │   ├── Player/    SpawnService, AvatarService (blocky R6), InventoryService (windows, crafting)
-│   │   └── Survival/  SurvivalService (health, hunger, air, falls, death), DayNightService (world time)
+│   │   ├── Survival/  SurvivalService (health, hunger, air, falls, death), DayNightService (world time)
+│   │   └── Mobs/      MobService (sim, damage, snapshots), MobAI (behaviours), MobSpawner
 │   └── client/  -> StarterPlayer.StarterPlayerScripts  rendering, input, UI
 │       ├── Main.client.luau   the only client LocalScript
 │       ├── World/     ClientWorld (streaming, generation, job picking)
@@ -38,6 +40,7 @@ voxel-survival/
 │       ├── Interaction/ BlockInteraction (targeting, mining, placing)
 │       ├── UI/        Hotbar, Crosshair, InventoryUI, ItemIcon, CoreGuiSetup
 │       ├── Survival/  SurvivalClient, SurvivalHUD (pips, death screen), DayNightClient (lighting)
+│       ├── Mobs/      MobClient (replication, interpolation, animation), MobModels (original designs)
 │       └── Debug/     DebugOverlay
 └── tests/lune/          headless tests + benchmarks for the pure shared modules
 ```
@@ -64,13 +67,14 @@ Build a place file without Studio: `rojo build -o rocraft.rbxl`.
 |---|---|
 | Mouse | Look (mouse is locked to the centre) |
 | WASD / Space | Move / jump (jump height 1.2 blocks) |
-| Left Ctrl (hold) | Sprint while moving forward |
+| Double-tap W, or Ctrl+W | Sprint (until you release W, stop, hit a wall, or are too hungry) |
 | Left mouse (hold) | Mine the targeted block |
+| Left mouse on a mob (3 blocks) | Attack (full damage once the weapon has recharged) |
 | Right mouse (hold) | Place the held block (repeats) |
 | 1–9 / mouse wheel | Select hotbar slot |
 | E | Inventory (2×2 crafting). Esc or E closes |
 | Right mouse on Crafting Table / Furnace / Chest | Open it (Shift + right mouse places against it) |
-| In a window | Left: pick up/put/merge/swap · Right: take half/put one · Shift-click: quick-move · Result slot: craft (Shift: craft all) · Click outside: drop carried stack |
+| In a window | Left: pick up/put/merge/swap · Right: take half/put one · Shift-click: quick-move · Result slot: craft (Shift: craft all) · Click outside: drop carried stack · Drag with a stack: left spreads it evenly, right puts one per slot |
 | Q / Ctrl+Q | Drop one / the whole held stack (in a window: of the hovered slot) |
 | Right mouse (hold) with food | Eat (1.6 s, only when not full) |
 | Space in water | Swim up |
@@ -86,8 +90,9 @@ In Studio you spawn with a test kit (pickaxes of each tier, blocks) from `Config
 | F3 | Toggle the performance overlay (FPS, chunk queues, gen/mesh ms, MeshParts, triangles, errors) |
 | F4 | Switch render backend: EditableMesh ↔ greedy Parts. Rebuilds everything so you can compare. |
 | F6 | Keep edited sections on their live mesh (compare with baked terrain) |
-| F7 | Studio only: skip 6 game hours |
-| F9 | Studio only: take 3 damage |
+| J | Studio only: skip 6 game hours |
+| K | Studio only: take 3 damage |
+| L | Studio only: spawn the next mob type 4 blocks in front of you |
 
 Set render distance for testing: select your Player in Explorer during Play and add a number attribute `RenderDistance` (2–12).
 

@@ -155,6 +155,20 @@ function WorldService.getBlock(wx: number, wy: number, wz: number): number
 	return ChunkData.get(WorldService.getChunkSync(cx, cz), lx, wy, lz)
 end
 
+-- Block if its chunk is already loaded on the server, else nil (never generates). Mobs use this
+-- so they never trigger chunk generation by wandering.
+function WorldService.getBlockIfLoaded(wx: number, wy: number, wz: number): number?
+	if wy < 0 or wy >= Config.WORLD_HEIGHT then
+		return 0
+	end
+	local cx, cz, lx, lz = ChunkData.worldToChunk(wx, wz)
+	local chunk = chunks[ChunkData.key(cx, cz)]
+	if not chunk then
+		return nil
+	end
+	return ChunkData.get(chunk, lx, wy, lz)
+end
+
 -- Authoritative block write. Records the edit as a diff so it survives chunk unloads (and, in
 -- phase 6, saving). Returns the chunk key so callers can notify subscribers.
 function WorldService.setBlock(wx: number, wy: number, wz: number, id: number): number

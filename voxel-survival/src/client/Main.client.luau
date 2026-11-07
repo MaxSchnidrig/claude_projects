@@ -66,6 +66,9 @@ Startup.run("client", {
 	system("ItemEntityVisuals", function()
 		return client.World.ItemEntityVisuals
 	end),
+	system("MobClient", function()
+		return client.Mobs.MobClient
+	end),
 	system("DebugOverlay", function()
 		return client.Debug.DebugOverlay
 	end),

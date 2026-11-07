@@ -26,6 +26,7 @@ local Hotbar = require(script.Parent.Parent.UI.Hotbar)
 local SurvivalClient = require(script.Parent.Parent.Survival.SurvivalClient)
 local DayNightClient = require(script.Parent.Parent.Survival.DayNightClient)
 local Remotes = require(Shared.Net.Remotes)
+local MobClient = require(script.Parent.Parent.Mobs.MobClient)
 local BlockInteraction = require(script.Parent.Parent.Interaction.BlockInteraction)
 local InventoryClient = require(script.Parent.Parent.Player.InventoryClient)
 local CameraController = require(script.Parent.Parent.Player.CameraController)
@@ -123,6 +124,8 @@ function DebugOverlay.init()
 			Remotes.get("DebugAction"):FireServer({ type = "skipTime" }) -- server ignores outside Studio
 		elseif input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_HURT_SELF] and RunService:IsStudio() then
 			Remotes.get("DebugAction"):FireServer({ type = "hurtSelf" })
+		elseif input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_SPAWN_MOB] and RunService:IsStudio() then
+			Remotes.get("DebugAction"):FireServer({ type = "spawnMob" })
 		elseif input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_KEEP_TEMP] then
 			ClientWorld.setKeepTemp(not ChunkRenderer.keepTemp)
 		elseif input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_BACKEND] then
@@ -175,9 +178,9 @@ function DebugOverlay.init()
 			else tostring(Config.MAX_LIVE_EDITABLE)
 
 		label.Text = table.concat({
-			`{GameInfo.TITLE} {GameInfo.VERSION}   {string.format("%.0f", fps)} fps   [F3 hide, F4 backend, F6 keep live edits, J +6h, K hurt (Studio)]`,
+			`{GameInfo.TITLE} {GameInfo.VERSION}   {string.format("%.0f", fps)} fps   [F3 hide, F4 backend, F6 keep live edits, J +6h, K hurt, L spawn mob (Studio)]`,
 			`pos {posText}   biome {biomeText}   camera {CameraController.mode}`,
-			targetLine(),
+			targetLine() .. `   mobs nearby {MobClient.count}` .. (if BlockInteraction.mobTarget then `   aiming at mob #{BlockInteraction.mobTarget}` else ""),
 			string.format("survival: health %s  food %d  saturation %.1f  air %.1f s  sprint %s   time %s (tick %d)",
 				healthText(), SurvivalClient.food, SurvivalClient.saturation, SurvivalClient.air,
 				if SurvivalClient.canSprint then "ok" else "too hungry", DayNightClient.clockText(), DayNightClient.timeOfDay),

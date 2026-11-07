@@ -21,7 +21,7 @@ Config.RENDER_DISTANCE_MIN = 2
 Config.RENDER_DISTANCE_MAX = 12
 Config.UNLOAD_MARGIN = 2 -- chunks beyond render distance before data is dropped (hysteresis)
 Config.COLLISION_RADIUS = 1 -- chunks around the player that get collision boxes
-Config.SERVER_CHUNK_RADIUS = 3 -- chunks the server keeps generated around each player
+Config.SERVER_CHUNK_RADIUS = 4 -- chunks the server keeps generated around each player (mobs live here)
 
 -- Frame budgets (milliseconds of Luau work per frame for the cooperative scheduler)
 Config.FRAME_BUDGET_MS_DESKTOP = 4
@@ -141,6 +141,17 @@ Config.START_TIME_TICKS = 1000 -- morning (0 = sunrise, 6000 = noon, 18000 = mid
 Config.AUTO_RESPAWN_SECONDS = 120 -- safety net if the death screen never sends "respawn"
 Config.DIFFICULTY = "normal" -- "easy": starvation stops at 10 HP, "normal": 1 HP, "hard": no limit
 
+-- Mobs (phase 5) ------------------------------------------------------------------------------
+Config.MOB_CAP_HOSTILE_PER_PLAYER = 12
+Config.MOB_CAP_PASSIVE_PER_PLAYER = 10
+Config.MOB_CAP_TOTAL = 60
+Config.MOB_SPAWN_MIN_DISTANCE = 24 -- blocks from any player
+Config.MOB_SPAWN_MAX_DISTANCE = 48
+Config.MOB_DESPAWN_DISTANCE = 64 -- hostiles (and far passives) beyond this are removed
+Config.MOB_SEND_DISTANCE = 72 -- mobs within this range are sent to a client
+Config.MOB_SNAPSHOT_HZ = 10
+Config.SHIFT_CLICK_INTO_CRAFT_GRID = false -- Java: false (shift-click moves hotbar <-> inventory)
+
 -- Debug -------------------------------------------------------------------------------------
 -- KeyCode names (strings, so this module stays loadable in headless tests).
 Config.DEBUG_KEY_OVERLAY = "F3" -- toggle the performance overlay
@@ -149,5 +160,6 @@ Config.DEBUG_KEY_KEEP_TEMP = "F6" -- keep edited sections on their live mesh (co
 -- Letter keys: F-keys collide with Roblox/Studio/macOS shortcuts (F9 opens the Dev Console).
 Config.DEBUG_KEY_SKIP_TIME = "J" -- Studio only: +6 game hours (quarter day)
 Config.DEBUG_KEY_HURT_SELF = "K" -- Studio only: take 3 damage
+Config.DEBUG_KEY_SPAWN_MOB = "L" -- Studio only: spawn the next mob type in front of you
 
 return Config

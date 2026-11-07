@@ -202,6 +202,18 @@ Phase 2 server validation for break and place:
 | Day/night | 20-minute day (24000 ticks): 0 sunrise, 6000 noon, 12000 sunset, 18000 midnight. The server publishes a reference (ticks at server time); clients compute time locally each frame and set ClockTime, brightness, ambient and fog colour along a daylight curve (dusk 12000–13800, dawn 22200–24000) |
 | Swimming | Humanoids only swim in Roblox Terrain water, so the client does it: hold jump to rise, sink slowly otherwise, 0.6× speed in liquid |
 
+## 5e. Phase 5: mobs (built)
+
+| Piece | Design |
+|---|---|
+| Simulation | Server-only data (no replicated Instances). 20 Hz: AI sets a desired velocity, `MobPhysics` moves the box through the voxel grid (gravity 32 b/s², step-up by jumping, buoyancy, spiders climb), then falls, lava and daylight burning apply. Mobs only touch loaded chunks (unloaded = solid), so they never trigger chunk generation |
+| Pathfinding | `Pathfinder`: A* over walkable cells (floor solid, height free), steps up 1, drops up to 3, 250 node budget, repath every second; partial paths when the goal is out of budget |
+| Replication | `MobSnapshot` (UnreliableRemoteEvent) 10 Hz per player, mobs within 72 blocks: id, type code, position, yaw, pitch, flags. Clients interpolate 150 ms back and animate locally; `MobEvent` (reliable) carries hurt, death, teleport and explosion effects |
+| Mobs | Zombie (melee 3), Skeleton (arrows 2–4, keeps 5–14 blocks, strafes), Spider (melee 2, neutral in daylight, leaps, climbs), Cinderhusk (fuses 1.5 s within 3 blocks, explosion power 3), Shiftling (neutral, teleports, hostile when hit or when a block is broken within 4 blocks of it, melee 7). Cow, Pig, Sheep, Chicken wander and panic when hurt. Zombies and skeletons burn in daylight under open sky; mobs that die burning drop cooked meat |
+| Spawning | Hostiles: one attempt per player per second, 24–48 blocks away, opaque floor and room for the mob, open sky only at night, caves at any time (no block light yet). Animals: every 6 s on grass under open sky by day. Caps 12 hostile / 10 animals per player, 60 total. Despawn beyond 64 blocks (and hostiles beyond 32 blocks: 1/40 per second) |
+| Combat | `Combat`: item damage (swords 4–7, axes 7–9, …), charge scaling `0.2 + charge² × 0.8`, 0.5 s invulnerability, knockback; server checks reach (3 blocks + slack) and line of sight. Explosions: `floor((i² + i)/2 × 7 × 2p + 1)` damage, blocks within p × 0.7–1.3 destroyed (bedrock, obsidian and liquids resist), drops at 1/p chance |
+| New items | Swords (5 tiers), leather, feather, bone, arrow, string, gunpowder, rotten flesh, Rift Shard; recipes for swords, wool from string, TNT (no ignition yet) |
+
 ## 6. Mechanics spec (later phases)
 
 Values follow the classic formula. Speeds are in blocks/s; at 3 studs per block, walk 4.317 → 13 studs/s and sprint 5.612 → 16.8 studs/s.

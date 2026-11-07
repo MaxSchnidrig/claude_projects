@@ -7,6 +7,9 @@
 --   left click   pick up / put down / merge / swap       right click  take half / put one
 --   shift-click  quick-move                              click outside the panel: drop the
 --   result slot  craft once (shift: craft all)           carried stack (right: drop one)
+--   drag         press with a carried stack and move over slots (Java Edition rules): left
+--                splits the stack evenly, right puts one item in each slot; counts preview
+--                live and apply on release. A drag over a single slot is a normal click.
 --   touch        tap = left click; the "½" toggle makes taps act like right clicks
 --
 -- The server owns every slot; this module only draws InventoryClient state and sends clicks.
@@ -20,6 +23,7 @@ local GuiService = game:GetService("GuiService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local ItemRegistry = require(Shared.Items.ItemRegistry)
+local SlotLogic = require(Shared.Items.SlotLogic)
 local Recipes = require(Shared.Items.Recipes)
 local InventoryClient = require(script.Parent.Parent.Player.InventoryClient)
 local CameraController = require(script.Parent.Parent.Player.CameraController)
@@ -54,6 +58,9 @@ local widgets: { Widget } = {}
 local layoutKind: string? = nil
 local hovered: Widget? = nil
 local splitMode = false
+-- Active drag: button and the slots visited so far (in order).
+type Drag = { button: string, widgets: { any } }
+local drag: Drag? = nil
 -- Modifier keys, tracked from key events (UserInputService:IsKeyDown missed Shift during
 -- GUI clicks in a Studio test on macOS). Both sources are combined.
 local shiftHeld, ctrlHeld = false, false
@@ -74,6 +81,19 @@ local TITLES = {
 	furnace = "Furnace",
 	chest = "Chest",
 }
+
+-- Result slots and the furnace output can't receive dragged items.
+local function dragTarget(w: any): boolean
+	if w.container == "result" then
+		return false
+	end
+	if w.container == "block" and InventoryClient.window.kind == "furnace" and w.index == 3 then
+		return false
+	end
+	return true
+end
+
+local refresh: () -> ()
 
 local function stackFor(w: Widget): InventoryClient.Stack?
 	local win = InventoryClient.window
@@ -168,15 +188,35 @@ local function slot(x: number, y: number, container: string, index: number, big:
 		durability = durability,
 		shown = nil,
 	}
-	b.MouseButton1Click:Connect(function()
-		InventoryClient.click(container, index, if splitMode then "right" else "left", shiftDown())
+	-- Clicks act on press (Java). With a carried stack (and no Shift) a press starts a possible
+	-- drag instead; it becomes a click on release if no second slot was visited.
+	local function press(button: string)
+		local shift = shiftDown()
+		if InventoryClient.cursor and not shift and container ~= "result" then
+			drag = { button = button, widgets = { w } }
+			refresh()
+		else
+			InventoryClient.click(container, index, button, shift)
+		end
+	end
+	b.MouseButton1Down:Connect(function()
+		press(if splitMode then "right" else "left")
 	end)
-	b.MouseButton2Click:Connect(function()
-		InventoryClient.click(container, index, "right", shiftDown())
+	b.MouseButton2Down:Connect(function()
+		press("right")
 	end)
 	b.MouseEnter:Connect(function()
 		hovered = w
 		stroke.Transparency = 0
+		local d = drag
+		local cursor = InventoryClient.cursor
+		if d and cursor and not table.find(d.widgets, w) and dragTarget(w)
+			and SlotLogic.dragAccepts(stackFor(w), cursor)
+			and (d.button == "right" or #d.widgets < cursor.count) -- can't split over more slots than items
+		then
+			table.insert(d.widgets, w)
+			refresh()
+		end
 	end)
 	b.MouseLeave:Connect(function()
 		if hovered == w then
@@ -310,16 +350,36 @@ local function build(kind: string)
 	end
 end
 
-local function refresh()
+function refresh()
 	if not gui.Enabled then
 		return
+	end
+	-- live preview of an active drag (same rules as the server, applied to copies)
+	local preview: { [any]: InventoryClient.Stack? } = {}
+	local previewCursor = InventoryClient.cursor
+	local d = drag
+	if d and previewCursor and #d.widgets >= 2 then
+		local targets = {}
+		local fake = {}
+		for _, dw in d.widgets do
+			local s = stackFor(dw)
+			local t = { [1] = if s then SlotLogic.copy(s) else nil }
+			fake[dw] = t
+			table.insert(targets, { slots = t, index = 1 })
+		end
+		previewCursor = SlotLogic.drag(targets, SlotLogic.copy(previewCursor :: InventoryClient.Stack), d.button)
+		for dw, t in fake do
+			preview[dw] = t[1]
+		end
 	end
 	local kind = InventoryClient.window.kind
 	if kind ~= layoutKind then
 		build(kind)
 	end
 	for _, w in widgets do
-		local s = stackFor(w)
+		local inDrag = d ~= nil and table.find(d.widgets, w) ~= nil
+		local s = if inDrag and #(d :: Drag).widgets >= 2 then preview[w] else stackFor(w)
+		w.button.BackgroundColor3 = if inDrag then Color3.fromRGB(44, 52, 74) else Color3.fromRGB(14, 15, 19)
 		local key = s and s.item
 		if w.shown ~= key then
 			w.shown = key
@@ -346,8 +406,8 @@ local function refresh()
 		local burnMax = win.burnMax or 0
 		furnaceFlame.Size = UDim2.fromScale(1, if burnMax > 0 then math.clamp((win.burn or 0) / burnMax, 0, 1) else 0)
 	end
-	-- cursor stack
-	local c = InventoryClient.cursor
+	-- cursor stack (minus what the drag preview has spread)
+	local c = previewCursor
 	cursorFrame.Visible = c ~= nil
 	if c then
 		ItemIcon.draw(cursorIcon, c.item)
@@ -385,6 +445,7 @@ local function hide(tellServer: boolean)
 		return
 	end
 	gui.Enabled = false
+	drag = nil
 	InventoryClient.uiOpen = false
 	CameraController.mouseUnlocked = false
 	setOtherHud(true)
@@ -529,6 +590,23 @@ function InventoryUI.init()
 	end
 	UserInputService.InputEnded:Connect(function(input)
 		setModifier(input.KeyCode, false)
+		-- finish a drag on release of its button
+		local d = drag
+		local t = input.UserInputType
+		if d and (t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.MouseButton2 or t == Enum.UserInputType.Touch) then
+			drag = nil
+			if #d.widgets >= 2 then
+				local refs = {}
+				for _, dw in d.widgets do
+					table.insert(refs, { dw.container, dw.index })
+				end
+				InventoryClient.drag(refs, d.button)
+			else
+				local only = d.widgets[1]
+				InventoryClient.click(only.container, only.index, d.button, false)
+			end
+			refresh()
+		end
 	end)
 	UserInputService.InputBegan:Connect(function(input, processed)
 		setModifier(input.KeyCode, true) -- regardless of `processed`

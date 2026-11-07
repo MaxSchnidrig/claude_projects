@@ -30,10 +30,11 @@ local AIR = 0
 local isLiquid = BlockRegistry.isLiquid
 
 local BlockActionService = {}
--- Set by SurvivalService (avoids a require cycle): called after a player breaks a block.
-local onBlockBroken: ((Player) -> ())? = nil
-function BlockActionService.setBlockBrokenCallback(fn: (Player) -> ())
-	onBlockBroken = fn
+-- Listeners called after a player breaks a block (survival exhaustion, shiftling anger, ...).
+-- Registered by those services to avoid require cycles.
+local blockBrokenListeners: { (Player, number, number, number) -> () } = {}
+function BlockActionService.onBlockBroken(fn: (Player, number, number, number) -> ())
+	table.insert(blockBrokenListeners, fn)
 end
 BlockActionService.stats = { accepted = 0, rejected = 0, lastReject = "" }
 
@@ -211,8 +212,8 @@ local function finishBreak(player: Player, st: PState, x: number, y: number, z: 
 			end
 		end
 	end
-	if onBlockBroken then
-		(onBlockBroken :: (Player) -> ())(player) -- survival: exhaustion
+	for _, fn in blockBrokenListeners do
+		fn(player, x, y, z)
 	end
 	if BlockEntityService.kindOf(id) then
 		-- chest / furnace contents spill out

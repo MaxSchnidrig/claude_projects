@@ -133,6 +133,11 @@ function InventoryClient.drop(all: boolean)
 	send({ type = "drop", all = all })
 end
 
+-- Drag with the carried stack across slots: refs are { {container, index}, ... } in visit order.
+function InventoryClient.drag(refs: { { any } }, button: string)
+	send({ type = "drag", slots = refs, button = button })
+end
+
 -- Q while hovering a slot in an open window.
 function InventoryClient.dropSlot(container: string, index: number, all: boolean)
 	send({ type = "dropSlot", container = container, index = index, all = all })

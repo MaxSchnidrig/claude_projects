@@ -28,6 +28,8 @@ local shaped: { Shaped } = {
 	{ pattern = { "ss", "ss" }, key = { s = "snowball" }, result = { item = "snow_block", count = 1 } },
 	{ pattern = { "cc", "cc" }, key = { c = "clay_ball" }, result = { item = "clay", count = 1 } },
 	{ pattern = { " I", "I " }, key = { I = "iron_ingot" }, result = { item = "shears", count = 1 } },
+	{ pattern = { "ss", "ss" }, key = { s = "string" }, result = { item = "white_wool", count = 1 } },
+	{ pattern = { "GSG", "SGS", "GSG" }, key = { G = "gunpowder", S = "sand" }, result = { item = "tnt", count = 1 } },
 }
 
 -- Tools: same shapes for every material tier.
@@ -43,6 +45,7 @@ local TOOL_SHAPES = {
 	axe = { "MM", "MS", " S" },
 	shovel = { "M", "S", "S" },
 	hoe = { "MM", " S", " S" },
+	sword = { "M", "M", "S" },
 }
 for _, m in TOOL_MATERIALS do
 	for kind, pattern in TOOL_SHAPES do
@@ -97,6 +100,7 @@ Recipes.fuel = {
 	wooden_axe = 10,
 	wooden_shovel = 10,
 	wooden_hoe = 10,
+	wooden_sword = 10,
 } :: { [string]: number }
 
 return Recipes

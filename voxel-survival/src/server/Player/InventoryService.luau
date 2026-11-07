@@ -255,6 +255,13 @@ local function inventoryTargets(i: Inv, from: number): { { slots: SlotLogic.Slot
 			return { { slots = e.slots, lo = 2, hi = 2 } }
 		end
 	end
+	-- Java Edition: with a crafting table open, shift-click still moves hotbar <-> inventory.
+	-- Config.SHIFT_CLICK_INTO_CRAFT_GRID = true sends it into the 3x3 grid instead (then, if
+	-- the grid is full, the usual hotbar <-> inventory move).
+	if Config.SHIFT_CLICK_INTO_CRAFT_GRID and i.window.kind == "crafting_table" then
+		local other = if from <= HOTBAR then { slots = i.slots, lo = HOTBAR + 1, hi = N } else { slots = i.slots, lo = 1, hi = HOTBAR }
+		return { { slots = i.craft, lo = 1, hi = 9 }, other }
+	end
 	-- no container: hotbar <-> main inventory
 	if from <= HOTBAR then
 		return { { slots = i.slots, lo = HOTBAR + 1, hi = N } }
@@ -483,6 +490,36 @@ local function onAction(player: Player, a: any)
 			end
 			i.dirty = true
 		end
+	elseif t == "drag" then
+		-- Java-style drag over several slots with a carried stack (left: split, right: one each)
+		if typeof(a.slots) ~= "table" or #a.slots > N + 27 or not i.cursor then
+			return
+		end
+		local targets: { SlotLogic.DragTarget } = {}
+		local e = windowEntity(i)
+		for _, ref in a.slots do
+			if typeof(ref) == "table" and typeof(ref[1]) == "string" and isInt(ref[2]) then
+				local container, index = ref[1], ref[2]
+				if container == "inv" and index >= 1 and index <= N then
+					table.insert(targets, { slots = i.slots, index = index })
+				elseif container == "craft" and (i.window.kind == "inventory" or i.window.kind == "crafting_table")
+					and index >= 1 and index <= craftWidth(i) ^ 2
+				then
+					table.insert(targets, { slots = i.craft, index = index })
+				elseif container == "block" and e then
+					local size = if e.kind == "chest" then BlockEntityService.CHEST_SLOTS else 2 -- furnace output excluded
+					if index >= 1 and index <= size then
+						table.insert(targets, { slots = e.slots, index = index })
+					end
+				end
+				-- result slots are never drag targets
+			end
+		end
+		i.cursor = SlotLogic.drag(targets, i.cursor, if a.button == "right" then "right" else "left")
+		if e then
+			touchViewers(e)
+		end
+		i.dirty = true
 	elseif t == "dropSlot" then
 		-- Q over a slot in an open window (Ctrl/Cmd+Q: whole stack)
 		if typeof(a.container) ~= "string" or not isInt(a.index) then
