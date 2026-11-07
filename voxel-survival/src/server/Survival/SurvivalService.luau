@@ -44,6 +44,7 @@ type State = {
 	lastSent: string,
 	diedAt: number,
 	lastCause: string?,
+	heights: { { t: number, y: number } },
 }
 
 local SurvivalService = {}
@@ -65,6 +66,7 @@ local function newState(): State
 		lastSent = "",
 		diedAt = 0,
 		lastCause = nil,
+		heights = {},
 	}
 end
 
@@ -139,24 +141,11 @@ local function stepPlayer(p: Player, s: State, dt: number)
 	local eyeBlock = block(bx, math.floor((pos.Y + Config.EYE_HEIGHT) / BS), bz)
 	local belowY = math.floor((feetY - 0.1) / BS)
 	local grounded = isSolid[block(bx, belowY, bz) + 1] and feetY - (belowY + 1) * BS <= 0.4
-	local inLiquid = isLiquid[feetBlock + 1] or isLiquid[bodyBlock + 1]
 
-	-- Fall damage: track the highest point since last touching ground or liquid.
-	if root.Anchored then
-		s.peakFeetY = feetY -- frozen by the client's safety anchor
-	elseif inLiquid then
-		s.peakFeetY = feetY
-	elseif grounded then
-		local peak = s.peakFeetY or feetY
-		if peak > feetY then
-			local dmg = SurvivalRules.fallDamage((peak - feetY) / BS, false)
-			if dmg > 0 then
-				SurvivalService.damage(p, dmg, "fell from a high place")
-			end
-		end
-		s.peakFeetY = feetY
-	else
-		s.peakFeetY = math.max(s.peakFeetY or feetY, feetY)
+	-- Recent heights, to sanity-check falls the client reports (see "fall" action).
+	table.insert(s.heights, { t = os.clock(), y = feetY })
+	while #s.heights > 0 and os.clock() - s.heights[1].t > 8 do
+		table.remove(s.heights, 1)
 	end
 
 	-- Exhaustion from jumping and sprinting.
@@ -224,7 +213,30 @@ local function onAction(p: Player, a: any)
 	end
 	local s = state(p)
 	local t = a.type
-	if t == "sprint" then
+	if t == "fall" then
+		-- The client measures falls from its real ground contact. The server only checks the
+		-- claim against the descent it actually saw (recent highest point minus current height).
+		if typeof(a.blocks) ~= "number" or a.blocks ~= a.blocks or s.dead then
+			return
+		end
+		local humanoid, root = humanoidOf(p)
+		if not humanoid or not root then
+			return
+		end
+		local feetY = root.Position.Y - FEET_BELOW_ROOT
+		local highest = feetY
+		for _, h in s.heights do
+			highest = math.max(highest, h.y)
+		end
+		local seen = (highest - feetY) / BS + 1 -- +1 block of slack for timing
+		local bx, bz = math.floor(root.Position.X / BS), math.floor(root.Position.Z / BS)
+		local here = block(bx, math.floor((feetY + 0.1) / BS), bz)
+		local dmg = SurvivalRules.fallDamage(math.clamp(a.blocks, 0, seen), isLiquid[here + 1])
+		if dmg > 0 then
+			SurvivalService.damage(p, dmg, "fell from a high place")
+		end
+		table.clear(s.heights) -- a fall is only counted once
+	elseif t == "sprint" then
 		s.sprinting = a.on == true and SurvivalRules.canSprint(s.hunger)
 	elseif t == "eatStart" then
 		s.eatingSince = os.clock()
@@ -277,6 +289,13 @@ local function onCharacter(p: Player, character: Model)
 		end
 		s.dead = true
 		s.diedAt = os.clock()
+		-- Freeze the body where it died: the server has no terrain collision, so unanchored
+		-- body parts would fall through the world (and the camera with them).
+		for _, d in character:GetDescendants() do
+			if d:IsA("BasePart") then
+				d.Anchored = true
+			end
+		end
 		local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 		if root then
 			InventoryService.dropAll(p, root.Position)

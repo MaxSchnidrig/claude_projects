@@ -501,8 +501,12 @@ test("eating caps food at 20 and saturation at food", function()
 end)
 test("regeneration and starvation timings", function()
 	local h = SurvivalRules.newHunger() -- food 20, sat 5: fast regen
+	h.saturation = 20
 	local heal = SurvivalRules.tick(h, 2.0, 10, 20, 1)
-	eq(heal, 4) -- 1 HP / 0.5 s
+	eq(heal, 4) -- saturation >= 6: 1 HP / 0.5 s
+	h.saturation, h.regenTimer = 3, 0
+	heal = SurvivalRules.tick(h, 0.5, 10, 20, 1)
+	eq(heal, 0.5) -- saturation 3: 3/6 HP per 0.5 s
 	h.food, h.saturation, h.regenTimer = 18, 0, 0
 	heal = SurvivalRules.tick(h, 8.0, 10, 20, 1)
 	eq(heal, 2) -- 1 HP / 4 s

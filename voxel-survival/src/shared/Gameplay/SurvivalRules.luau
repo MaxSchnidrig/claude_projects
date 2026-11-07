@@ -5,7 +5,8 @@
 -- 4.0 exhaustion removes 1 saturation, or 1 food point when saturation is empty.
 --   sprinting 0.1 / block, jumping 0.05, sprint-jump 0.2, breaking a block 0.005,
 --   taking damage 0.1, healing 1 HP 6.0
--- Regeneration: food 20 with saturation -> 1 HP every 0.5 s; food >= 18 -> 1 HP every 4 s.
+-- Regeneration: food 20 with saturation -> min(saturation, 6)/6 HP every 0.5 s (costs
+-- min(saturation, 6) exhaustion); food >= 18 -> 1 HP every 4 s (costs 6.0).
 -- Starvation: food 0 -> 1 damage every 4 s (Normal difficulty: stops at 1 HP).
 -- Sprinting needs food > 6.
 -- Fall damage: ceil(fallBlocks - 3), none when landing in water.
@@ -76,11 +77,13 @@ function SurvivalRules.tick(h: Hunger, dt: number, health: number, maxHealth: nu
 	local heal, damage = 0, 0
 	if h.food >= SurvivalRules.MAX_FOOD and h.saturation > 0 and health < maxHealth then
 		h.regenTimer += dt
-		while h.regenTimer >= SurvivalRules.FAST_REGEN_INTERVAL and health + heal < maxHealth do
+		while h.regenTimer >= SurvivalRules.FAST_REGEN_INTERVAL and health + heal < maxHealth and h.saturation > 0 do
 			h.regenTimer -= SurvivalRules.FAST_REGEN_INTERVAL
-			heal += 1
-			SurvivalRules.addExhaustion(h, SurvivalRules.EXHAUSTION.heal)
+			local amount = math.min(h.saturation, 6)
+			heal += amount / 6
+			SurvivalRules.addExhaustion(h, amount)
 		end
+		heal = math.min(heal, maxHealth - health)
 	elseif h.food >= 18 and health < maxHealth then
 		h.regenTimer += dt
 		while h.regenTimer >= SurvivalRules.SLOW_REGEN_INTERVAL and health + heal < maxHealth do

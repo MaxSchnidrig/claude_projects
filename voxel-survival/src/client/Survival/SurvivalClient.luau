@@ -68,6 +68,11 @@ function SurvivalClient.eatCancel()
 	send({ type = "eatCancel" })
 end
 
+-- Landed after a fall of `blocks` blocks (only sent for falls over 3 blocks).
+function SurvivalClient.reportFall(blocks: number)
+	send({ type = "fall", blocks = blocks })
+end
+
 function SurvivalClient.respawn()
 	send({ type = "respawn" })
 end

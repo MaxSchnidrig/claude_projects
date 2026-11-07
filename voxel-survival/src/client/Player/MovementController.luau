@@ -24,7 +24,16 @@ local MovementController = {}
 MovementController.sprinting = false
 MovementController.inLiquid = false
 
-local sprintHeld = false
+-- Sprint is a latch (classic behaviour): started by double-tapping W, by Ctrl while moving
+-- forward, or by clicking the left stick; it ends when W is released, you stop moving forward,
+-- run into a wall, or get too hungry.
+local sprintLatch = false
+local lastWRelease = -math.huge
+local blockedTime = 0
+-- Fall tracking uses the character's real ground contact (Humanoid.FloorMaterial, from the
+-- client's collision boxes): resets on every touch of the ground, step or edge.
+local peakFeetY: number? = nil
+local FEET_BELOW_ROOT = 3
 local BASE_FOV = 70
 
 local function configure(humanoid: Humanoid)
@@ -38,13 +47,21 @@ end
 function MovementController.init()
 	local keySprint = (Enum.KeyCode :: any)[Config.KEY_SPRINT]
 	UserInputService.InputBegan:Connect(function(input, processed)
-		if not processed and (input.KeyCode == keySprint or input.KeyCode == Enum.KeyCode.ButtonL3) then
-			sprintHeld = true
+		if processed then
+			return
+		end
+		if input.KeyCode == Enum.KeyCode.W then
+			if os.clock() - lastWRelease <= Config.SPRINT_DOUBLE_TAP then
+				sprintLatch = true -- double-tap W
+			end
+		elseif input.KeyCode == keySprint or input.KeyCode == Enum.KeyCode.ButtonL3 then
+			sprintLatch = true -- Ctrl (+W) / left stick click; needs forward movement below
 		end
 	end)
 	UserInputService.InputEnded:Connect(function(input)
-		if input.KeyCode == keySprint or input.KeyCode == Enum.KeyCode.ButtonL3 then
-			sprintHeld = false
+		if input.KeyCode == Enum.KeyCode.W then
+			lastWRelease = os.clock()
+			sprintLatch = false
 		end
 	end)
 
@@ -58,16 +75,31 @@ function MovementController.init()
 		end
 	end
 
-	RunService.Heartbeat:Connect(function()
+	RunService.Heartbeat:Connect(function(dt)
 		local character = Players.LocalPlayer.Character
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 		if not humanoid or not root then
 			return
 		end
-		-- Sprint only while moving forward (relative to where the body faces) and not too hungry.
+		-- Sprint latch: needs forward movement, food > 6, and not pushing against a wall.
 		local forward = humanoid.MoveDirection:Dot(root.CFrame.LookVector) > 0.5
-		local sprinting = sprintHeld and forward and SurvivalClient.canSprint and not SurvivalClient.dead
+		if UserInputService:IsKeyDown(keySprint) and forward then
+			sprintLatch = true -- Ctrl held while walking forward
+		end
+		if not forward or not SurvivalClient.canSprint or SurvivalClient.dead then
+			sprintLatch = false
+		end
+		local v = root.AssemblyLinearVelocity
+		if sprintLatch and Vector3.new(v.X, 0, v.Z).Magnitude < Config.WALK_SPEED * 0.4 then
+			blockedTime += dt
+			if blockedTime > 0.15 then
+				sprintLatch = false -- ran into a wall
+			end
+		else
+			blockedTime = 0
+		end
+		local sprinting = sprintLatch
 		if sprinting ~= MovementController.sprinting then
 			MovementController.sprinting = sprinting
 			SurvivalClient.setSprinting(sprinting) -- the server charges sprint exhaustion
@@ -90,6 +122,20 @@ function MovementController.init()
 			root.AssemblyLinearVelocity = Vector3.new(v.X, vy, v.Z)
 		end
 		humanoid.WalkSpeed = speed
+
+		-- Fall distance: highest point since last ground contact; reported on landing.
+		local feetY = p.Y - FEET_BELOW_ROOT
+		if root.Anchored or humanoid.Health <= 0 or inLiquid then
+			peakFeetY = nil -- frozen, dead, or water/lava breaks the fall
+		elseif humanoid.FloorMaterial ~= Enum.Material.Air then
+			local peak = peakFeetY
+			if peak and peak - feetY > 3 * BS then
+				SurvivalClient.reportFall((peak - feetY) / BS)
+			end
+			peakFeetY = nil
+		else
+			peakFeetY = math.max(peakFeetY or feetY, feetY)
+		end
 		local camera = workspace.CurrentCamera
 		local targetFov = if MovementController.sprinting then BASE_FOV * 1.1 else BASE_FOV
 		camera.FieldOfView += (targetFov - camera.FieldOfView) * 0.2

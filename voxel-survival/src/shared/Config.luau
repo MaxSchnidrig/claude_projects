@@ -89,7 +89,8 @@ Config.EYE_HEIGHT = 1.6 -- studs above HumanoidRootPart centre (feet + 4.6 studs
 Config.WALK_SPEED = 13 -- studs/s (4.317 blocks/s)
 Config.SPRINT_SPEED = 16.8 -- studs/s (5.612 blocks/s)
 Config.JUMP_HEIGHT = 3.6 -- studs (1.2 blocks): clears 1-block steps, never 2
-Config.KEY_SPRINT = "LeftControl"
+Config.KEY_SPRINT = "LeftControl" -- hold while walking forward; double-tapping W also sprints
+Config.SPRINT_DOUBLE_TAP = 0.3 -- seconds between W release and re-press that start a sprint
 Config.KEY_CAMERA = "V" -- cycle first person -> third person behind -> third person front
 Config.MOUSE_SENSITIVITY = 0.2 -- degrees per pixel (multiplied by Roblox's own sensitivity setting)
 Config.TOUCH_SENSITIVITY = 0.25 -- degrees per pixel of touch drag
@@ -126,6 +127,9 @@ Config.STUDIO_STARTER_KIT = {
 	{ "glass", 64 },
 	{ "apple", 16 },
 	{ "steak", 16 },
+	{ "raw_iron", 16 },
+	{ "coal", 16 },
+	{ "oak_log", 32 },
 }
 
 -- Roblox default UI turned off on the client (our UI replaces them). Remove entries to test.
@@ -142,7 +146,8 @@ Config.DIFFICULTY = "normal" -- "easy": starvation stops at 10 HP, "normal": 1 H
 Config.DEBUG_KEY_OVERLAY = "F3" -- toggle the performance overlay
 Config.DEBUG_KEY_BACKEND = "F4" -- switch render backend (A/B test)
 Config.DEBUG_KEY_KEEP_TEMP = "F6" -- keep edited sections on their live mesh (compare to baked)
-Config.DEBUG_KEY_SKIP_TIME = "F7" -- Studio only: +6 game hours (quarter day)
-Config.DEBUG_KEY_HURT_SELF = "F9" -- Studio only: take 3 damage
+-- Letter keys: F-keys collide with Roblox/Studio/macOS shortcuts (F9 opens the Dev Console).
+Config.DEBUG_KEY_SKIP_TIME = "J" -- Studio only: +6 game hours (quarter day)
+Config.DEBUG_KEY_HURT_SELF = "K" -- Studio only: take 3 damage
 
 return Config

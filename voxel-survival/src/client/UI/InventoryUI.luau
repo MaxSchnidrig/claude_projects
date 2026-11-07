@@ -62,8 +62,8 @@ local function shiftDown(): boolean
 	return shiftHeld or UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
 end
 local function ctrlDown(): boolean
+	-- Ctrl only: Cmd+Q would quit Studio on a Mac
 	return ctrlHeld or UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
-		or UserInputService:IsKeyDown(Enum.KeyCode.LeftSuper) or UserInputService:IsKeyDown(Enum.KeyCode.RightSuper)
 end
 local furnaceArrow: Frame? = nil
 local furnaceFlame: Frame? = nil
@@ -523,10 +523,8 @@ function InventoryUI.init()
 	local function setModifier(k: Enum.KeyCode, down: boolean)
 		if k == Enum.KeyCode.LeftShift or k == Enum.KeyCode.RightShift then
 			shiftHeld = down
-		elseif k == Enum.KeyCode.LeftControl or k == Enum.KeyCode.RightControl
-			or k == Enum.KeyCode.LeftSuper or k == Enum.KeyCode.RightSuper
-		then
-			ctrlHeld = down -- Ctrl, or Cmd on a Mac
+		elseif k == Enum.KeyCode.LeftControl or k == Enum.KeyCode.RightControl then
+			ctrlHeld = down
 		end
 	end
 	UserInputService.InputEnded:Connect(function(input)
