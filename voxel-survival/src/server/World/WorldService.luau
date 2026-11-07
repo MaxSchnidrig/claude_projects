@@ -27,6 +27,10 @@ local seed: number
 local chunks: { [number]: ChunkData.Chunk } = {}
 local diffs: { [number]: { [number]: number } } = {} -- chunkKey -> (blockIndex -> id)
 local wanted: { [number]: boolean } = {}
+local wantedOrder: { number } = {} -- wanted keys, nearest to a player first
+local populated: { [number]: boolean } = {} -- chunks that already had their first load (animals)
+local loadedListeners: { (key: number, firstTime: boolean) -> () } = {}
+local unloadedListeners: { (key: number) -> () } = {}
 local spawnBlock = Vector3.zero
 local scheduler: Scheduler.Scheduler
 
@@ -51,15 +55,24 @@ end
 
 -- Picker for the scheduler: generate the next wanted chunk that is missing.
 local generating: { [number]: boolean } = {}
+local function stored(key: number, chunk: ChunkData.Chunk)
+	chunks[key] = chunk
+	local first = not populated[key]
+	populated[key] = true
+	for _, fn in loadedListeners do
+		task.spawn(fn, key, first)
+	end
+end
+
 local function pickJob(): (() -> ())?
-	for key in wanted do
+	for _, key in wantedOrder do
 		if not chunks[key] and not generating[key] then
 			generating[key] = true
 			return function()
 				local chunk = generateNow(key)
 				generating[key] = nil
-				if wanted[key] then
-					chunks[key] = chunk
+				if wanted[key] and not chunks[key] then
+					stored(key, chunk)
 				end
 			end
 		end
@@ -70,6 +83,7 @@ end
 local function refreshWanted()
 	table.clear(wanted)
 	local r = Config.SERVER_CHUNK_RADIUS
+	local dist: { [number]: number } = {}
 	for _, player in Players:GetPlayers() do
 		local character = player.Character
 		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
@@ -77,15 +91,30 @@ local function refreshWanted()
 		local pcx, pcz = math.floor(pos.X / BS) // CS, math.floor(pos.Z / BS) // CS
 		for dz = -r, r do
 			for dx = -r, r do
-				wanted[ChunkData.key(pcx + dx, pcz + dz)] = true
+				local key = ChunkData.key(pcx + dx, pcz + dz)
+				wanted[key] = true
+				local d = dx * dx + dz * dz
+				if not dist[key] or d < dist[key] then
+					dist[key] = d
+				end
 			end
 		end
 	end
+	table.clear(wantedOrder)
+	for key in wanted do
+		table.insert(wantedOrder, key)
+	end
+	table.sort(wantedOrder, function(a, b)
+		return dist[a] < dist[b]
+	end)
 	-- Unload chunks nobody needs (their diffs stay in `diffs`).
 	local loaded = 0
 	for key in chunks do
 		if not wanted[key] then
 			chunks[key] = nil
+			for _, fn in unloadedListeners do
+				fn(key)
+			end
 		else
 			loaded += 1
 		end
@@ -141,9 +170,23 @@ function WorldService.getChunkSync(cx: number, cz: number): ChunkData.Chunk
 	local chunk = chunks[key]
 	if not chunk then
 		chunk = generateNow(key)
-		chunks[key] = chunk
+		stored(key, chunk)
 	end
 	return chunk
+end
+
+-- Chunk lifecycle hooks (mobs: animals spawn with new chunks and are parked with unloaded ones).
+-- `firstTime` is true the first time this server loads the chunk.
+function WorldService.onChunkLoaded(fn: (key: number, firstTime: boolean) -> ())
+	table.insert(loadedListeners, fn)
+end
+
+function WorldService.onChunkUnloaded(fn: (key: number) -> ())
+	table.insert(unloadedListeners, fn)
+end
+
+function WorldService.isLoaded(key: number): boolean
+	return chunks[key] ~= nil
 end
 
 -- Block at world block coordinates (generates the chunk if needed). 0 outside the world.

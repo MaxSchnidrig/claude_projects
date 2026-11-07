@@ -3,7 +3,11 @@
 --
 -- Mobs are pure data on the server (no Instances). Each tick (20 Hz) the AI (MobAI) sets a
 -- desired velocity, MobPhysics moves the mob's box through the voxel world, and the environment
--- (falls, lava, daylight burning) applies. Every 0.1 s each player receives a compact snapshot of
+-- (falls, lava, daylight burning) applies. Movement follows Java's per-tick integration:
+--   horizontal  v += accel (ground: 0.98*s^2, air/water: 0.0196*s), move, v *= friction
+--               (ground 0.546, air 0.91, water 0.8)
+--   vertical    move, then vy = (vy - 0.08) * 0.98; jump 0.42; water: vy*0.8 - 0.005, float +0.04
+-- so knockback (Combat.knockback) and AI steering combine exactly like in Java. Every 0.1 s each player receives a compact snapshot of
 -- nearby mobs (MobSnapshot, unreliable); clients build, interpolate and animate the models.
 -- Natural spawning/despawning lives in MobSpawner.
 --
@@ -24,6 +28,7 @@ local Crafting = require(Shared.Items.Crafting)
 local ItemRegistry = require(Shared.Items.ItemRegistry)
 local VoxelRaycast = require(Shared.World.VoxelRaycast)
 local SurvivalRules = require(Shared.Gameplay.SurvivalRules)
+local SkyLight = require(Shared.World.SkyLight)
 local MobSnapshotCodec = require(Shared.Mobs.MobSnapshotCodec)
 local WorldService = require(script.Parent.Parent.World.WorldService)
 local ItemEntityService = require(script.Parent.Parent.World.ItemEntityService)
@@ -34,8 +39,7 @@ local DayNightService = require(script.Parent.Parent.Survival.DayNightService)
 
 local BS = Config.BLOCK_SIZE
 local H = Config.WORLD_HEIGHT
-local GRAVITY = 32 -- blocks/s^2 (classic)
-local TERMINAL = 40
+local TICK = 0.05
 local LAVA = BlockRegistry.id("lava")
 local isSolid = BlockRegistry.isSolid
 local isOpaque = BlockRegistry.isOpaque
@@ -62,17 +66,19 @@ export type Mob = {
 	wantX: number,
 	wantZ: number,
 	wantJump: boolean,
-	knockbackUntil: number,
-	invulnUntil: number,
+	hurt: Combat.HurtState,
 	burning: number, -- seconds left
 	burnTimer: number,
-	lavaTimer: number,
 	peakY: number,
 	flags: number,
 	alive: boolean,
 	lastAttacker: Player?,
+	lastAttackedAt: number,
+	persistent: boolean, -- animals: never despawn; parked with their chunk
+	farSince: number?, -- despawn bookkeeping (MobSpawner)
 	-- projectiles
 	owner: string?,
+	ownerId: number?,
 	damage: number?,
 	stuck: number?,
 }
@@ -87,6 +93,7 @@ MobService.mobs = {} :: { [number]: Mob }
 local mobs = MobService.mobs
 local nextId = 1
 local lastSwing: { [Player]: number } = {}
+local heldItem: { [Player]: string } = {}
 local ai: any = nil -- MobAI module (set in init)
 
 ---------------------------------------------------------------------------------------------
@@ -118,11 +125,22 @@ function MobService.skyExposed(x: number, y: number, z: number): boolean
 	return true
 end
 
-function MobService.isDay(): boolean
-	return DayNightService.timeOfDay() < 12500
+function MobService.timeOfDay(): number
+	return DayNightService.timeOfDay()
 end
 
--- Voxel line of sight between two block-unit points.
+function MobService.isDay(): boolean
+	return SkyLight.isDay(DayNightService.timeOfDay())
+end
+
+-- Java "light level dependent magic value" (0..1) at a block-unit position.
+function MobService.brightness(x: number, y: number, z: number): number
+	local sky = MobService.skyExposed(math.floor(x), math.floor(y), math.floor(z))
+	return SkyLight.magicBrightness(SkyLight.rawBrightness(sky, DayNightService.timeOfDay()))
+end
+
+-- Voxel line of sight between two block-unit points. Like Java (collider shapes), every block
+-- with collision blocks the view, including glass and leaves; liquids don't.
 function MobService.lineOfSight(a: Vector3, b: Vector3): boolean
 	local d = b - a
 	local dist = d.Magnitude
@@ -132,13 +150,13 @@ function MobService.lineOfSight(a: Vector3, b: Vector3): boolean
 	local hit = VoxelRaycast.cast(function(x, y, z)
 		return WorldService.getBlockIfLoaded(x, y, z) or 1
 	end, a.X, a.Y, a.Z, d.X, d.Y, d.Z, dist, function(id)
-		return isOpaque[id + 1]
+		return isSolid[id + 1]
 	end)
 	return hit == nil
 end
 
 -- Living players with their positions (block units: feet centre, eye).
-export type Target = { player: Player, feet: Vector3, eye: Vector3, root: BasePart }
+export type Target = { player: Player, feet: Vector3, eye: Vector3, root: BasePart, look: Vector3 }
 function MobService.targets(): { Target }
 	local list = {}
 	for _, p in Players:GetPlayers() do
@@ -186,15 +204,16 @@ function MobService.spawn(key: string, x: number, y: number, z: number, yaw: num
 		wantX = 0,
 		wantZ = 0,
 		wantJump = false,
-		knockbackUntil = 0,
-		invulnUntil = 0,
+		hurt = { invulnUntil = 0, lastHurt = 0 },
 		burning = 0,
 		burnTimer = 0,
-		lavaTimer = 0,
 		peakY = y,
 		flags = 0,
 		alive = true,
 		lastAttacker = nil,
+		lastAttackedAt = -math.huge,
+		persistent = def.category == "passive",
+		farSince = nil,
 	}
 	nextId = (nextId % 60000) + 1
 	mobs[m.id] = m
@@ -217,6 +236,11 @@ local function broadcastEvent(e: { [string]: any }, near: Vector3)
 end
 MobService.broadcastEvent = broadcastEvent
 
+local function playerKill(m: Mob): boolean
+	-- Java remembers the last player hit for 100 ticks
+	return m.lastAttacker ~= nil and os.clock() - m.lastAttackedAt <= 5
+end
+
 local function die(m: Mob)
 	if not m.alive then
 		return
@@ -226,8 +250,12 @@ local function die(m: Mob)
 	local center = Vector3.new(m.x, m.y + m.def.height / 2, m.z)
 	broadcastEvent({ type = "died", id = m.id }, center)
 	-- drops (meat comes out cooked if the mob was burning)
+	local byPlayer = playerKill(m)
 	local stacks = {}
 	for _, d in m.def.drops do
+		if (d.playerKill and not byPlayer) or (d.chance and math.random() >= d.chance) then
+			continue
+		end
 		local n = math.random(d.min, d.max)
 		if n > 0 then
 			local item = d.item
@@ -243,143 +271,210 @@ local function die(m: Mob)
 	ItemEntityService.spawnAround(stacks, center * BS)
 end
 
--- Damage a mob. `from` (block units) pushes it away; `attacker` makes neutrals angry.
-function MobService.damage(m: Mob, amount: number, attacker: Player?, from: Vector3?)
+-- Damage kinds that armor reduces (Java: everything except fall, fire, drowning, starving...).
+local ARMORED = { attack = true, projectile = true, explosion = true, lava = true }
+
+export type DamageOpts = {
+	attacker: Player?, -- a player hit (anger, player-kill drops)
+	from: Vector3?, -- attacker position (block units): standard 0.4 knockback away from it
+	kind: string?, -- "attack" | "projectile" | "explosion" | "lava" | "fire" | "fall" | "drown"
+	living: boolean?, -- caused by a living entity (voidlings don't teleport away from those)
+}
+
+-- Damage a mob with Java invulnerability (0.5 s; a stronger hit deals the difference without
+-- knockback). Returns the damage dealt and whether it was a fresh hit.
+function MobService.damage(m: Mob, amount: number, opts: DamageOpts?): (number, boolean)
+	local o: DamageOpts = opts or {}
+	if not m.alive or m.def.category == "projectile" then
+		return 0, false
+	end
+	local kind = o.kind or "attack"
+	if ARMORED[kind] then
+		amount = Combat.armorReduce(amount, m.def.armor)
+	end
 	local now = os.clock()
-	if not m.alive or now < m.invulnUntil or m.def.category == "projectile" then
-		return
+	local dealt, fresh = Combat.applyInvulnerability(m.hurt, amount, now)
+	if dealt <= 0 then
+		return 0, false
 	end
-	m.invulnUntil = now + 0.5
-	m.health -= amount
-	m.lastAttacker = attacker
-	if from then
-		local dx, dz = m.x - from.X, m.z - from.Z
-		local len = math.sqrt(dx * dx + dz * dz)
-		if len > 0.01 then
-			m.vx = dx / len * Combat.KNOCKBACK_HORIZONTAL
-			m.vz = dz / len * Combat.KNOCKBACK_HORIZONTAL
+	m.health -= dealt
+	if o.attacker then
+		m.lastAttacker = o.attacker
+		m.lastAttackedAt = now
+	end
+	if fresh then
+		local from = o.from
+		if from then
+			local vx, vy, vz = Combat.knockback(m.vx / 20, m.vy / 20, m.vz / 20, m.x - from.X, m.z - from.Z, Combat.KNOCKBACK, m.onGround)
+			m.vx, m.vy, m.vz = vx * 20, vy * 20, vz * 20
 		end
-		m.vy = Combat.KNOCKBACK_UP
-		m.knockbackUntil = now + 0.35
+		broadcastEvent({ type = "hurt", id = m.id }, Vector3.new(m.x, m.y, m.z))
 	end
-	broadcastEvent({ type = "hurt", id = m.id }, Vector3.new(m.x, m.y, m.z))
 	if ai then
-		ai.onHurt(m, attacker)
+		ai.onHurt(m, o.attacker, kind, o.living == true or o.attacker ~= nil)
 	end
 	if m.health <= 0 then
 		die(m)
 	end
+	return dealt, fresh
 end
 
--- Explosion damage to every mob in range (hook for ExplosionService).
+-- Explosion damage to every mob in range (hook for ExplosionService): damage plus a push of
+-- direction * impact (blocks/tick), like Java.
 local function explosionDamage(center: Vector3, power: number)
 	for _, m in mobs do
+		if m.def.category == "projectile" then
+			continue
+		end
 		local c = Vector3.new(m.x, m.y + m.def.height / 2, m.z)
 		local d = (c - center).Magnitude
 		local dmg = Combat.explosionDamage(power, d)
 		if dmg > 0 then
-			m.invulnUntil = 0
-			MobService.damage(m, dmg, nil, center)
+			MobService.damage(m, dmg, { kind = "explosion", living = true })
+			local dir = if d > 0.01 then (c - center) / d else Vector3.yAxis
+			local impact = 1 - d / (2 * power)
+			m.vx += dir.X * impact * 20
+			m.vy += dir.Y * impact * 20
+			m.vz += dir.Z * impact * 20
 		end
 	end
 end
 
--- Damage a player from a mob (melee / arrow) with knockback away from `from`.
+-- Damage a player from a mob (melee / arrow). A fresh hit pushes the player away from `from`
+-- with Java's 0.4 knockback (the client applies it to its own character).
 function MobService.hurtPlayer(t: Target, amount: number, cause: string, from: Vector3)
-	SurvivalService.damage(t.player, amount, cause)
-	local d = Vector3.new(t.feet.X - from.X, 0, t.feet.Z - from.Z)
-	d = if d.Magnitude > 0.01 then d.Unit else Vector3.xAxis
-	local v = (d * Combat.KNOCKBACK_HORIZONTAL + Vector3.new(0, Combat.KNOCKBACK_UP, 0)) * BS
-	Remotes.get("Knockback"):FireClient(t.player, v)
+	local dealt, fresh = SurvivalService.damage(t.player, amount, cause)
+	if dealt > 0 and fresh then
+		local d = Vector3.new(t.feet.X - from.X, 0, t.feet.Z - from.Z)
+		Remotes.get("Knockback"):FireClient(t.player, { dir = d, strength = Combat.KNOCKBACK })
+	end
 end
 
 ---------------------------------------------------------------------------------------------
 -- Physics + environment
 ---------------------------------------------------------------------------------------------
 
-local function stepPhysics(m: Mob, dt: number)
-	local now = os.clock()
-	local def = m.def
-	local w, h = def.width, def.height
-	local feetId = MobService.blockAt(math.floor(m.x), math.floor(m.y + 0.1), math.floor(m.z))
-	m.inLiquid = feetId ~= nil and isLiquid[feetId + 1]
+local function feetBlock(m: Mob): number?
+	return MobService.blockAt(math.floor(m.x), math.floor(m.y + 0.1), math.floor(m.z))
+end
 
-	if now >= m.knockbackUntil then
-		m.vx, m.vz = m.wantX, m.wantZ
-	else
-		m.vx *= 0.9
-		m.vz *= 0.9
+-- One 20 Hz tick of Java-style movement. Velocities are stored in blocks/s.
+local function physicsTick(m: Mob)
+	local def = m.def
+	local id = feetBlock(m)
+	m.inLiquid = id ~= nil and isLiquid[id + 1]
+	local vx, vy, vz = m.vx / 20, m.vy / 20, m.vz / 20 -- blocks/tick
+
+	-- steering: the AI's wanted ground speed -> Java speed value -> acceleration
+	local want = math.sqrt(m.wantX * m.wantX + m.wantZ * m.wantZ)
+	if want > 1e-4 then
+		local sv = math.sqrt(want / 20 * (1 - 0.546) / 0.98)
+		local accel = if m.onGround and not m.inLiquid then 0.98 * sv * sv else 0.02 * 0.98 * sv
+		vx += m.wantX / want * accel
+		vz += m.wantZ / want * accel
 	end
 	if m.inLiquid then
-		m.vy = math.min(m.vy + 20 * dt, 2) -- buoyancy: float up slowly
-		m.vx *= 0.6
-		m.vz *= 0.6
-	else
-		m.vy = math.max(m.vy - GRAVITY * dt, -TERMINAL)
-		if def.key == "chicken" then
-			m.vy = math.max(m.vy, -3) -- flaps its wings
+		if def.behavior ~= "teleporter" then
+			vy += 0.04 -- swim up (Java FloatGoal)
 		end
+	elseif m.wantJump and m.onGround then
+		vy = 0.42
 	end
-	if m.wantJump and (m.onGround or m.inLiquid) then
-		m.vy = 8.4 -- ~1.1 blocks
-	end
-	if def.canClimb and m.hitWall and (m.wantX ~= 0 or m.wantZ ~= 0) then
-		m.vy = 3 -- spiders climb walls
+	if def.canClimb and m.hitWall and want > 1e-4 then
+		vy = 0.2 -- spiders climb walls
 	end
 	m.wantJump = false
 
 	local wasGround = m.onGround
-	m.x, m.y, m.z, m.vx, m.vy, m.vz, m.onGround, m.hitWall =
-		MobPhysics.move(solid, m.x, m.y, m.z, m.vx, m.vy, m.vz, w, h, dt)
+	local nx, ny, nz, rvx, rvy, rvz, onGround, hitWall =
+		MobPhysics.move(solid, m.x, m.y, m.z, vx * 20, vy * 20, vz * 20, def.width, def.height, TICK)
+	m.x, m.y, m.z, m.onGround, m.hitWall = nx, ny, nz, onGround, hitWall
+	vx, vy, vz = rvx / 20, rvy / 20, rvz / 20
+
+	if m.inLiquid then
+		vx *= 0.8
+		vz *= 0.8
+		vy = vy * 0.8 - 0.005
+	else
+		local f = if wasGround then 0.546 else 0.91
+		vx *= f
+		vz *= f
+		vy = (vy - 0.08) * 0.98
+		if def.key == "chicken" and not m.onGround and vy < 0 then
+			vy *= 0.6 -- flaps its wings
+		end
+	end
+	m.vx, m.vy, m.vz = vx * 20, vy * 20, vz * 20
 
 	-- fall damage (not chickens / not into liquid)
 	if m.onGround or m.inLiquid then
 		if not wasGround and def.key ~= "chicken" and not m.inLiquid then
 			local dmg = SurvivalRules.fallDamage(m.peakY - m.y, false)
 			if dmg > 0 then
-				m.invulnUntil = 0
-				MobService.damage(m, dmg, nil, nil)
+				MobService.damage(m, dmg, { kind = "fall" })
 			end
 		end
 		m.peakY = m.y
 	else
 		m.peakY = math.max(m.peakY, m.y)
 	end
+end
 
-	-- lava and daylight burning
-	local bodyId = MobService.blockAt(math.floor(m.x), math.floor(m.y + h / 2), math.floor(m.z))
-	if feetId == LAVA or bodyId == LAVA then
-		m.burning = 8
-		m.lavaTimer += dt
-		if m.lavaTimer >= 0.5 then
-			m.lavaTimer = 0
-			m.invulnUntil = 0
-			MobService.damage(m, 4, nil, nil)
+local function stepPhysics(m: Mob, dt: number)
+	local def = m.def
+	local h = def.height
+	for _ = 1, math.max(1, math.floor(dt / TICK + 0.5)) do
+		physicsTick(m)
+		if not m.alive then
+			return
 		end
 	end
-	if def.undead and MobService.isDay() and not m.inLiquid
-		and MobService.skyExposed(math.floor(m.x), math.floor(m.y + h), math.floor(m.z))
-	then
-		m.burning = math.max(m.burning, 1)
+
+	-- lava: 4 damage (every 0.5 s through invulnerability) and 15 s of fire
+	local bodyId = MobService.blockAt(math.floor(m.x), math.floor(m.y + h / 2), math.floor(m.z))
+	if feetBlock(m) == LAVA or bodyId == LAVA then
+		m.burning = 15
+		MobService.damage(m, 4, { kind = "lava" })
+	end
+	-- undead catch fire in daylight (Java: brightness > 0.5, chance (b - 0.4) * 2 / 30 per tick,
+	-- open sky above the eyes, not wet) and burn for 8 s
+	if def.undead and not m.inLiquid and MobService.isDay() then
+		local ey = m.y + (def.eyeHeight or h * 0.85)
+		if MobService.skyExposed(math.floor(m.x), math.floor(ey), math.floor(m.z)) then
+			local b = MobService.brightness(m.x, ey, m.z)
+			local ticks = math.max(1, math.floor(dt / TICK + 0.5))
+			if b > 0.5 and math.random() < 1 - (1 - (b - 0.4) * 2 / 30) ^ ticks then
+				m.burning = math.max(m.burning, 8)
+			end
+		end
 	end
 	if m.inLiquid then
 		m.burning = 0
+		-- voidlings are hurt by water and try to teleport out of it
+		if def.behavior == "teleporter" then
+			MobService.damage(m, 1, { kind = "drown" })
+			if m.alive and ai then
+				ai.waterTeleport(m)
+			end
+		end
 	end
 	if m.burning > 0 then
 		m.burning -= dt
 		m.burnTimer += dt
 		if m.burnTimer >= 1 then
-			m.burnTimer = 0
-			m.invulnUntil = 0
-			MobService.damage(m, 1, nil, nil)
+			m.burnTimer -= 1
+			MobService.damage(m, 1, { kind = "fire" })
 		end
+	else
+		m.burnTimer = 0
 	end
-	if m.y < -10 then
+	if m.y < -64 then
 		MobService.remove(m)
 	end
 end
 
--- Arrows: ballistic, hit players (and stick in blocks).
+-- Arrows (Java): per tick move, then v *= 0.99 (0.6 in water), vy -= 0.05. Damage on hit =
+-- ceil(speed (blocks/tick) * baseDamage). Hitbox 0.5 x 0.5.
 local function stepProjectile(m: Mob, dt: number)
 	if m.stuck then
 		m.stuck -= dt
@@ -388,41 +483,71 @@ local function stepProjectile(m: Mob, dt: number)
 		end
 		return
 	end
-	m.vy = math.max(m.vy - 20 * dt, -TERMINAL)
-	local steps = math.max(1, math.ceil(math.sqrt(m.vx * m.vx + m.vy * m.vy + m.vz * m.vz) * dt / 0.25))
-	local sdt = dt / steps
-	for _ = 1, steps do
-		local nx, ny, nz = m.x + m.vx * sdt, m.y + m.vy * sdt, m.z + m.vz * sdt
-		if solid(math.floor(nx), math.floor(ny), math.floor(nz)) then
-			m.stuck = 10
-			m.flags = FLAG.STUCK
-			return
-		end
-		m.x, m.y, m.z = nx, ny, nz
-		for _, t in MobService.targets() do
-			local f = t.feet
-			if math.abs(m.x - f.X) < 0.45 and math.abs(m.z - f.Z) < 0.45 and m.y >= f.Y and m.y <= f.Y + 1.8 then
-				MobService.hurtPlayer(t, m.damage or 2, `was shot by {m.owner or "an arrow"}`, Vector3.new(m.x - m.vx, m.y, m.z - m.vz))
-				MobService.remove(m)
+	local targets = MobService.targets()
+	for _ = 1, math.max(1, math.floor(dt / TICK + 0.5)) do
+		local vx, vy, vz = m.vx / 20, m.vy / 20, m.vz / 20
+		local speed = math.sqrt(vx * vx + vy * vy + vz * vz)
+		local steps = math.max(1, math.ceil(speed / 0.2))
+		for _ = 1, steps do
+			local nx, ny, nz = m.x + vx / steps, m.y + vy / steps, m.z + vz / steps
+			if solid(math.floor(nx), math.floor(ny), math.floor(nz)) then
+				m.stuck = 60 -- Java: arrows in the ground despawn after a minute
+				m.flags = FLAG.STUCK
+				m.vx, m.vy, m.vz = 0, 0, 0
 				return
 			end
+			m.x, m.y, m.z = nx, ny, nz
+			local dmg = math.ceil(math.clamp(speed * (m.damage or 2), 0, 2147483647))
+			for _, t in targets do
+				local f = t.feet
+				if math.abs(m.x - f.X) < 0.55 and math.abs(m.z - f.Z) < 0.55 and m.y >= f.Y - 0.25 and m.y <= f.Y + 2.05 then
+					MobService.hurtPlayer(t, dmg, `was shot by {m.owner or "an arrow"}`, Vector3.new(m.x - vx * 4, m.y, m.z - vz * 4))
+					MobService.remove(m)
+					return
+				end
+			end
+			for _, o in mobs do
+				if o ~= m and o.alive and o.id ~= m.ownerId and o.def.category ~= "projectile" then
+					local hw = o.def.width / 2 + 0.25
+					if math.abs(m.x - o.x) < hw and math.abs(m.z - o.z) < hw and m.y >= o.y - 0.25 and m.y <= o.y + o.def.height + 0.25 then
+						if o.def.behavior == "teleporter" then
+							-- voidlings dodge projectiles by teleporting; the arrow flies on
+							if ai then
+								ai.dodge(o)
+							end
+						else
+							MobService.damage(o, dmg, { kind = "projectile", from = Vector3.new(m.x - vx * 4, m.y, m.z - vz * 4), living = true })
+							MobService.remove(m)
+							return
+						end
+					end
+				end
+			end
 		end
+		local drag = if solid(math.floor(m.x), math.floor(m.y), math.floor(m.z)) then 1 else 0.99
+		local id = MobService.blockAt(math.floor(m.x), math.floor(m.y), math.floor(m.z))
+		if id and isLiquid[id + 1] then
+			drag = 0.6
+		end
+		m.vx, m.vy, m.vz = vx * drag * 20, (vy * drag - 0.05) * 20, vz * drag * 20
 	end
 	local horizontal = math.sqrt(m.vx * m.vx + m.vz * m.vz)
 	m.yaw = math.atan2(-m.vx, -m.vz)
 	m.pitch = math.atan2(m.vy, horizontal)
-	if m.y < -10 then
+	if m.y < -64 then
 		MobService.remove(m)
 	end
 end
 
--- Fire an arrow (block units) from `from` with velocity `vel`.
-function MobService.shootArrow(from: Vector3, vel: Vector3, damage: number, owner: string)
+-- Fire an arrow (block units) from `from` with velocity `vel` (blocks/s).
+function MobService.shootArrow(from: Vector3, vel: Vector3, baseDamage: number, owner: string, ownerId: number?)
 	local a = MobService.spawn("arrow", from.X, from.Y, from.Z)
 	if a then
 		a.vx, a.vy, a.vz = vel.X, vel.Y, vel.Z
-		a.damage = damage
+		a.damage = baseDamage
 		a.owner = owner
+		a.ownerId = ownerId
+		a.persistent = false
 	end
 end
 
@@ -430,7 +555,7 @@ end
 -- Player attacks
 ---------------------------------------------------------------------------------------------
 
-local function onAttack(p: Player, id: any)
+local function onAttack(p: Player, id: any, critClaim: any)
 	if typeof(id) ~= "number" then
 		return
 	end
@@ -457,15 +582,63 @@ local function onAttack(p: Player, id: any)
 	end
 	local stack = InventoryService.selectedStack(p)
 	local item = stack and stack.item
-	local base, cooldown = Combat.attackStats(item)
+	local base, attackSpeed = Combat.attackStats(item)
 	local now = os.clock()
-	local since = now - (lastSwing[p] or 0)
+	local charge = Combat.charge(now - (lastSwing[p] or 0), attackSpeed)
 	lastSwing[p] = now
-	MobService.damage(m, Combat.scaledDamage(base, since, cooldown), p, eye)
+	local amount = Combat.scaledDamage(base, charge)
+
+	local sprinting, _grounded, inLiquid = SurvivalService.movement(p)
+	-- Critical hit: the client saw itself falling and airborne; the server re-checks what it can
+	-- (charge, sprint, liquid, not rising).
+	local crit = critClaim == true and Combat.isCrit({
+		charge = charge,
+		falling = root.AssemblyLinearVelocity.Y <= 0.5,
+		onGround = false,
+		sprinting = sprinting,
+		inLiquid = inLiquid,
+	})
+	if crit then
+		amount *= Combat.CRIT_MULTIPLIER
+	end
+	local dealt, fresh = MobService.damage(m, amount, { attacker = p, from = eye, kind = "attack" })
+	if dealt <= 0 then
+		return
+	end
+	if crit then
+		broadcastEvent({ type = "crit", id = m.id }, Vector3.new(m.x, m.y, m.z))
+	end
+	-- Sprint hit at full strength: extra 0.5 knockback along the attacker's facing; sprint ends.
+	if fresh and sprinting and charge > Combat.CRIT_MIN_CHARGE and m.alive then
+		local look = root.CFrame.LookVector
+		local vx, vy, vz = Combat.knockback(m.vx / 20, m.vy / 20, m.vz / 20, look.X, look.Z, Combat.SPRINT_KNOCKBACK, m.onGround)
+		m.vx, m.vy, m.vz = vx * 20, vy * 20, vz * 20
+		SurvivalService.stopSprint(p)
+	end
 	SurvivalService.addExhaustion(p, 0.1)
-	local def = ItemRegistry.get(item)
-	if def and def.tool then
-		InventoryService.damageSelectedTool(p, if def.tool.kind == "sword" then 1 else 2)
+	local wear = Combat.hitDurabilityCost(item)
+	if wear > 0 then
+		InventoryService.damageSelectedTool(p, wear)
+	end
+end
+
+-- A player reports staring a voidling in the eyes (5 ticks). The server checks range (64) and
+-- that no block with collision is in the way.
+local function onStare(p: Player, id: any)
+	if typeof(id) ~= "number" then
+		return
+	end
+	local m = mobs[id]
+	if not m or not m.alive or m.def.behavior ~= "teleporter" then
+		return
+	end
+	for _, t in MobService.targets() do
+		if t.player == p then
+			local mobEye = Vector3.new(m.x, m.y + (m.def.eyeHeight or m.def.height), m.z)
+			if (mobEye - t.eye).Magnitude <= 64 and MobService.lineOfSight(t.eye, mobEye) and ai then
+				ai.provoke(m, p)
+			end
+		end
 	end
 end
 
@@ -521,8 +694,7 @@ function MobService.init()
 	local spawner = require(script.Parent.MobSpawner)
 	spawner.init(MobService)
 
-	-- shiftlings guard their ground; Studio key L spawns mobs for testing
-	require(script.Parent.Parent.Interaction.BlockActionService).onBlockBroken(ai.blockBroken)
+	-- Studio key L spawns mobs for testing
 	Remotes.get("DebugAction").OnServerEvent:Connect(function(p: Player, a: any)
 		if RunService:IsStudio() and typeof(a) == "table" and a.type == "spawnMob" then
 			for _, t in MobService.targets() do
@@ -539,8 +711,10 @@ function MobService.init()
 	end, explosionDamage)
 
 	Remotes.get("AttackMob").OnServerEvent:Connect(onAttack)
+	Remotes.get("StareMob").OnServerEvent:Connect(onStare)
 	Players.PlayerRemoving:Connect(function(p)
 		lastSwing[p] = nil
+		heldItem[p] = nil
 	end)
 
 	local acc, snapAcc = 0, 0

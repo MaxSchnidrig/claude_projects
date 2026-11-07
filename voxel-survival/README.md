@@ -4,7 +4,7 @@ A voxel survival sandbox for Roblox, managed with [Rojo](https://rojo.space). Th
 mechanics follow the classic block-survival formula. All art, sounds, UI and every invented name
 are original to this project (see `ARCHITECTURE.md` → "Naming rules").
 
-**Status:** Phase 5 (mobs, combat, explosions) + inventory drag-to-spread ready for Studio testing. Next: Phase 6 (saving).
+**Status:** 0.5.2: Java Edition parity pass (mob/player/tool stats, line of sight, critical hits, double-click collect, brighter nights) ready for Studio testing. Next: Phase 6 (saving).
 
 ## Structure
 
@@ -20,7 +20,7 @@ voxel-survival/
 │   │   ├── Items/     ItemDefs, ItemRegistry, Recipes (data), Crafting, SlotLogic, FurnaceLogic
 │   │   ├── Gameplay/  Mining, SurvivalRules (hunger, regen, falls), Combat (melee, explosions)
 │   │   ├── Mobs/      MobDefs (data), MobPhysics (box vs voxels), Pathfinder (A*)
-│   │   ├── World/     Noise, ChunkData, Biomes, TerrainGen, Features/{Ores,Trees}, VoxelRaycast
+│   │   ├── World/     Noise, ChunkData, Biomes, TerrainGen, Features/{Ores,Trees}, VoxelRaycast, SkyLight
 │   │   ├── Meshing/   SectionSampler, GreedyMesher, BoxMerger
 │   │   ├── Net/       Remotes
 │   │   └── Util/      Hash (deterministic RNG), Scheduler (time-sliced jobs)
@@ -69,12 +69,12 @@ Build a place file without Studio: `rojo build -o rocraft.rbxl`.
 | WASD / Space | Move / jump (jump height 1.2 blocks) |
 | Double-tap W, or Ctrl+W | Sprint (until you release W, stop, hit a wall, or are too hungry) |
 | Left mouse (hold) | Mine the targeted block |
-| Left mouse on a mob (3 blocks) | Attack (full damage once the weapon has recharged) |
+| Left mouse on a mob (3 blocks) | Attack (full damage once the weapon has recharged; critical hit ×1.5 while falling after a jump) |
 | Right mouse (hold) | Place the held block (repeats) |
 | 1–9 / mouse wheel | Select hotbar slot |
 | E | Inventory (2×2 crafting). Esc or E closes |
 | Right mouse on Crafting Table / Furnace / Chest | Open it (Shift + right mouse places against it) |
-| In a window | Left: pick up/put/merge/swap · Right: take half/put one · Shift-click: quick-move · Result slot: craft (Shift: craft all) · Click outside: drop carried stack · Drag with a stack: left spreads it evenly, right puts one per slot |
+| In a window | Left: pick up/put/merge/swap · Right: take half/put one · Shift-click: quick-move · Result slot: craft (Shift: craft all) · Click outside: drop carried stack · Drag with a stack: left spreads it evenly, right puts one per slot · Double-click: gather matching items into the cursor |
 | Q / Ctrl+Q | Drop one / the whole held stack (in a window: of the hovered slot) |
 | Right mouse (hold) with food | Eat (1.6 s, only when not full) |
 | Space in water | Swim up |

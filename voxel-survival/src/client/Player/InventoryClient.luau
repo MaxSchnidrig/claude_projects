@@ -117,6 +117,11 @@ function InventoryClient.click(container: string, index: number, button: string,
 	send({ type = "click", container = container, index = index, button = button, shift = shift })
 end
 
+-- Double-click: gather matching items into the cursor (Java PICKUP_ALL).
+function InventoryClient.collect(container: string, index: number)
+	send({ type = "collect", container = container, index = index })
+end
+
 function InventoryClient.openInventory()
 	send({ type = "openInventory" })
 end

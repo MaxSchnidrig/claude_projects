@@ -35,6 +35,13 @@ local blockedTime = 0
 local peakFeetY: number? = nil
 local FEET_BELOW_ROOT = 3
 local BASE_FOV = 70
+-- Active knockback: horizontal velocity (studs/s) decaying with Java friction.
+local knockback: { vel: Vector3, t: number }? = nil
+
+-- Java: a full-strength sprint hit ends the sprint.
+function MovementController.stopSprint()
+	sprintLatch = false
+end
 
 local function configure(humanoid: Humanoid)
 	humanoid.UseJumpPower = false
@@ -70,13 +77,30 @@ function MovementController.init()
 	end)
 
 	-- Knockback from hits/explosions (the client simulates its own character's physics).
+	-- Hits use Java's formula on our own velocity and ground state (Combat.knockback); the
+	-- horizontal push is held for a short moment so the Humanoid's walking doesn't cancel it.
 	local Remotes = require(Shared.Net.Remotes)
-	Remotes.get("Knockback").OnClientEvent:Connect(function(vel: any)
+	local Combat = require(Shared.Gameplay.Combat)
+	Remotes.get("Knockback").OnClientEvent:Connect(function(kb: any)
 		local character = Players.LocalPlayer.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-		if typeof(vel) == "Vector3" and root and not root.Anchored then
-			root.AssemblyLinearVelocity = Vector3.new(vel.X, math.max(vel.Y, root.AssemblyLinearVelocity.Y), vel.Z)
+		if typeof(kb) ~= "table" or not root or not humanoid or root.Anchored then
+			return
 		end
+		local v = root.AssemblyLinearVelocity / BS / 20 -- blocks/tick
+		local nv: Vector3
+		if typeof(kb.dir) == "Vector3" and typeof(kb.strength) == "number" then
+			local onGround = humanoid.FloorMaterial ~= Enum.Material.Air
+			local x, y, z = Combat.knockback(v.X, v.Y, v.Z, kb.dir.X, kb.dir.Z, kb.strength, onGround)
+			nv = Vector3.new(x, y, z)
+		elseif typeof(kb.add) == "Vector3" then
+			nv = v + kb.add
+		else
+			return
+		end
+		knockback = { vel = Vector3.new(nv.X, 0, nv.Z) * 20 * BS, t = 0 }
+		root.AssemblyLinearVelocity = nv * 20 * BS
 	end)
 	if Players.LocalPlayer.Character then
 		local h = Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
@@ -132,6 +156,21 @@ function MovementController.init()
 			root.AssemblyLinearVelocity = Vector3.new(v.X, vy, v.Z)
 		end
 		humanoid.WalkSpeed = speed
+
+		-- Knockback: keep the pushed horizontal velocity, decaying like Java (ground 0.546 per
+		-- tick, air 0.91), until it falls below walking speed; the Humanoid would cancel it.
+		local kb = knockback
+		if kb and not root.Anchored then
+			local onGround = humanoid.FloorMaterial ~= Enum.Material.Air
+			kb.vel *= (if onGround then 0.546 else 0.91) ^ (dt * 20)
+			kb.t += dt
+			if kb.vel.Magnitude < Config.WALK_SPEED * 0.5 or kb.t > 1.5 then
+				knockback = nil
+			else
+				local cur = root.AssemblyLinearVelocity
+				root.AssemblyLinearVelocity = Vector3.new(kb.vel.X, cur.Y, kb.vel.Z)
+			end
+		end
 
 		-- Fall distance: highest point since last ground contact; reported on landing.
 		local feetY = p.Y - FEET_BELOW_ROOT

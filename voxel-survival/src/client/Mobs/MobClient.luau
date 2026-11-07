@@ -1,9 +1,13 @@
 --!strict
 -- Client side of mobs: builds models from server snapshots (MobSnapshot, 10 Hz, unreliable),
 -- interpolates them ~150 ms in the past for smooth motion, animates them (walk cycles, spider
--- legs, wing flaps, shiftling shards, cinderhusk fuse glow), shows effects (hurt tint, burning,
--- death topple, teleport and explosion flashes) and answers "which mob is under the crosshair".
+-- legs, wing flaps, voidling shards, sneaker fuse glow), shows effects (hurt tint, burning,
+-- death topple, teleport and explosion flashes, critical-hit sparks) and answers "which mob is
+-- under the crosshair". It also reports when the player stares a voidling in the eyes (Java:
+-- view direction within 0.025/distance of its eyes, <= 64 blocks, no block with collision in
+-- between, for 5 ticks); the server checks range and line of sight.
 
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
@@ -14,6 +18,9 @@ local Remotes = require(Shared.Net.Remotes)
 local MobDefs = require(Shared.Mobs.MobDefs)
 local MobModels = require(script.Parent.MobModels)
 local MobSnapshotCodec = require(Shared.Mobs.MobSnapshotCodec)
+local BlockRegistry = require(Shared.Blocks.BlockRegistry)
+local VoxelRaycast = require(Shared.World.VoxelRaycast)
+local ClientWorld = require(script.Parent.Parent.World.ClientWorld)
 
 local BS = Config.BLOCK_SIZE
 local INTERP_DELAY = 0.15
@@ -110,6 +117,35 @@ local function flashAt(pos: Vector3, color: Color3, size: number, duration: numb
 	end)
 end
 
+-- Critical hit: a burst of small sparks around the mob (original effect).
+local function critSparks(center: Vector3)
+	for _ = 1, 14 do
+		local p = Instance.new("Part")
+		p.Anchored = true
+		p.CanCollide = false
+		p.CanQuery = false
+		p.CanTouch = false
+		p.CastShadow = false
+		p.Material = Enum.Material.Neon
+		p.Color = Color3.fromRGB(255, 236, 170)
+		p.Size = Vector3.one * 0.35
+		local dir = Vector3.new(math.random() - 0.5, math.random() * 0.8, math.random() - 0.5)
+		dir = if dir.Magnitude > 0.01 then dir.Unit else Vector3.yAxis
+		local start = center + dir * 0.8
+		p.CFrame = CFrame.new(start) * CFrame.Angles(math.random() * 6, math.random() * 6, 0)
+		p.Parent = folder
+		local t = 0.35 + math.random() * 0.25
+		TweenService:Create(p, TweenInfo.new(t, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			CFrame = CFrame.new(start + dir * (3 + math.random() * 3)),
+			Size = Vector3.one * 0.08,
+			Transparency = 1,
+		}):Play()
+		task.delay(t, function()
+			p:Destroy()
+		end)
+	end
+end
+
 local function onSnapshot(packet: any)
 	if typeof(packet) ~= "buffer" then
 		return
@@ -139,6 +175,8 @@ local function onEvent(e: any)
 	local m = mobs[e.id]
 	if e.type == "hurt" and m then
 		m.hurtUntil = os.clock() + 0.35
+	elseif e.type == "crit" and m then
+		critSparks(m.pos + Vector3.new(0, m.def.height * BS / 2, 0))
 	elseif e.type == "died" and m then
 		m.dying = os.clock()
 	elseif e.type == "teleport" then
@@ -179,7 +217,7 @@ local function pose(m: Mob, now: number)
 	local root = CFrame.new(m.pos) * CFrame.Angles(0, m.yaw, 0)
 	if def.key == "arrow" then
 		root = CFrame.new(m.pos) * CFrame.Angles(0, m.yaw, 0) * CFrame.Angles(m.pitch, 0, 0)
-	elseif def.key == "shiftling" then
+	elseif def.key == "voidling" then
 		root *= CFrame.new(0, 0.6 + math.sin(now * 2 + m.id) * 0.25, 0) -- floats
 	end
 	if m.dying then
@@ -219,7 +257,7 @@ local function pose(m: Mob, now: number)
 			localCF = CFrame.new(0, math.sin(now * 3) * 0.05 * BS, 0) * localCF * CFrame.Angles(0, now, 0)
 		end
 		info.part.CFrame = root * localCF
-		-- colour: hurt tint, fuse glow, angry shiftling core
+		-- colour: hurt tint, fuse glow, angry voidling core
 		local color = info.baseColor
 		if limb == "fuse" and fusing then
 			local pulse = (math.sin(now * 14) + 1) / 2
@@ -318,7 +356,7 @@ function MobClient.raycast(origin: Vector3, dir: Vector3, maxDist: number): (num
 			local hw = m.def.width / 2 * BS
 			local lo = Vector3.new(m.pos.X - hw, m.pos.Y, m.pos.Z - hw)
 			local hi = Vector3.new(m.pos.X + hw, m.pos.Y + m.def.height * BS, m.pos.Z + hw)
-			if m.def.key == "shiftling" then
+			if m.def.key == "voidling" then
 				lo += Vector3.new(0, 0.6 * BS, 0)
 				hi += Vector3.new(0, 0.6 * BS, 0)
 			end

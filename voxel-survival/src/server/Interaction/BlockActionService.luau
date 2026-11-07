@@ -30,7 +30,7 @@ local AIR = 0
 local isLiquid = BlockRegistry.isLiquid
 
 local BlockActionService = {}
--- Listeners called after a player breaks a block (survival exhaustion, shiftling anger, ...).
+-- Listeners called after a player breaks a block (survival exhaustion, voidling anger, ...).
 -- Registered by those services to avoid require cycles.
 local blockBrokenListeners: { (Player, number, number, number) -> () } = {}
 function BlockActionService.onBlockBroken(fn: (Player, number, number, number) -> ())
@@ -247,8 +247,9 @@ local function finishBreak(player: Player, st: PState, x: number, y: number, z: 
 		-- chest / furnace contents spill out
 		ItemEntityService.spawnAround(BlockEntityService.remove(x, y, z), center)
 	end
-	if Mining.usesDurability(id, item) then
-		InventoryService.damageSelectedTool(player, 1)
+	local wear = Mining.durabilityCost(id, item)
+	if wear > 0 then
+		InventoryService.damageSelectedTool(player, wear)
 	end
 	BlockActionService.stats.accepted += 1
 	broadcast(key, x, y, z, AIR, player)

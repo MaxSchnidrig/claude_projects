@@ -8,9 +8,9 @@
 --   Skeleton    chunky skull with a jaw and glowing pale-blue eye squares, slatted ribcage,
 --               crude bow in one hand
 --   Spider      dark-brown two-part body with orange stripes, cluster of amber eyes, 8 thin legs
---   Cinderhusk  squat ash-grey barrel on two stumpy legs, short arms, glowing ember crack lines
+--   Sneaker  squat ash-grey barrel on two stumpy legs, short arms, glowing ember crack lines
 --               and a single horizontal ember slit for an eye (glows hotter while fusing)
---   Shiftling   legless floating violet crystal figure: glassy core, diamond-shaped glowing head,
+--   Voidling   legless floating violet crystal figure: glassy core, diamond-shaped glowing head,
 --               shard "arms" orbiting it, a tapering crystal trail below, a block hovering in front
 --   Cow         tawny with a dark back stripe, cream belly patch, small curved horns
 --   Pig         dusky pink-grey with a bristly darker ridge and little tusk nubs
@@ -118,10 +118,10 @@ do
 	designs.spider = d
 end
 
--- Cinderhusk -----------------------------------------------------------------------------------
+-- Sneaker -----------------------------------------------------------------------------------
 do
 	local ash, char, ember = rgb(96, 92, 88), rgb(46, 42, 40), rgb(255, 120, 30)
-	designs.cinderhusk = {
+	designs.sneaker = {
 		{ size = v(0.3, 0.45, 0.32), pos = v(-0.18, 0.225, 0), color = char, limb = "legL", hinge = v(-0.18, 0.45, 0), phase = 0 },
 		{ size = v(0.3, 0.45, 0.32), pos = v(0.18, 0.225, 0), color = char, limb = "legR", hinge = v(0.18, 0.45, 0), phase = 1 },
 		{ size = v(0.7, 0.75, 0.56), pos = v(0, 0.82, 0.04), color = ash, limb = "fuse" }, -- barrel body
@@ -138,10 +138,10 @@ do
 	}
 end
 
--- Shiftling ------------------------------------------------------------------------------------
+-- Voidling ------------------------------------------------------------------------------------
 do
 	local crystal, core = rgb(92, 64, 168), rgb(170, 140, 255)
-	designs.shiftling = {
+	designs.voidling = {
 		{ size = v(0.14, 0.14, 0.14), pos = v(0, 0.35, 0), color = crystal, material = Enum.Material.Glass, transparency = 0.2, rotation = v(45, 45, 0) },
 		{ size = v(0.2, 0.2, 0.2), pos = v(0, 0.65, 0), color = crystal, material = Enum.Material.Glass, transparency = 0.2, rotation = v(45, 45, 0) },
 		{ size = v(0.28, 0.4, 0.22), pos = v(0, 1.0, 0), color = crystal, material = Enum.Material.Glass, transparency = 0.15 },

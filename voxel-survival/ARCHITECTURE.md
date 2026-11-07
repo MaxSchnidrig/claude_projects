@@ -2,7 +2,7 @@
 
 ## 0. Direction and naming rules
 
-- **Gameplay mechanics** follow the classic block-survival formula as closely as possible:
+- **Gameplay mechanics** replicate Java Edition as exactly as possible; minecraft.wiki values are the reference for every mechanic (see 5f). Only names, models, textures and sounds are original:
   - 3×3 / 2×2 crafting with the same recipe shapes
   - smelting
   - tool tiers Wood / Stone / Iron / Gold / Diamond and mining speeds
@@ -206,17 +206,84 @@ Phase 2 server validation for break and place:
 
 | Piece | Design |
 |---|---|
-| Simulation | Server-only data (no replicated Instances). 20 Hz: AI sets a desired velocity, `MobPhysics` moves the box through the voxel grid (gravity 32 b/s², step-up by jumping, buoyancy, spiders climb), then falls, lava and daylight burning apply. Mobs only touch loaded chunks (unloaded = solid), so they never trigger chunk generation |
+| Simulation | Server-only data (no replicated Instances). 20 Hz: AI sets a desired velocity, then Java per-tick integration (acceleration, friction 0.546 ground / 0.91 air / 0.8 water, gravity 0.08 with drag 0.98, jump 0.42, swim-up 0.04, spiders climb 0.2) moves the box with `MobPhysics`; falls, lava, fire and daylight burning apply. Mobs only touch loaded chunks (unloaded = solid), so they never trigger chunk generation |
 | Pathfinding | `Pathfinder`: A* over walkable cells (floor solid, height free), steps up 1, drops up to 3, 250 node budget, repath every second; partial paths when the goal is out of budget |
-| Replication | `MobSnapshot` (UnreliableRemoteEvent) 10 Hz per player, mobs within 72 blocks: id, type code, position, yaw, pitch, flags. Clients interpolate 150 ms back and animate locally; `MobEvent` (reliable) carries hurt, death, teleport and explosion effects |
-| Mobs | Zombie (melee 3), Skeleton (arrows 2–4, keeps 5–14 blocks, strafes), Spider (melee 2, neutral in daylight, leaps, climbs), Cinderhusk (fuses 1.5 s within 3 blocks, explosion power 3), Shiftling (neutral, teleports, hostile when hit or when a block is broken within 4 blocks of it, melee 7). Cow, Pig, Sheep, Chicken wander and panic when hurt. Zombies and skeletons burn in daylight under open sky; mobs that die burning drop cooked meat |
-| Spawning | Hostiles: one attempt per player per second, 24–48 blocks away, opaque floor and room for the mob, open sky only at night, caves at any time (no block light yet). Animals: every 6 s on grass under open sky by day. Caps 12 hostile / 10 animals per player, 60 total. Despawn beyond 64 blocks (and hostiles beyond 32 blocks: 1/40 per second) |
-| Combat | `Combat`: item damage (swords 4–7, axes 7–9, …), charge scaling `0.2 + charge² × 0.8`, 0.5 s invulnerability, knockback; server checks reach (3 blocks + slack) and line of sight. Explosions: `floor((i² + i)/2 × 7 × 2p + 1)` damage, blocks within p × 0.7–1.3 destroyed (bedrock, obsidian and liquids resist), drops at 1/p chance |
-| New items | Swords (5 tiers), leather, feather, bone, arrow, string, gunpowder, rotten flesh, Rift Shard; recipes for swords, wool from string, TNT (no ignition yet) |
+| Replication | `MobSnapshot` (UnreliableRemoteEvent) 10 Hz per player, mobs within 96 blocks: id, type code, position, yaw, pitch, flags. Clients interpolate 150 ms back and animate locally; `MobEvent` (reliable) carries hurt, death, teleport and explosion effects |
+| Mobs / spawning / combat | Java values since 0.5.2: see 5f |
+| New items | Swords (5 tiers), leather, feather, bone, arrow, string, gunpowder, rotten flesh, Void Shard; recipes for swords, wool from string, TNT (no ignition yet) |
+
+## 5f. Java parity check (0.5.2)
+
+Reference: minecraft.wiki (Java Edition, Normal difficulty). Speeds: a mob with movement value
+`s` (attribute × goal modifier) walks `43.17 × s²` blocks/s. 1 block = 3 studs.
+
+### Mobs
+
+| Mob | Value | Before 0.5.2 | Java (now) |
+|---|---|---|---|
+| All hostiles | Detection | nearest player in range, no sight needed | needs line of sight (any block with collision blocks it, glass and leaves included), ±4 blocks vertically, checked about every 0.5 s; target kept while in range and seen within 3 s; hitting a mob makes it target you |
+| All | Knockback | 7 b/s sideways + 5 b/s up | 0.4 blocks/tick: `v/2 + dir × 0.4`, up `min(0.4, vy/2 + 0.4)` only when on the ground; +0.5 for a full-strength sprint hit |
+| All | Invulnerability | 0.5 s, later hits ignored | 0.5 s; a stronger hit deals the difference without knockback (players too) |
+| All | Melee reach | centre distance ≤ reach + 0.35 | attacker box grown by 0.83 blocks horizontally touches the target box, with line of sight |
+| Zombie | Speed | 2.3 b/s | 0.23 → 2.28 b/s |
+| Zombie | Follow range / armor | 24 / 0 | 35 / 2 |
+| Zombie | Drops | rotten flesh 0–2 | + iron ingot, carrot or potato (2.5 % total, player kills; baked potato if burning) |
+| Zombie / Skeleton | Daylight | burn while in the sun | `brightness > 0.5`, chance `(b − 0.4) × 2 / 30` per tick, open sky at the eyes → 8 s of fire |
+| Skeleton | Speed / height | 2.5 b/s / 1.95 | 0.25 → 2.70 b/s / 1.99 |
+| Skeleton | Bow | range 14, every 2–2.6 s, 24 b/s, 2–4 damage, backs off < 5 | range 15, 1 s draw + 2 s wait, 32 b/s (1.6 b/tick, inaccuracy 6), 3–5 damage, strafes after 1 s in view, backs off < 3.75 |
+| Spider | Speed | 3.0 b/s | 0.3 → 3.89 b/s |
+| Spider | Neutral | daylight under open sky | targets only at brightness < 0.5; in light 1 % per tick to give up |
+| Spider | Leap / climb | 6 b/s, < 3.5 blocks / 3 b/s | 0.4 b/tick from 2–4 blocks / 0.2 b/tick (4 b/s) |
+| Spider | Drops | string 0–2 | + spider eye 0–1 (1/3, player kills) |
+| Sneaker (Creeper) | Size / speed | 0.7 × 1.5 / 2.5 b/s | 0.6 × 1.7 / 2.70 b/s |
+| Sneaker | Fuse | sight only to start, runs within 7 | starts within 3; runs only while the target is within 7 **and visible**, else cools down |
+| Voidling (Enderman) | Size / follow | 0.6 × 2.6 / 24 | 0.6 × 2.9 / 64 |
+| Voidling | Speed | 3.0 b/s | calm 0.3 → 3.89 b/s, angry 0.45 → 8.74 b/s |
+| Voidling | Provoked by | being hit, blocks broken within 4 blocks | being hit, or a player looking at its eyes for 5 ticks within 64 blocks with clear sight (anger 20–39 s); freezes while stared at, teleports away if you come within 4, teleports toward targets beyond 16 |
+| Voidling | Teleports | random every 20–50 s, 50 % when hurt, out of water | Java rules: water hurts it (1/tick) and it tries to teleport out; hits from non-living sources 90 %; dodges arrows; daylight under open sky at random |
+| Cow / Pig / Sheep / Chicken | Speed | 2.0 b/s, wander at half speed | 0.2 / 0.25 / 0.23 / 0.25 → 1.73 / 2.70 / 2.28 / 2.70 b/s, stroll at full speed every ~6 s within 10 blocks |
+| Cow / Pig / Sheep / Chicken | Panic | ×1.25 for 5 s | ×2 / ×1.25 / ×1.25 / ×1.4 for 5 s (cow 6.9 b/s) |
+| All | Group sizes | 1–3 / 2–4 / 1–2 | 4 (zombie, skeleton, spider, sneaker, animals), voidling 1–4; weights zombie 95, others 100, voidling 10 |
+| Hostile spawning | Rules | 1 attempt/s, 24–48 blocks, night sky or caves | packs at random heights in loaded chunks (server radius 8 chunks), 24–128 blocks, light: fail if sky > rand(32), then `(sky − darkening) ≤ rand(8)`; cap 70 per player |
+| Hostile despawn | Rules | > 64 blocks; > 32: 1/40 per s | > 128 blocks instantly; > 32 and idle 30 s: 1/800 per tick |
+| Animals | Spawning | every 6 s by day, despawn far away | with new chunks (10 % per chunk, group of 4) and every 20 s on grass with light > 8; cap 10; never despawn (parked with their chunk) |
+| Burning (mobs) | Lava fire | 8 s | 15 s; fire 1 per second |
+
+### Player
+
+| Value | Before | Java (now) |
+|---|---|---|
+| Block reach / entity reach | 4.5 / 3 | same |
+| Walk / sprint | 13 / 16.8 studs/s | 12.95 / 16.84 studs/s (4.317 / 5.612 b/s) |
+| Jump height | 3.6 studs (1.2 blocks) | 3.757 studs (1.2522 blocks) |
+| Hand attack cooldown | 0.25 s | 0.25 s (speed 4); switching items restarts the cooldown |
+| Critical hits | none | charge > 0.9, falling, airborne, not sprinting, not in liquid → ×1.5 with sparks |
+| Invulnerability | none | 0.5 s with the difference rule |
+| Lava | 4 per 0.5 s | same + 15 s of fire (1 per second, water puts it out) |
+
+### Tools and weapons (wood / stone / iron / gold / diamond)
+
+| Kind | Damage | Attack speed (seconds per full hit) | Before |
+|---|---|---|---|
+| Sword | 4 / 5 / 6 / 4 / 7 | 1.6 (0.625 s) | same |
+| Axe | 7 / 9 / 9 / 7 / 9 | 0.8 / 0.8 / 0.9 / 1.0 / 1.0 (1.25 / 1.25 / 1.11 / 1 / 1 s) | 1.1 s for all tiers |
+| Pickaxe | 2 / 3 / 4 / 2 / 5 | 1.2 (0.83 s) | same |
+| Shovel | 2.5 / 3.5 / 4.5 / 2.5 / 5.5 | 1.0 (1 s) | same |
+| Hoe | 1 | 1 / 2 / 3 / 1 / 4 (1 / 0.5 / 0.33 / 1 / 0.25 s) | 1 s for all tiers |
+
+Mining speeds (2 / 4 / 6 / 12 / 8) and durability (59 / 131 / 250 / 32 / 1561, shears 238) already
+matched. Durability loss now follows Java: breaking a block with hardness > 0 costs swords 2 and
+every other tool 1 (before: 1 for everything); hitting a mob costs swords 1, other tools 2, shears 0
+(before: shears 2).
+
+### Not replicated yet
+
+Sword sweep attacks, experience, Voidlings picking up blocks, sneaking, block light (torches),
+status effects (spider eye poison), and the attack-cooldown reset on swings that hit nothing.
 
 ## 6. Mechanics spec (later phases)
 
-Values follow the classic formula. Speeds are in blocks/s; at 3 studs per block, walk 4.317 → 13 studs/s and sprint 5.612 → 16.8 studs/s.
+Values follow the classic formula. Speeds are in blocks/s; at 3 studs per block, walk 4.317 → 12.95 studs/s and sprint 5.612 → 16.84 studs/s.
 
 | System | Spec |
 |---|---|
@@ -253,9 +320,9 @@ Values follow the classic formula. Speeds are in blocks/s; at 3 studs per block,
 | Gameplay role | Proposal | Notes |
 |---|---|---|
 | Signal-dust / logic wire system | **Volt**: Volt Ore, Volt Dust, Volt Wire, Volt Torch, Volt Relay (repeater), Volt Comparator, Volt Lamp, Volt Block | Already used in generation as `volt_ore` (purple placeholder) |
-| Silent exploding hostile | **Cinderhusk**: a hunched, ash-grey walker with glowing cracks. It crackles audibly (clear warning) before bursting and breaking blocks | Different silhouette and colour, and it gives an audible warning instead of a silent approach |
-| Tall teleporting neutral mob that moves blocks | **Shiftling**: a floating crystal-limbed figure that blinks between spots and carries one block | Drops **Rift Shard** (throwable teleport item) |
-| Fire dimension | **The Underburn**: Scorchstone, Ashsand, Lumen Crystal (light block), Ember Quartz, portal framed with Obsidian | |
+| Silent exploding hostile | **Sneaker**: a hunched, ash-grey walker with glowing cracks. It crackles audibly (clear warning) before bursting and breaking blocks | Different silhouette and colour, and it gives an audible warning instead of a silent approach |
+| Tall teleporting neutral mob that moves blocks | **Voidling**: a floating crystal-limbed figure that blinks between spots and carries one block | Drops **Void Shard** (throwable teleport item) |
+| Fire dimension | **The Abyss**: Scorchstone, Ashsand, Lumen Crystal (light block), Ember Quartz, portal framed with Obsidian | |
 | End-game ore / tier | **Cindersteel** (upgrade above Diamond) | |
-| End dimension and boss | **The Rim** (floating islands) and the **Voidwyrm** boss | |
+| End dimension and boss | **The Void** (floating islands) and the **Voidwyrm** boss | |
 | Default player look | The player's own Roblox avatar | No default skin needed |

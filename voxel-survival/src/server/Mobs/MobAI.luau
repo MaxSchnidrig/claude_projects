@@ -1,28 +1,50 @@
 --!strict
--- Mob behaviours. Each tick `think` sets the mob's desired horizontal velocity (wantX/wantZ),
--- jump request and facing; MobService then moves it with MobPhysics.
+-- Mob behaviours, following the Java Edition goals. Each tick `think` sets the mob's wanted ground
+-- velocity (wantX/wantZ, blocks/s), jump request and facing; MobService moves it with Java
+-- physics.
 --
---   wander      passive animals: idle / stroll to random nearby cells; panic (run away) when hurt
---   melee       chase the nearest player (A* path, repath 1 s) and hit within reach
---               spiders: neutral in daylight under open sky unless hurt; they leap and climb
---   ranged      skeletons: keep 5..14 blocks away with line of sight, shoot arrows every ~2 s
---   exploder    cinderhusk: walk up, then fuse for 1.5 s within 3 blocks (crackling glow) and
---               explode; the fuse cools down if the player gets more than 7 blocks away
---   teleporter  shiftling: neutral wanderer that blinks around; becomes hostile when hit OR when
---               a player breaks a block within 4 blocks of it (it guards its patch of ground);
---               teleports away from water and often when hurt
+-- Targeting (all hostiles, Java NearestAttackableTargetGoal + TargetGoal):
+--   * a new target is looked for about every 0.5 s: the nearest player within followRange
+--     (and within 4 blocks vertically) that the mob can SEE: no block with collision (glass and
+--     leaves included) between the mob's eyes and the player's eyes
+--   * a target is kept while it stays within followRange and was seen in the last 3 s
+--   * being hit by a player makes the mob target that player (HurtByTargetGoal)
+--
+--   wander      passive animals: stroll (about every 6 s, within 10 blocks); panic for 5 s when
+--               hurt or burning, running to random spots within 5 blocks at the panic speed
+--   melee       zombies, spiders: path to the target and hit when the attack box (own box grown
+--               by 0.83 blocks horizontally) touches it, with line of sight, once per second.
+--               Spiders only pick targets in darkness (brightness < 0.5) and, in light, drop
+--               their target with a 1 % chance per tick; they leap from 2-4 blocks away
+--   ranged      skeletons (bow goal): approach until within 15 blocks and seen for 1 s, then
+--               strafe (back off under 3.75 blocks); draw 1 s, shoot, wait 2 s
+--   exploder    sneaker (creeper): starts its 1.5 s fuse within 3 blocks; the fuse runs while
+--               the target is within 7 blocks AND visible, otherwise it cools down
+--   teleporter  voidling (enderman): neutral. Provoked by a player looking it in the eyes for
+--               5 ticks (client-reported, checked by MobService) or by being hit. While angry it
+--               chases at speed 0.45, freezes while stared at (teleports away if the player gets
+--               within 4 blocks) and teleports toward a target more than 16 blocks away.
+--               Water hurts it; hits from non-living sources make it teleport (90 %); it dodges
+--               projectiles; in daylight under open sky it teleports away at random.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Pathfinder = require(Shared.Mobs.Pathfinder)
+local MobDefs = require(Shared.Mobs.MobDefs)
+local Combat = require(Shared.Gameplay.Combat)
 local BlockRegistry = require(Shared.Blocks.BlockRegistry)
 local ExplosionService = require(script.Parent.Parent.World.ExplosionService)
 
 local isLiquid = BlockRegistry.isLiquid
+local isSolid = BlockRegistry.isSolid
 
 local MobAI = {}
 local S: any = nil -- MobService
+
+local PLAYER_HEIGHT = 1.8
+local PLAYER_HALF_WIDTH = 0.3
+local UNSEEN_MEMORY = 3 -- seconds (60 ticks)
 
 function MobAI.init(service: any)
 	S = service
@@ -32,6 +54,18 @@ local function face(m: any, dx: number, dz: number)
 	if dx ~= 0 or dz ~= 0 then
 		m.yaw = math.atan2(-dx, -dz) -- CFrame.Angles(0, yaw, 0) looks along (-sin, -cos)
 	end
+end
+
+local function speedOf(m: any, modifier: number, attr: number?): number
+	return MobDefs.blocksPerSecond((attr or m.def.speedAttr) * modifier)
+end
+
+local function eyeOf(m: any): Vector3
+	return Vector3.new(m.x, m.y + (m.def.eyeHeight or m.def.height * 0.85), m.z)
+end
+
+local function gaussian(): number
+	return math.sqrt(-2 * math.log(1 - math.random())) * math.cos(2 * math.pi * math.random())
 end
 
 -- Steer straight toward (tx, tz). Returns true when there.
@@ -85,94 +119,170 @@ local function goTo(m: any, gx: number, gy: number, gz: number, speed: number, n
 	return steerTo(m, gx + 0.5, gz + 0.5, speed)
 end
 
+local function chase(m: any, t: any, speed: number, now: number)
+	goTo(m, math.floor(t.feet.X), math.floor(t.feet.Y + 0.01), math.floor(t.feet.Z), speed, now)
+end
+
 local function horizontalDist(m: any, p: Vector3): number
 	local dx, dz = p.X - m.x, p.Z - m.z
 	return math.sqrt(dx * dx + dz * dz)
 end
 
--- Is this mob standing in daylight under open sky?
-local function lit(m: any): boolean
-	return S.isDay() and S.skyExposed(math.floor(m.x), math.floor(m.y + m.def.height), math.floor(m.z))
+local function canSee(m: any, t: any): boolean
+	return S.lineOfSight(eyeOf(m), t.eye)
 end
 
 local function angry(m: any, now: number): boolean
 	return (m.ai.angryUntil or 0) > now
 end
 
--- Nearest valid target for a hostile mob, or nil.
-local function acquire(m: any, targets: { any }, now: number): any?
-	local def = m.def
-	if def.behavior == "teleporter" and not angry(m, now) then
+-- Brightness check for spiders (Java: hostile only below 0.5).
+local function inLight(m: any): boolean
+	return S.brightness(m.x, m.y + m.def.height, m.z) >= 0.5
+end
+
+local function targetFor(targets: { any }, player: Player?): any?
+	if not player then
 		return nil
 	end
-	if def.neutralInLight and not angry(m, now) and lit(m) then
+	for _, t in targets do
+		if t.player == player then
+			return t
+		end
+	end
+	return nil
+end
+
+-- Current target of a hostile mob (Java targeting rules, see the header), or nil.
+local function acquire(m: any, targets: { any }, now: number): any?
+	local a = m.ai
+	local def = m.def
+	-- keep the current target?
+	local t = targetFor(targets, a.target)
+	if t then
+		local d = (t.feet - Vector3.new(m.x, m.y, m.z)).Magnitude
+		local seen = canSee(m, t)
+		if seen then
+			a.seenAt = now
+		end
+		local keep = d <= def.followRange and now - (a.seenAt or now) <= UNSEEN_MEMORY
+		if def.key == "spider" and keep and inLight(m) and not angry(m, now) and math.random() < 0.01 then
+			keep = false -- spiders in light give up now and then
+		end
+		if def.behavior == "teleporter" and not angry(m, now) then
+			keep = false
+		end
+		if keep then
+			return t
+		end
+		a.target = nil
+	end
+	if def.behavior == "teleporter" then
+		return nil -- only provoked (stare / hit)
+	end
+	if def.key == "spider" and inLight(m) then
+		return nil
+	end
+	-- look for a new one about every 10 ticks
+	if math.random() >= 0.1 then
 		return nil
 	end
 	local best, bestD = nil, def.followRange
-	for _, t in targets do
-		local d = (t.feet - Vector3.new(m.x, m.y, m.z)).Magnitude
-		if d < bestD and math.abs(t.feet.Y - m.y) < 10 then
-			if m.ai.angryAt == nil or not angry(m, now) or t.player == m.ai.angryAt then
-				best, bestD = t, d
-			end
+	local pos = Vector3.new(m.x, m.y, m.z)
+	for _, c in targets do
+		local d = (c.feet - pos).Magnitude
+		if d <= bestD and math.abs(c.feet.Y - m.y) <= 4 + def.height and canSee(m, c) then
+			best, bestD = c, d
 		end
+	end
+	if best then
+		a.target = best.player
+		a.seenAt = now
+		a.path = nil
 	end
 	return best
 end
 
-local function wander(m: any, now: number, speedFactor: number)
-	local a = m.ai
-	if not a.wanderAt or now >= a.wanderAt then
-		a.wanderAt = now + 4 + math.random() * 6
-		a.wanderGoal = nil
-		if math.random() < 0.6 then
-			-- a random walkable cell within 6 blocks
-			for _ = 1, 6 do
-				local gx = math.floor(m.x) + math.random(-6, 6)
-				local gz = math.floor(m.z) + math.random(-6, 6)
-				local h = math.ceil(m.def.height - 0.05)
-				for dy = 2, -3, -1 do
-					local gy = math.floor(m.y) + dy
-					if Pathfinder.walkable(S.solid, gx, gy, gz, h) then
-						local below = S.blockAt(gx, gy - 1, gz)
-						if below and not isLiquid[below + 1] then
-							a.wanderGoal = { gx, gy, gz }
-							break
-						end
-					end
-				end
-				if a.wanderGoal then
-					break
+-- Random reachable cell within `h` blocks horizontally and `v` vertically (Java DefaultRandomPos).
+local function randomSpot(m: any, h: number, v: number, awayFrom: Vector3?): { number }?
+	local height = math.ceil(m.def.height - 0.05)
+	for _ = 1, 10 do
+		local ox, oz = math.random(-h, h), math.random(-h, h)
+		if awayFrom then
+			local ax, az = m.x - awayFrom.X, m.z - awayFrom.Z
+			if ox * ax + oz * az < 0 then
+				ox, oz = -ox, -oz
+			end
+		end
+		local gx, gz = math.floor(m.x) + ox, math.floor(m.z) + oz
+		for dy = v, -v, -1 do
+			local gy = math.floor(m.y) + dy
+			if Pathfinder.walkable(S.solid, gx, gy, gz, height) then
+				local below = S.blockAt(gx, gy - 1, gz)
+				local feet = S.blockAt(gx, gy, gz)
+				if below and feet and not isLiquid[below + 1] and not isLiquid[feet + 1] then
+					return { gx, gy, gz }
 				end
 			end
 		end
 	end
+	return nil
+end
+
+-- Java RandomStrollGoal: a 1-in-120 chance per tick to pick a spot within 10/7 blocks.
+local function wander(m: any, now: number, dt: number)
+	local a = m.ai
+	if not a.wanderGoal and math.random() < dt * 20 / 120 then
+		a.wanderGoal = randomSpot(m, 10, 7, nil)
+		a.wanderGiveUp = now + 10
+	end
 	local g = a.wanderGoal
 	if g then
-		if goTo(m, g[1], g[2], g[3], m.def.speed * speedFactor, now) then
+		if goTo(m, g[1], g[2], g[3], speedOf(m, m.def.wander), now) or now > (a.wanderGiveUp or 0) then
 			a.wanderGoal = nil
 		end
 	end
 end
 
-local function teleport(m: any): boolean
+-- Teleport (Java EnderMan.teleport): random spot +-32 blocks; drops to the first floor below;
+-- the spot must be free and dry. `towards` aims 16 blocks toward a position instead.
+local function teleport(m: any, attempts: number, towards: Vector3?): boolean
 	local from = Vector3.new(m.x, m.y, m.z)
 	local h = math.ceil(m.def.height - 0.05)
-	for _ = 1, 16 do
-		local gx = math.floor(m.x) + math.random(-16, 16)
-		local gz = math.floor(m.z) + math.random(-16, 16)
-		for gy = math.floor(m.y) + 8, math.floor(m.y) - 8, -1 do
-			if Pathfinder.walkable(S.solid, gx, gy, gz, h) then
-				local feet = S.blockAt(gx, gy, gz)
-				if feet and not isLiquid[feet + 1] then
-					m.x, m.y, m.z = gx + 0.5, gy, gz + 0.5
-					m.vx, m.vy, m.vz = 0, 0, 0
-					m.peakY = m.y
-					m.ai.path = nil
-					S.broadcastEvent({ type = "teleport", id = m.id, from = from * 3, to = Vector3.new(m.x, m.y, m.z) * 3 }, from)
-					return true
-				end
+	for _ = 1, attempts do
+		local tx, ty, tz
+		if towards then
+			local dir = (Vector3.new(m.x, m.y + m.def.height / 2, m.z) - towards)
+			dir = if dir.Magnitude > 0.01 then dir.Unit else Vector3.xAxis
+			tx = m.x + (math.random() - 0.5) * 8 - dir.X * 16
+			ty = m.y + math.random(0, 15) - 8 - dir.Y * 16
+			tz = m.z + (math.random() - 0.5) * 8 - dir.Z * 16
+		else
+			tx = m.x + (math.random() - 0.5) * 64
+			ty = m.y + math.random(0, 63) - 32
+			tz = m.z + (math.random() - 0.5) * 64
+		end
+		local gx, gz = math.floor(tx), math.floor(tz)
+		local gy = math.clamp(math.floor(ty), 1, 126)
+		while gy > 1 do
+			local below = S.blockAt(gx, gy - 1, gz)
+			if below == nil then
+				break
 			end
+			if isSolid[below + 1] then
+				break
+			end
+			gy -= 1
+		end
+		local below = S.blockAt(gx, gy - 1, gz)
+		local feet = S.blockAt(gx, gy, gz)
+		if below and feet and isSolid[below + 1] and not isLiquid[feet + 1] and Pathfinder.walkable(S.solid, gx, gy, gz, h) then
+			m.x, m.y, m.z = gx + 0.5, gy, gz + 0.5
+			m.vx, m.vy, m.vz = 0, 0, 0
+			m.peakY = m.y
+			m.ai.path = nil
+			S.broadcastEvent({ type = "teleport", id = m.id, from = from * 3, to = Vector3.new(m.x, m.y, m.z) * 3 }, from)
+			return true
 		end
 	end
 	return false
@@ -180,199 +290,299 @@ end
 
 -- Behaviours ---------------------------------------------------------------------------------
 
-local function passive(m: any, now: number)
+local function passive(m: any, now: number, dt: number)
 	local a = m.ai
-	if (a.panicUntil or 0) > now then
+	if (a.panicUntil or 0) > now or m.burning > 0 then
 		m.flags = S.FLAG.PANIC
-		local from = a.panicFrom or Vector3.new(m.x, m.y, m.z)
-		local dx, dz = m.x - from.X, m.z - from.Z
-		local d = math.sqrt(dx * dx + dz * dz)
-		if d < 0.01 then
-			dx, dz, d = math.random() - 0.5, math.random() - 0.5, 0.5
+		local g = a.panicGoal
+		if not g then
+			g = randomSpot(m, 5, 4, a.panicFrom)
+			a.panicGoal = g
 		end
-		local tx, tz = m.x + dx / d * 8, m.z + dz / d * 8
-		goTo(m, math.floor(tx), math.floor(m.y), math.floor(tz), m.def.speed * 1.25, now)
+		if g then
+			if goTo(m, g[1], g[2], g[3], speedOf(m, m.def.panic), now) then
+				a.panicGoal = nil
+			end
+		end
 		return
 	end
+	a.panicGoal = nil
 	m.flags = 0
-	wander(m, now, 0.5)
+	wander(m, now, dt)
 end
 
-local function melee(m: any, now: number, targets: { any })
+-- Java mob attack box: own box grown by MOB_ATTACK_REACH horizontally touches the player's box.
+local function inAttackReach(m: any, t: any): boolean
+	local r = m.def.width / 2 + Combat.MOB_ATTACK_REACH + PLAYER_HALF_WIDTH
+	return math.abs(t.feet.X - m.x) <= r and math.abs(t.feet.Z - m.z) <= r
+		and t.feet.Y < m.y + m.def.height and t.feet.Y + PLAYER_HEIGHT > m.y
+end
+
+local function melee(m: any, now: number, dt: number, targets: { any }, speed: number?)
 	local a = m.ai
 	local t = acquire(m, targets, now)
-	m.flags = if angry(m, now) then S.FLAG.ANGRY else 0
+	if m.def.behavior ~= "teleporter" then
+		m.flags = 0
+	end
 	if not t then
-		wander(m, now, 0.5)
+		wander(m, now, dt)
 		return
 	end
 	local def = m.def
-	local d = horizontalDist(m, t.feet)
-	local dy = t.feet.Y - m.y
-	if d <= def.reach + def.width / 2 + 0.35 and math.abs(dy) < 1.6 then
+	if inAttackReach(m, t) then
 		m.wantX, m.wantZ = 0, 0
 		face(m, t.feet.X - m.x, t.feet.Z - m.z)
-		if now >= (a.nextAttack or 0) then
+		if now >= (a.nextAttack or 0) and canSee(m, t) then
 			a.nextAttack = now + def.attackCooldown
 			S.hurtPlayer(t, def.attack, `was slain by {def.name}`, Vector3.new(m.x, m.y, m.z))
 		end
 		return
 	end
-	-- spiders leap at close range
-	if def.key == "spider" and d < 3.5 and m.onGround and now >= (a.leapAt or 0) then
-		a.leapAt = now + 2
-		m.vy = 6
-		m.vx = (t.feet.X - m.x) / d * 6
-		m.vz = (t.feet.Z - m.z) / d * 6
-		m.knockbackUntil = now + 0.4 -- keep the leap velocity for a moment
+	-- spiders leap from 2..4 blocks (Java LeapAtTargetGoal 0.4)
+	local d = horizontalDist(m, t.feet)
+	if def.key == "spider" and d >= 2 and d <= 4 and m.onGround and math.random() < 0.1 then
+		local vx = (t.feet.X - m.x) / d * 0.4 + m.vx / 20 * 0.2
+		local vz = (t.feet.Z - m.z) / d * 0.4 + m.vz / 20 * 0.2
+		m.vx, m.vy, m.vz = vx * 20, 8, vz * 20
 		face(m, t.feet.X - m.x, t.feet.Z - m.z)
 		return
 	end
-	goTo(m, math.floor(t.feet.X), math.floor(t.feet.Y + 0.01), math.floor(t.feet.Z), def.speed, now)
+	chase(m, t, speed or speedOf(m, def.chase), now)
 end
 
-local function ranged(m: any, now: number, targets: { any })
+-- Skeleton bow goal (Java RangedBowAttackGoal, Normal: 40-tick interval, 20-tick draw, range 15).
+local function ranged(m: any, now: number, dt: number, targets: { any })
 	local a = m.ai
 	local def = m.def
 	local t = acquire(m, targets, now)
 	m.flags = 0
 	if not t then
-		wander(m, now, 0.5)
+		a.using = false
+		a.seeTime = 0
+		wander(m, now, dt)
 		return
 	end
-	local eye = Vector3.new(m.x, m.y + 1.6, m.z)
-	local d = (t.eye - eye).Magnitude
-	local los = S.lineOfSight(eye, t.eye)
-	local range = def.shootRange or 14
-	if d > range or not los then
-		goTo(m, math.floor(t.feet.X), math.floor(t.feet.Y + 0.01), math.floor(t.feet.Z), def.speed, now)
-	elseif d < 5 then
-		-- back off
-		local dx, dz = m.x - t.feet.X, m.z - t.feet.Z
-		local l = math.max(0.01, math.sqrt(dx * dx + dz * dz))
-		m.wantX, m.wantZ = dx / l * def.speed * 0.8, dz / l * def.speed * 0.8
+	local range = def.shootRange or 15
+	local eye = eyeOf(m)
+	local d = (t.feet - Vector3.new(m.x, m.y, m.z)).Magnitude
+	local see = canSee(m, t)
+	if see ~= (a.sawLast == true) then
+		a.seeTime = 0
+	end
+	a.sawLast = see
+	a.seeTime = (a.seeTime or 0) + (if see then dt else -dt)
+	a.strafeTime = a.strafeTime or -1
+
+	if d <= range and a.seeTime >= 1 then
+		m.wantX, m.wantZ = 0, 0
+		a.strafeTime += dt
+	else
+		chase(m, t, speedOf(m, def.chase), now)
+		a.strafeTime = -1
+	end
+	if a.strafeTime >= 1 then
+		if math.random() < 0.3 then
+			a.clockwise = not a.clockwise
+		end
+		if math.random() < 0.3 then
+			a.backwards = not a.backwards
+		end
+		a.strafeTime = 0
+	end
+	local dx, dz = t.feet.X - m.x, t.feet.Z - m.z
+	local l = math.max(0.01, math.sqrt(dx * dx + dz * dz))
+	if a.strafeTime > -1 then
+		if d > range * 0.75 then
+			a.backwards = false
+		elseif d < range * 0.25 then
+			a.backwards = true
+		end
+		local fwd = if a.backwards then -0.5 else 0.5
+		local side = if a.clockwise then 0.5 else -0.5
+		local wx = dx / l * fwd - dz / l * side
+		local wz = dz / l * fwd + dx / l * side
+		local wl = math.sqrt(wx * wx + wz * wz)
+		local speed = speedOf(m, def.chase)
+		m.wantX, m.wantZ = wx / wl * speed, wz / wl * speed
 		if m.hitWall and m.onGround then
 			m.wantJump = true
 		end
-	else
-		-- strafe sideways, switching direction every couple of seconds
-		if now >= (a.strafeAt or 0) then
-			a.strafeAt = now + 1.5 + math.random()
-			a.strafeDir = if math.random() < 0.5 then -1 else 1
-		end
-		local dx, dz = t.feet.X - m.x, t.feet.Z - m.z
-		local l = math.max(0.01, math.sqrt(dx * dx + dz * dz))
-		m.wantX, m.wantZ = -dz / l * (a.strafeDir or 1) * 0.8, dx / l * (a.strafeDir or 1) * 0.8
 	end
-	face(m, t.feet.X - m.x, t.feet.Z - m.z)
-	if los and d <= range and now >= (a.nextAttack or 0) then
-		a.nextAttack = now + def.attackCooldown + math.random() * 0.6
-		local speed = 24
-		local flight = d / speed
-		local aim = (t.eye - Vector3.new(0, 0.3, 0)) - eye
-		local vel = aim.Unit * speed + Vector3.new(0, 0.5 * 20 * flight, 0) -- lead for gravity
-		S.shootArrow(eye + aim.Unit * 0.6, vel, math.random(2, 4), def.name)
+	face(m, dx, dz)
+
+	if a.using then
+		if not see and a.seeTime < -3 then
+			a.using = false
+		elseif see and now - a.drawStart >= 1 then
+			a.using = false
+			a.attackTime = def.attackCooldown
+			-- Java: aim at 1/3 of the target's height, + 0.2 per block of distance for the arc;
+			-- 1.6 blocks/tick with Normal inaccuracy 6
+			local from = Vector3.new(m.x, eye.Y - 0.1, m.z)
+			local ex = t.feet.X - from.X
+			local ey = t.feet.Y + PLAYER_HEIGHT / 3 - from.Y
+			local ez = t.feet.Z - from.Z
+			local g = math.sqrt(ex * ex + ez * ez)
+			local dir = Vector3.new(ex, ey + g * 0.2, ez).Unit
+			dir += Vector3.new(gaussian(), gaussian(), gaussian()) * 0.0075 * 6
+			local base = 2 + 2 * 0.11 + (math.random() - math.random()) * 0.57425
+			S.shootArrow(from + dir * 0.4, dir * 1.6 * 20, base, def.name, m.id)
+		end
+	else
+		a.attackTime = (a.attackTime or 0) - dt
+		if a.attackTime <= 0 and a.seeTime >= -3 then
+			a.using = true
+			a.drawStart = now
+		end
 	end
 end
 
-local function exploder(m: any, now: number, targets: { any })
+-- Creeper-role swell goal.
+local function exploder(m: any, now: number, dt: number, targets: { any })
 	local a = m.ai
 	local def = m.def
 	local t = acquire(m, targets, now)
 	a.fuse = a.fuse or 0
-	if not t then
-		a.fuse = math.max(0, a.fuse - 0.05)
-		m.flags = if a.fuse > 0 then S.FLAG.FUSING else 0
-		wander(m, now, 0.5)
-		return
-	end
-	local center = Vector3.new(m.x, m.y + def.height / 2, m.z)
-	local d = (t.feet + Vector3.new(0, 0.9, 0) - center).Magnitude
-	local los = S.lineOfSight(center, t.eye)
-	if (d <= (def.reach or 3) and los) or (a.fuse > 0 and d <= 7) then
+	a.swellDir = a.swellDir or -1
+	local d = if t then (t.feet - Vector3.new(m.x, m.y, m.z)).Magnitude else math.huge
+	if t and (a.swellDir > 0 or d < 3) then
 		m.wantX, m.wantZ = 0, 0
 		face(m, t.feet.X - m.x, t.feet.Z - m.z)
-		a.fuse += 0.05
-		m.flags = S.FLAG.FUSING
-		if a.fuse >= (def.fuseSeconds or 1.5) then
-			S.broadcastEvent({ type = "explode", id = m.id, pos = center * 3 }, center)
-			S.remove(m)
-			ExplosionService.explode(center, def.explosionPower or 3, `was blown up by {def.name}`)
+		a.swellDir = if d > 7 or not canSee(m, t) then -1 else 1
+	else
+		a.swellDir = -1
+		if t then
+			chase(m, t, speedOf(m, def.chase), now)
+		else
+			wander(m, now, dt)
 		end
-		return
 	end
-	a.fuse = math.max(0, a.fuse - 0.05)
+	a.fuse = math.max(0, a.fuse + a.swellDir * dt)
 	m.flags = if a.fuse > 0 then S.FLAG.FUSING else 0
-	goTo(m, math.floor(t.feet.X), math.floor(t.feet.Y + 0.01), math.floor(t.feet.Z), def.speed, now)
+	if a.fuse >= (def.fuseSeconds or 1.5) then
+		local center = Vector3.new(m.x, m.y, m.z)
+		S.broadcastEvent({ type = "explode", id = m.id, pos = (center + Vector3.new(0, def.height / 2, 0)) * 3 }, center)
+		S.remove(m)
+		ExplosionService.explode(center, def.explosionPower or 3, `was blown up by {def.name}`)
+	end
 end
 
-local function teleporter(m: any, now: number, targets: { any })
+local function teleporter(m: any, now: number, dt: number, targets: { any })
 	local a = m.ai
-	if m.inLiquid then
-		teleport(m)
-		return
+	local def = m.def
+	a.targetChangedAt = a.targetChangedAt or now
+	-- daylight: random teleports away (and forget the target) after 30 s with a target/without
+	if S.isDay() and now >= a.targetChangedAt + 30 then
+		local eye = eyeOf(m)
+		local b = S.brightness(eye.X, eye.Y, eye.Z)
+		if b > 0.5 and S.skyExposed(math.floor(eye.X), math.floor(eye.Y), math.floor(eye.Z))
+			and math.random() * 30 < (b - 0.4) * 2 * (dt * 20)
+		then
+			a.angryUntil = 0
+			a.target = nil
+			a.targetChangedAt = now
+			teleport(m, 1)
+			return
+		end
 	end
 	if angry(m, now) then
-		melee(m, now, targets)
+		m.flags = S.FLAG.ANGRY
+		local t = targetFor(targets, a.target)
+		if t then
+			local d = (t.feet - Vector3.new(m.x, m.y, m.z)).Magnitude
+			local stared = now - (a.staredAt or -math.huge) < 0.3
+			if stared and d < 4 then
+				teleport(m, 1)
+				return
+			elseif stared and d <= 16 then
+				m.wantX, m.wantZ = 0, 0 -- frozen while looked at
+				face(m, t.feet.X - m.x, t.feet.Z - m.z)
+				return
+			elseif d > 16 then
+				a.farTime = (a.farTime or 0) + dt
+				if a.farTime >= 1.5 then
+					a.farTime = 0
+					teleport(m, 1, t.eye)
+					return
+				end
+			end
+		end
+		melee(m, now, dt, targets, speedOf(m, def.chase, def.angrySpeedAttr))
 		m.flags = S.FLAG.ANGRY
 		return
 	end
 	m.flags = 0
-	if now >= (a.blinkAt or now + 1) and math.random() < 0.3 then
-		teleport(m)
-	end
-	if not a.blinkAt or now >= a.blinkAt then
-		a.blinkAt = now + 20 + math.random() * 30
-	end
-	wander(m, now, 0.5)
+	wander(m, now, dt)
 end
 
 -- Called by MobService every tick (dt seconds).
-function MobAI.think(m: any, _dt: number, targets: { any })
+function MobAI.think(m: any, dt: number, targets: { any })
 	local now = os.clock()
 	m.wantX, m.wantZ = 0, 0
 	local b = m.def.behavior
 	if b == "wander" then
-		passive(m, now)
+		passive(m, now, dt)
 	elseif b == "melee" then
-		melee(m, now, targets)
+		melee(m, now, dt, targets)
 	elseif b == "ranged" then
-		ranged(m, now, targets)
+		ranged(m, now, dt, targets)
 	elseif b == "exploder" then
-		exploder(m, now, targets)
+		exploder(m, now, dt, targets)
 	elseif b == "teleporter" then
-		teleporter(m, now, targets)
+		teleporter(m, now, dt, targets)
 	end
 end
 
--- Reactions to being hurt.
-function MobAI.onHurt(m: any, attacker: Player?)
+local function anger(m: any, player: Player, now: number)
+	local a = m.ai
+	if a.target ~= player then
+		a.targetChangedAt = now
+	end
+	a.target = player
+	a.seenAt = now
+	a.path = nil
+	if m.def.behavior == "teleporter" then
+		if not angry(m, now) then
+			S.broadcastEvent({ type = "angry", id = m.id }, Vector3.new(m.x, m.y, m.z))
+		end
+		a.angryUntil = now + math.random(20, 39) -- Java: anger lasts 20-39 s
+	end
+end
+
+-- Reactions to being hurt. `living`: the damage came from a living entity (player, creeper...).
+function MobAI.onHurt(m: any, attacker: Player?, kind: string, living: boolean)
 	local now = os.clock()
 	local a = m.ai
 	if m.def.category == "passive" then
 		a.panicUntil = now + 5
-		a.panicFrom = Vector3.new(m.x - m.vx * 0.1, m.y, m.z - m.vz * 0.1)
-		a.path = nil
+		a.panicFrom = if attacker then Vector3.new(m.x - m.vx * 0.1, m.y, m.z - m.vz * 0.1) else nil
+		a.panicGoal = nil
 	elseif attacker then
-		a.angryUntil = now + 30
-		a.angryAt = attacker
+		anger(m, attacker, now)
 	end
-	if m.def.behavior == "teleporter" and m.alive and math.random() < 0.5 then
-		teleport(m)
+	if m.def.behavior == "teleporter" and m.alive and not living and math.random(10) ~= 1 then
+		teleport(m, 1)
 	end
 end
 
--- A player broke a block: shiftlings within 4 blocks guard their ground and turn hostile.
-function MobAI.blockBroken(player: Player, x: number, y: number, z: number)
+-- A player stared a voidling in the eyes (validated by MobService).
+function MobAI.provoke(m: any, player: Player)
 	local now = os.clock()
-	for _, m in S.mobs do
-		if m.def.behavior == "teleporter" then
-			local dx, dy, dz = m.x - (x + 0.5), m.y - y, m.z - (z + 0.5)
-			if dx * dx + dy * dy + dz * dz <= 16 then
-				m.ai.angryUntil = now + 30
-				m.ai.angryAt = player
-			end
-		end
+	m.ai.staredAt = now
+	if not angry(m, now) or m.ai.target ~= player then
+		anger(m, player, now)
+	end
+end
+
+-- Projectile about to hit a voidling: it teleports away instead (up to 64 tries).
+function MobAI.dodge(m: any)
+	teleport(m, 64)
+end
+
+-- Voidling standing in water: each tick a teleport attempt (Java: hurt by water, 90 %).
+function MobAI.waterTeleport(m: any)
+	if math.random(10) ~= 1 then
+		teleport(m, 1)
 	end
 end
 

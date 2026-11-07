@@ -502,6 +502,26 @@ test("drag: left splits evenly with remainder, right places one each, Java rules
 	eq(cur3.count, 2); eq(c[1], nil) -- more slots than items: nothing happens
 end)
 
+test("double-click collect: menu order, partial stacks first, up to 64", function()
+	local grid = { [1] = { item = "stick", count = 10 } }
+	local inv = { [10] = { item = "stick", count = 64 }, [11] = { item = "dirt", count = 5 }, [12] = { item = "stick", count = 30 }, [1] = { item = "stick", count = 20 } }
+	local refs = { { slots = grid, index = 1 } }
+	for k = 10, 36 do
+		table.insert(refs, { slots = inv, index = k })
+	end
+	for k = 1, 9 do
+		table.insert(refs, { slots = inv, index = k })
+	end
+	local cursor = { item = "stick", count = 5 }
+	SlotLogic.collect(refs, cursor)
+	-- pass 1 skips the full stack: 5 + 10 (grid) + 30 + 19 of the hotbar's 20
+	eq(cursor.count, 64)
+	eq(grid[1], nil)
+	eq(inv[12], nil)
+	eq(inv[1].count, 1)
+	eq(inv[10].count, 64)
+	eq(inv[11].count, 5)
+end)
 test("mob snapshot codec: round trip, packets stay small", function()
 	local Codec = Loader.require("src/shared/Mobs/MobSnapshotCodec")
 	local recs = {}
@@ -627,20 +647,113 @@ test("pathfinder walks around a wall and steps up", function()
 	assert(not r4, "a 2-block drop is too far with maxDrop 1")
 	_ = p4
 end)
-test("combat: charged damage, explosions, item stats", function()
-	local d, cd = Combat.attackStats("diamond_sword")
-	eq(d, 7); eq(cd, 0.625)
+local SkyLight = Loader.require("src/shared/World/SkyLight")
+local function near(a: number, b: number, tol: number?, msg: string?)
+	assert(math.abs(a - b) <= (tol or 1e-6), `{msg or ""} expected {b}, got {a}`)
+end
+test("combat: Java attack cooldown, damage scaling, item stats", function()
+	local d, speed = Combat.attackStats("diamond_sword")
+	eq(d, 7); eq(speed, 1.6)
 	eq(Combat.attackStats(nil), 1)
-	eq(Combat.scaledDamage(7, 1, 0.625), 7)
-	assert(math.abs(Combat.scaledDamage(10, 0, 1) - 2) < 1e-9, "uncharged = 20%")
-	eq(Combat.explosionDamage(3, 0), 43) -- classic point-blank power-3 explosion
+	eq(select(2, Combat.attackStats(nil)), 4)
+	-- axes and hoes: per-tier attack speed
+	eq(select(2, Combat.attackStats("wooden_axe")), 0.8)
+	eq(select(2, Combat.attackStats("iron_axe")), 0.9)
+	eq(select(2, Combat.attackStats("diamond_axe")), 1.0)
+	eq(select(2, Combat.attackStats("stone_hoe")), 2)
+	eq(select(2, Combat.attackStats("diamond_hoe")), 4)
+	eq(Combat.attackStats("stone_axe"), 9)
+	-- charge = (ticks + 0.5) / (20 / speed)
+	eq(Combat.charge(1, 1.6), 1)
+	near(Combat.charge(0, 1.6), 0.5 / 12.5)
+	near(Combat.charge(0.3, 1.6), 6.5 / 12.5) -- 6 ticks
+	eq(Combat.scaledDamage(7, 1), 7)
+	near(Combat.scaledDamage(10, 0), 2, 1e-9, "uncharged = 20%")
+	-- a sword is fully charged after 12 ticks (0.6 s) for crit purposes (> 0.9)
+	assert(Combat.charge(0.55, 1.6) > 0.9, "11 ticks: 0.92 charge")
+	assert(Combat.charge(0.5, 1.6) <= 0.9, "10 ticks: 0.84 charge")
+	eq(Combat.explosionDamage(3, 0), 43) -- point-blank power-3 explosion (Normal)
 	eq(Combat.explosionDamage(3, 6), 0)
-	assert(MobDefs.byKey.cinderhusk and MobDefs.byCode[4].key == "cinderhusk")
+	-- durability: swords 1 per hit, tools 2, shears 0
+	eq(Combat.hitDurabilityCost("iron_sword"), 1)
+	eq(Combat.hitDurabilityCost("iron_pickaxe"), 2)
+	eq(Combat.hitDurabilityCost("golden_hoe"), 2)
+	eq(Combat.hitDurabilityCost("shears"), 0)
+	eq(Combat.hitDurabilityCost(nil), 0)
+	assert(MobDefs.byKey.sneaker and MobDefs.byCode[4].key == "sneaker")
 	for _, m in MobDefs.list do
 		for _, drop in m.drops do
 			assert(ItemRegistry.get(drop.item), `{m.key} drops unknown item {drop.item}`)
 		end
 	end
+end)
+test("combat: critical hits, knockback, invulnerability, armor", function()
+	local base = { charge = 1, falling = true, onGround = false, sprinting = false, inLiquid = false }
+	assert(Combat.isCrit(base), "falling full-charge hit is a crit")
+	local function with(k: string, v: any)
+		local c = table.clone(base) :: any
+		c[k] = v
+		return Combat.isCrit(c)
+	end
+	assert(not with("charge", 0.85), "needs > 0.9 charge")
+	assert(not with("falling", false), "needs falling")
+	assert(not with("onGround", true), "not on ground")
+	assert(not with("sprinting", true), "not sprinting")
+	assert(not with("inLiquid", true), "not in water")
+	-- knockback 0.4 on the ground: half the old velocity plus the push, 0.4 up
+	local x, y, z = Combat.knockback(0, 0, 0, 3, 4, 0.4, true)
+	near(x, 0.24); near(y, 0.4); near(z, 0.32)
+	local _, y2 = Combat.knockback(0, -0.5, 0, 1, 0, 0.4, false)
+	near(y2, -0.5, 1e-9, "no vertical push in the air")
+	local x3 = Combat.knockback(0.2, 0, 0, 1, 0, 0.4, true)
+	near(x3, 0.5)
+	-- invulnerability: 0.5 s, stronger hits deal the difference
+	local h = { invulnUntil = 0, lastHurt = 0 }
+	local dealt, fresh = Combat.applyInvulnerability(h, 4, 10)
+	eq(dealt, 4); eq(fresh, true)
+	dealt, fresh = Combat.applyInvulnerability(h, 3, 10.2)
+	eq(dealt, 0); eq(fresh, false)
+	dealt, fresh = Combat.applyInvulnerability(h, 7, 10.3)
+	eq(dealt, 3); eq(fresh, false)
+	dealt, fresh = Combat.applyInvulnerability(h, 2, 10.6)
+	eq(dealt, 2); eq(fresh, true)
+	-- armor (zombie: 2 points)
+	near(Combat.armorReduce(7, 2), 7 * (1 - 0.4 / 25))
+	near(Combat.armorReduce(1, 2), 1 * (1 - 1.5 / 25))
+	eq(Combat.armorReduce(5, 0), 5)
+end)
+test("mining durability: swords 2, tools 1, instant blocks 0", function()
+	local stone = BlockRegistry.id("stone")
+	eq(Mining.durabilityCost(stone, "iron_pickaxe"), 1)
+	eq(Mining.durabilityCost(stone, "iron_sword"), 2)
+	eq(Mining.durabilityCost(stone, "shears"), 1)
+	eq(Mining.durabilityCost(stone, nil), 0)
+	eq(Mining.durabilityCost(stone, "stick"), 0)
+end)
+test("mob stats: Java speeds and sizes", function()
+	-- 43.17 * s^2 blocks/s
+	near(MobDefs.byKey.zombie.speed, 2.28, 0.01)
+	near(MobDefs.byKey.spider.speed, 3.89, 0.01)
+	near(MobDefs.blocksPerSecond(0.1 * 1), 0.4317, 0.001)
+	eq(MobDefs.byKey.sneaker.height, 1.7)
+	eq(MobDefs.byKey.voidling.height, 2.9)
+	eq(MobDefs.byKey.voidling.followRange, 64)
+	eq(MobDefs.byKey.zombie.followRange, 35)
+	eq(MobDefs.byKey.zombie.spawnWeight, 95)
+	eq(MobDefs.byKey.skeleton.shootRange, 15)
+end)
+test("sky light: darkening, brightness and monster spawn light", function()
+	eq(SkyLight.skyDarken(6000), 0) -- noon
+	eq(SkyLight.skyDarken(18000), 11) -- midnight
+	assert(SkyLight.isDay(1000) and not SkyLight.isDay(18000))
+	eq(SkyLight.rawBrightness(true, 18000), 4) -- moonlight
+	eq(SkyLight.rawBrightness(false, 6000), 0)
+	near(SkyLight.magicBrightness(15), 1)
+	near(SkyLight.magicBrightness(12), 0.5)
+	assert(not SkyLight.monsterCanSpawn(true, 6000, 31, 7), "never under the noon sky")
+	assert(SkyLight.monsterCanSpawn(true, 18000, 20, 5), "night sky: sky 15 <= 20, light 4 <= 5")
+	assert(not SkyLight.monsterCanSpawn(true, 18000, 10, 7), "sky light 15 > 10 fails")
+	assert(SkyLight.monsterCanSpawn(false, 6000, 0, 0), "caves always dark")
 end)
 
 print(`\n{passed} passed, {failed} failed`)

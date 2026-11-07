@@ -78,6 +78,7 @@ Recipes.smelting = {
 	birch_log = "charcoal",
 	spruce_log = "charcoal",
 	raw_porkchop = "cooked_porkchop",
+	potato = "baked_potato",
 	raw_beef = "steak",
 	raw_chicken = "cooked_chicken",
 	raw_mutton = "cooked_mutton",

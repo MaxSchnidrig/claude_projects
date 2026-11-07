@@ -73,10 +73,16 @@ function Mining.breakSeconds(blockId: number, itemKey: string?, mods: Modifiers?
 	return math.ceil(1 / damage - 1e-9) / 20
 end
 
--- Does breaking this block with this item cost tool durability? (Any block with hardness > 0.)
-function Mining.usesDurability(blockId: number, itemKey: string?): boolean
+-- Durability used by breaking this block with this item (Java tool component): 0 for blocks that
+-- break instantly (hardness 0) and for non-tools; swords lose 2; every other tool (pickaxe, axe,
+-- shovel, hoe, shears) loses 1.
+function Mining.durabilityCost(blockId: number, itemKey: string?): number
 	local block = BlockRegistry.get(blockId)
-	return toolOf(itemKey) ~= nil and block ~= nil and block.hardness > 0
+	local tool = toolOf(itemKey)
+	if not tool or not block or block.hardness <= 0 then
+		return 0
+	end
+	return if tool.kind == "sword" then 2 else 1
 end
 
 return Mining

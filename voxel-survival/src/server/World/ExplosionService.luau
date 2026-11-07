@@ -1,5 +1,5 @@
 --!strict
--- Explosions (Cinderhusk; TNT later). Classic rules, simplified:
+-- Explosions (Sneaker; TNT later). Classic rules, simplified:
 --   * blocks within a randomised radius (power x 0.7..1.3) are destroyed, except very blast-resistant
 --     ones (bedrock, obsidian, liquids); each destroyed block drops its item with chance 1/power
 --   * entities within 2 x power blocks take damage: Combat.explosionDamage(power, distance), and are
@@ -89,8 +89,9 @@ function ExplosionService.explode(center: Vector3, power: number, cause: string)
 				end
 				local dir = (pos - center)
 				dir = if dir.Magnitude > 0.01 then dir.Unit else Vector3.yAxis
-				local strength = (1 - d / (2 * power)) * 20 -- blocks/s
-				Remotes.get("Knockback"):FireClient(p, (dir * strength + Vector3.new(0, strength * 0.4, 0)) * BS)
+				-- Java: velocity += direction * impact (blocks/tick), on top of the damage
+				local impact = 1 - d / (2 * power)
+				Remotes.get("Knockback"):FireClient(p, { add = dir * impact })
 			end
 		end
 	end

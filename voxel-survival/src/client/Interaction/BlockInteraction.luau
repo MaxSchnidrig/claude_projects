@@ -29,6 +29,7 @@ local SurvivalHUD = require(script.Parent.Parent.Survival.SurvivalHUD)
 local SurvivalRules = require(Shared.Gameplay.SurvivalRules)
 local Combat = require(Shared.Gameplay.Combat)
 local MobClient = require(script.Parent.Parent.Mobs.MobClient)
+local MovementController = require(script.Parent.Parent.Player.MovementController)
 
 local EAT_SECONDS = 1.6
 
@@ -67,6 +68,44 @@ end
 local function blockAt(x: number, y: number, z: number): number?
 	return ClientWorld.getBlock(x, y, z)
 end
+
+-- Attack a mob. The client knows its own physics, so it decides whether this is a critical hit
+-- (Java: charge > 0.9, falling, airborne, not sprinting, not in liquid); the server re-checks.
+local lastSwing = 0
+local lastHeld: string? = nil
+local function attackMob(id: number)
+	local item = InventoryClient.heldItem()
+	local _, attackSpeed = Combat.attackStats(item)
+	local now = os.clock()
+	local charge = Combat.charge(now - lastSwing, attackSpeed)
+	lastSwing = now
+	local character = Players.LocalPlayer.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local crit = false
+	if humanoid and root then
+		crit = Combat.isCrit({
+			charge = charge,
+			falling = root.AssemblyLinearVelocity.Y < 0,
+			onGround = humanoid.FloorMaterial ~= Enum.Material.Air,
+			sprinting = MovementController.sprinting,
+			inLiquid = MovementController.inLiquid,
+		})
+	end
+	if MovementController.sprinting and charge > Combat.CRIT_MIN_CHARGE then
+		MovementController.stopSprint() -- Java: a sprint hit ends the sprint
+	end
+	Remotes.get("AttackMob"):FireServer(id, crit)
+end
+
+-- Java: switching to a different item restarts the attack cooldown.
+RunService.Heartbeat:Connect(function()
+	local held = InventoryClient.heldItem()
+	if held ~= lastHeld then
+		lastHeld = held
+		lastSwing = os.clock()
+	end
+end)
 
 local function send(action: string, x: number, y: number, z: number)
 	Remotes.get("BlockAction"):FireServer(action, x, y, z)
@@ -296,7 +335,7 @@ local function makeTouchButtons()
 	end
 	button("Mine", UDim2.new(1, -24, 1, -200), function()
 		if BlockInteraction.mobTarget then
-			Remotes.get("AttackMob"):FireServer(BlockInteraction.mobTarget)
+			attackMob(BlockInteraction.mobTarget :: number)
 			return
 		end
 		breakHeld = true
@@ -334,7 +373,7 @@ function BlockInteraction.init()
 		local t = input.UserInputType
 		if (t == Enum.UserInputType.MouseButton1 or input.KeyCode == Enum.KeyCode.ButtonR2) and BlockInteraction.mobTarget then
 			-- attack: one hit per click (damage scales with how long since the last swing)
-			Remotes.get("AttackMob"):FireServer(BlockInteraction.mobTarget)
+			attackMob(BlockInteraction.mobTarget :: number)
 		elseif t == Enum.UserInputType.MouseButton1 or input.KeyCode == Enum.KeyCode.ButtonR2 then
 			breakHeld = true
 		elseif t == Enum.UserInputType.MouseButton2 or input.KeyCode == Enum.KeyCode.ButtonL2 then

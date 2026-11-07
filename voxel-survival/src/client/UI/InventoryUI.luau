@@ -10,6 +10,8 @@
 --   drag         press with a carried stack and move over slots (Java Edition rules): left
 --                splits the stack evenly, right puts one item in each slot; counts preview
 --                live and apply on release. A drag over a single slot is a normal click.
+--   double-click gather items matching the clicked stack into the cursor (up to a full stack)
+--                from the inventory and the open container / crafting grid (Java)
 --   touch        tap = left click; the "½" toggle makes taps act like right clicks
 --
 -- The server owns every slot; this module only draws InventoryClient state and sends clicks.
@@ -61,6 +63,7 @@ local splitMode = false
 -- Active drag: button and the slots visited so far (in order).
 type Drag = { button: string, widgets: { any } }
 local drag: Drag? = nil
+local lastPress: { w: any, button: string, t: number }? = nil -- for double-click detection
 -- Modifier keys, tracked from key events (UserInputService:IsKeyDown missed Shift during
 -- GUI clicks in a Studio test on macOS). Both sources are combined.
 local shiftHeld, ctrlHeld = false, false
@@ -192,6 +195,20 @@ local function slot(x: number, y: number, container: string, index: number, big:
 	-- drag instead; it becomes a click on release if no second slot was visited.
 	local function press(button: string)
 		local shift = shiftDown()
+		-- Java double-click: a second left press on the same slot within 0.25 s gathers matching
+		-- items into the cursor (sent instead of a second click).
+		local now = os.clock()
+		local last = lastPress
+		lastPress = { w = w, button = button, t = now }
+		if last and last.w == w and last.button == "left" and button == "left" and not shift
+			and now - last.t <= 0.25 and container ~= "result"
+		then
+			lastPress = nil
+			drag = nil
+			InventoryClient.collect(container, index)
+			refresh()
+			return
+		end
 		if InventoryClient.cursor and not shift and container ~= "result" then
 			drag = { button = button, widgets = { w } }
 			refresh()

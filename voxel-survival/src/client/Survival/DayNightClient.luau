@@ -19,11 +19,12 @@ local DAY = {
 	ambient = Color3.fromRGB(70, 70, 76),
 	fog = Color3.fromRGB(170, 200, 235),
 }
+-- Java nights: sky light drops from 15 to 4 (not 0), so the surface stays readable in moonlight.
 local NIGHT = {
-	brightness = 0.35,
-	outdoor = Color3.fromRGB(34, 36, 54),
-	ambient = Color3.fromRGB(18, 18, 26),
-	fog = Color3.fromRGB(14, 16, 28),
+	brightness = 0.75,
+	outdoor = Color3.fromRGB(66, 70, 98),
+	ambient = Color3.fromRGB(38, 40, 54),
+	fog = Color3.fromRGB(22, 26, 44),
 }
 
 local function daylight(t: number): number

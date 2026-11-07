@@ -218,4 +218,27 @@ function SlotLogic.drag(targets: { DragTarget }, cursor: Stack?, button: string)
 	return if c.count > 0 then c else nil
 end
 
+-- Double-click gather (Java PICKUP_ALL): pull items of the cursor's kind from `refs` (in menu
+-- order) into the cursor, up to a full stack. Two passes: the first skips full stacks.
+export type SlotRef = { slots: Slots, index: number }
+function SlotLogic.collect(refs: { SlotRef }, cursor: Stack)
+	local max = SlotLogic.maxStack(cursor.item)
+	for pass = 1, 2 do
+		for _, ref in refs do
+			if cursor.count >= max then
+				return
+			end
+			local st = ref.slots[ref.index]
+			if st and SlotLogic.sameKind(st, cursor) and (pass == 2 or st.count < max) then
+				local n = math.min(st.count, max - cursor.count)
+				cursor.count += n
+				st.count -= n
+				if st.count <= 0 then
+					ref.slots[ref.index] = nil
+				end
+			end
+		end
+	end
+end
+
 return SlotLogic

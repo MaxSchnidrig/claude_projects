@@ -15,6 +15,7 @@ local Remotes = require(Shared.Net.Remotes)
 local BlockRegistry = require(Shared.Blocks.BlockRegistry)
 local ItemRegistry = require(Shared.Items.ItemRegistry)
 local SurvivalRules = require(Shared.Gameplay.SurvivalRules)
+local Combat = require(Shared.Gameplay.Combat)
 local WorldService = require(script.Parent.Parent.World.WorldService)
 local InventoryService = require(script.Parent.Parent.Player.InventoryService)
 local SpawnService = require(script.Parent.Parent.Player.SpawnService)
@@ -45,6 +46,11 @@ type State = {
 	diedAt: number,
 	lastCause: string?,
 	heights: { { t: number, y: number } },
+	hurt: Combat.HurtState, -- 0.5 s invulnerability after a hit
+	grounded: boolean,
+	inLiquid: boolean,
+	burning: number, -- seconds of fire left (after lava)
+	fireTimer: number,
 }
 
 local SurvivalService = {}
@@ -67,6 +73,11 @@ local function newState(): State
 		diedAt = 0,
 		lastCause = nil,
 		heights = {},
+		hurt = { invulnUntil = 0, lastHurt = 0 },
+		grounded = true,
+		inLiquid = false,
+		burning = 0,
+		fireTimer = 0,
 	}
 end
 
@@ -106,17 +117,39 @@ local function sync(p: Player, event: string?, cause: string?)
 	end
 end
 
--- Apply damage (HP). `cause` is shown on the death screen.
-function SurvivalService.damage(p: Player, amount: number, cause: string)
+-- Apply damage (HP). `cause` is shown on the death screen. Java invulnerability applies: for
+-- 0.5 s after a hit only a stronger hit gets through, and only its difference. Returns the damage
+-- dealt and whether it was a fresh hit (callers apply knockback only then). `bypass` skips the
+-- invulnerability check (falling out of the world).
+function SurvivalService.damage(p: Player, amount: number, cause: string, bypass: boolean?): (number, boolean)
 	local humanoid = humanoidOf(p)
 	local s = state(p)
 	if not humanoid or s.dead or humanoid.Health <= 0 or amount <= 0 then
-		return
+		return 0, false
+	end
+	local dealt, fresh = amount, true
+	if not bypass then
+		dealt, fresh = Combat.applyInvulnerability(s.hurt, amount, os.clock())
+		if dealt <= 0 then
+			return 0, false
+		end
 	end
 	SurvivalRules.addExhaustion(s.hunger, SurvivalRules.EXHAUSTION.damage)
 	s.lastCause = cause
-	humanoid.Health = math.max(0, humanoid.Health - amount)
+	humanoid.Health = math.max(0, humanoid.Health - dealt)
 	sync(p, "hurt", cause)
+	return dealt, fresh
+end
+
+-- Movement state the server tracks (for critical hits and sprint knockback).
+function SurvivalService.movement(p: Player): (boolean, boolean, boolean)
+	local s = state(p)
+	return s.sprinting, s.grounded, s.inLiquid
+end
+
+-- The client stopped sprinting because of an attack (Java: sprint hits end the sprint).
+function SurvivalService.stopSprint(p: Player)
+	state(p).sprinting = false
 end
 
 function SurvivalService.addExhaustion(p: Player, amount: number)
@@ -154,6 +187,8 @@ local function stepPlayer(p: Player, s: State, dt: number)
 		SurvivalRules.addExhaustion(s.hunger, if s.sprinting then SurvivalRules.EXHAUSTION.sprintJump else SurvivalRules.EXHAUSTION.jump)
 	end
 	s.wasGrounded = grounded
+	s.grounded = grounded
+	s.inLiquid = isLiquid[feetBlock + 1] or isLiquid[bodyBlock + 1]
 	if s.lastPos and s.sprinting then
 		local d = Vector3.new(pos.X - s.lastPos.X, 0, pos.Z - s.lastPos.Z).Magnitude / BS
 		if d < 2 then -- ignore teleports
@@ -180,20 +215,28 @@ local function stepPlayer(p: Player, s: State, dt: number)
 		s.drownTimer = 0
 	end
 
-	-- Lava
+	-- Lava: 4 damage (every tick, so every 0.5 s through invulnerability) and 15 s of fire;
+	-- fire burns 1 per second until it runs out or you step into water (Java).
 	if feetBlock == LAVA or bodyBlock == LAVA then
-		s.lavaTimer += dt
-		while s.lavaTimer >= 0.5 do
-			s.lavaTimer -= 0.5
-			SurvivalService.damage(p, SurvivalRules.LAVA_DAMAGE, "tried to swim in lava")
+		s.burning = 15
+		SurvivalService.damage(p, SurvivalRules.LAVA_DAMAGE, "tried to swim in lava")
+	elseif s.inLiquid then
+		s.burning = 0
+	end
+	if s.burning > 0 then
+		s.burning -= dt
+		s.fireTimer += dt
+		if s.fireTimer >= 1 then
+			s.fireTimer -= 1
+			SurvivalService.damage(p, 1, "burned to death")
 		end
 	else
-		s.lavaTimer = 0.5 -- first touch hurts immediately
+		s.fireTimer = 0
 	end
 
 	-- Out of the world
 	if pos.Y < -64 then
-		SurvivalService.damage(p, 1000, "fell out of the world")
+		SurvivalService.damage(p, 1000, "fell out of the world", true)
 	end
 
 	-- Regeneration / starvation

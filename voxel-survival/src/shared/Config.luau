@@ -21,7 +21,7 @@ Config.RENDER_DISTANCE_MIN = 2
 Config.RENDER_DISTANCE_MAX = 12
 Config.UNLOAD_MARGIN = 2 -- chunks beyond render distance before data is dropped (hysteresis)
 Config.COLLISION_RADIUS = 1 -- chunks around the player that get collision boxes
-Config.SERVER_CHUNK_RADIUS = 4 -- chunks the server keeps generated around each player (mobs live here)
+Config.SERVER_CHUNK_RADIUS = 8 -- chunks the server keeps around each player (Java mob spawning reaches 128 blocks)
 
 -- Frame budgets (milliseconds of Luau work per frame for the cooperative scheduler)
 Config.FRAME_BUDGET_MS_DESKTOP = 4
@@ -86,9 +86,9 @@ Config.PLACE_REPEAT = 0.2 -- seconds between placements while right mouse is hel
 Config.ACTIONS_PER_SECOND = 30 -- server rate limit for block actions
 Config.EYE_HEIGHT = 1.6 -- studs above HumanoidRootPart centre (feet + 4.6 studs ≈ 1.53 blocks)
 
-Config.WALK_SPEED = 13 -- studs/s (4.317 blocks/s)
-Config.SPRINT_SPEED = 16.8 -- studs/s (5.612 blocks/s)
-Config.JUMP_HEIGHT = 3.6 -- studs (1.2 blocks): clears 1-block steps, never 2
+Config.WALK_SPEED = 12.95 -- studs/s (Java 4.317 blocks/s)
+Config.SPRINT_SPEED = 16.84 -- studs/s (Java 5.612 blocks/s)
+Config.JUMP_HEIGHT = 3.757 -- studs (Java 1.2522 blocks): clears 1-block steps, never 2
 Config.KEY_SPRINT = "LeftControl" -- hold while walking forward; double-tapping W also sprints
 Config.SPRINT_DOUBLE_TAP = 0.3 -- seconds between W release and re-press that start a sprint
 Config.KEY_CAMERA = "V" -- cycle first person -> third person behind -> third person front
@@ -142,13 +142,14 @@ Config.AUTO_RESPAWN_SECONDS = 120 -- safety net if the death screen never sends 
 Config.DIFFICULTY = "normal" -- "easy": starvation stops at 10 HP, "normal": 1 HP, "hard": no limit
 
 -- Mobs (phase 5) ------------------------------------------------------------------------------
-Config.MOB_CAP_HOSTILE_PER_PLAYER = 12
+-- Java Edition values: monster cap 70 and creature cap 10 per player area (17x17 chunks).
+Config.MOB_CAP_HOSTILE_PER_PLAYER = 70
 Config.MOB_CAP_PASSIVE_PER_PLAYER = 10
-Config.MOB_CAP_TOTAL = 60
-Config.MOB_SPAWN_MIN_DISTANCE = 24 -- blocks from any player
-Config.MOB_SPAWN_MAX_DISTANCE = 48
-Config.MOB_DESPAWN_DISTANCE = 64 -- hostiles (and far passives) beyond this are removed
-Config.MOB_SEND_DISTANCE = 72 -- mobs within this range are sent to a client
+Config.MOB_SPAWN_MIN_DISTANCE = 24 -- blocks from every player
+Config.MOB_SPAWN_MAX_DISTANCE = 128 -- spawning happens in loaded chunks; farther = instant despawn
+Config.MOB_DESPAWN_DISTANCE = 128 -- hostiles beyond this from every player vanish at once
+Config.MOB_DESPAWN_RANDOM_DISTANCE = 32 -- beyond this (and idle 30 s): 1/800 chance per tick
+Config.MOB_SEND_DISTANCE = 96 -- mobs within this range are sent to a client (bandwidth limit)
 Config.MOB_SNAPSHOT_HZ = 10
 Config.SHIFT_CLICK_INTO_CRAFT_GRID = true -- Java: shift-click from the inventory fills the 3x3 grid first (slots 1-9, merging first), then hotbar <-> inventory
 

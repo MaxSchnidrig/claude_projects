@@ -393,6 +393,54 @@ local function click(player: Player, i: Inv, container: string, index: number, b
 	i.dirty = true
 end
 
+-- Double-click (Java PICKUP_ALL): gather items matching the carried stack into the cursor, up to a
+-- full stack. If nothing is carried yet, the clicked slot's stack is picked up first. Slots are
+-- visited in menu order (open container or crafting grid, then main inventory, then hotbar) in two
+-- passes: the first skips full stacks. Crafting result slots are never taken from.
+local function collect(i: Inv, container: string, index: number)
+	local refs: { SlotLogic.SlotRef } = {}
+	local e = windowEntity(i)
+	if e then
+		local size = if e.kind == "chest" then BlockEntityService.CHEST_SLOTS else 3
+		for k = 1, size do
+			table.insert(refs, { slots = e.slots, index = k })
+		end
+	elseif i.window.kind == "inventory" or i.window.kind == "crafting_table" then
+		for k = 1, craftWidth(i) ^ 2 do
+			table.insert(refs, { slots = i.craft, index = k })
+		end
+	end
+	for k = HOTBAR + 1, N do
+		table.insert(refs, { slots = i.slots, index = k })
+	end
+	for k = 1, HOTBAR do
+		table.insert(refs, { slots = i.slots, index = k })
+	end
+
+	if i.cursor == nil then
+		local clicked: { [number]: Stack? }? = nil
+		if container == "inv" and index >= 1 and index <= N then
+			clicked = i.slots
+		elseif container == "craft" and (i.window.kind == "inventory" or i.window.kind == "crafting_table")
+			and index >= 1 and index <= craftWidth(i) ^ 2
+		then
+			clicked = i.craft
+		elseif container == "block" and e and index >= 1 and index <= (if e.kind == "chest" then BlockEntityService.CHEST_SLOTS else 3) then
+			clicked = e.slots
+		end
+		if not clicked or not clicked[index] then
+			return
+		end
+		i.cursor = clicked[index]
+		clicked[index] = nil
+	end
+	SlotLogic.collect(refs, i.cursor :: Stack)
+	if e then
+		touchViewers(e)
+	end
+	i.dirty = true
+end
+
 -- Throw items in front of the player.
 local function throw(player: Player, s: Stack)
 	local character = player.Character
@@ -467,6 +515,10 @@ local function onAction(player: Player, a: any)
 			return
 		end
 		click(player, i, a.container, a.index, if a.button == "right" then "right" else "left", a.shift == true)
+	elseif t == "collect" then
+		if typeof(a.container) == "string" and isInt(a.index) then
+			collect(i, a.container, a.index)
+		end
 	elseif t == "openInventory" then
 		if i.window.kind ~= "inventory" then
 			closeWindow(player, i)

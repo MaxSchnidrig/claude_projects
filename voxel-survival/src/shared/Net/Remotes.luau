@@ -8,14 +8,16 @@
 --   BlockAction   C -> S  (action, x, y, z)    "start" | "cancel" | "finish" | "place"
 --   InventorySync S -> C  { slots = {stack|false ...}, selected = n }
 --   SelectSlot    C -> S  (n)                  hotbar slot 1..9
---   InventoryAction C -> S { type = "click" | "open" | "openInventory" | "close" | "drop" | "dropSlot" | "dropCursor", ... }
+--   InventoryAction C -> S { type = "click" | "collect" | "open" | "openInventory" | "close" | "drop" | "dropSlot" | "dropCursor", ... }
 --   SurvivalSync  S -> C  { food, saturation, air, maxAir, canSprint, event? = "hurt" | "died", cause? }
 --   SurvivalAction C -> S { type = "sprint", on } | { type = "eatStart" | "eatFinish" | "eatCancel" } | { type = "respawn" }
 --   DebugAction   C -> S  { type = "skipTime" | "hurtSelf" }  (Studio only)
 --   MobSnapshot   S -> C  (unreliable, 10 Hz) flat list: id, code, x, y, z, yaw, pitch, flags, ...
---   MobEvent      S -> C  { type = "hurt" | "died" | "explode" | "teleport", id, ... }
---   AttackMob     C -> S  (mobId)
---   Knockback     S -> C  (velocity: Vector3) pushes the local character
+--   MobEvent      S -> C  { type = "hurt" | "died" | "explode" | "teleport" | "crit" | "angry", id, ... }
+--   AttackMob     C -> S  (mobId, crit: boolean)  crit = the client saw a critical-hit state
+--   StareMob      C -> S  (mobId)  the player has looked a voidling in the eyes for 5 ticks
+--   Knockback     S -> C  { dir = Vector3, strength } (Java hit knockback, blocks/tick) or
+--                         { add = Vector3 } (explosion push, blocks/tick)
 
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -35,6 +37,7 @@ local NAMES = {
 	"MobEvent",
 	"AttackMob",
 	"Knockback",
+	"StareMob",
 }
 -- High-frequency state where a lost packet doesn't matter (the next one replaces it).
 local UNRELIABLE = { "MobSnapshot" }
