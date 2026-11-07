@@ -6,9 +6,12 @@
 --   lighting   Brightness / ambient follow a daylight curve; no global shadows (terrain light and
 --              ambient occlusion are baked into the meshes, Java style)
 --   fog        linear fog ending at the render distance; its colour is the horizon colour
---   sky        a dome of our own: everything beyond the fog end shows the fog colour, and a
---              large glowing "zenith" plane high above the camera shows the sky colour. Fog fades
---              it into the horizon colour with distance, giving a smooth gradient
+--   sky        a dome of our own: a closed box of panels around the camera just beyond the fog
+--              end is fully fogged, so the horizon is exactly the fog colour everywhere (Roblox's
+--              skybox, which fog doesn't touch, is never visible); a large glowing "zenith" plane
+--              high above the camera shows the sky colour, and fog fades it into the horizon
+--              colour with distance, giving a smooth gradient. The plane always reaches past the
+--              fog end, so its edge can't show as a line
 --   sun/moon   square, on a circle around the camera at the time-of-day angle; hidden when a block
 --              is between the camera and them. Stars fade in at night.
 --   clouds     see Clouds.luau
@@ -133,6 +136,14 @@ function DayNightClient.init()
 	folder.Parent = workspace
 	local zenith = skyPart("Zenith", Vector3.new(2000, 1, 2000), DAY.sky)
 	zenith.Parent = folder
+	-- fog shell: 6 panels, plain material (fully fogged = exactly the fog colour)
+	local shell: { { part: Part, normal: Vector3 } } = {}
+	for _, n in { Vector3.xAxis, -Vector3.xAxis, Vector3.yAxis, -Vector3.yAxis, Vector3.zAxis, -Vector3.zAxis } do
+		local p = skyPart("Shell", Vector3.new(1, 1, 1), Color3.new(0, 0, 0))
+		p.Material = Enum.Material.SmoothPlastic
+		p.Parent = folder
+		table.insert(shell, { part = p, normal = n })
+	end
 	local sun = skyPart("Sun", Vector3.new(1, 1, 1), Color3.fromRGB(255, 244, 196))
 	sun.Parent = folder
 	local moon = skyPart("Moon", Vector3.new(1, 1, 1), Color3.fromRGB(214, 220, 236))
@@ -173,19 +184,34 @@ function DayNightClient.init()
 		local fogStart = math.max(Lighting.FogStart, 60)
 		-- neon renders brighter than its colour; scale down to look like the plain sky colour
 		zenith.Color = Color3.new(skyColor.R * 0.72, skyColor.G * 0.72, skyColor.B * 0.72)
+		local fogEnd = math.max(Lighting.FogEnd, fogStart + 10)
 		local zH = fogStart * 0.9
+		-- reach past the fog end in every direction (Parts are at most 2048 studs)
+		local half = math.min(1024, math.sqrt(math.max(fogEnd * fogEnd - zH * zH, 0)) * 1.25 + 20)
+		zenith.Size = Vector3.new(half * 2, 1, half * 2)
 		zenith.CFrame = CFrame.new(camPos + Vector3.new(0, zH, 0))
+		local R = math.min(1000, fogEnd * 1.05 + 10)
+		for _, sp in shell do
+			local n = sp.normal
+			sp.part.Size = Vector3.new(
+				if n.X ~= 0 then 1 else R * 2 + 2,
+				if n.Y ~= 0 then 1 else R * 2 + 2,
+				if n.Z ~= 0 then 1 else R * 2 + 2
+			)
+			sp.part.CFrame = CFrame.new(camPos + n * R)
+			sp.part.Color = fog
+		end
 
 		-- sun and moon: square, 20 blocks wide at the classic scale, on a circle (radius R) that
 		-- turns with the time of day (sunrise in the east = +X)
-		local R = fogStart * 0.5
+		local orbit = fogStart * 0.5
 		local angle = (t / 24000) * math.pi * 2 -- 0 = sunrise
 		local sunDir = Vector3.new(math.cos(angle), math.sin(angle), 0)
-		local size = R * 0.16
+		local size = orbit * 0.16
 		sun.Size = Vector3.new(size, size, 0.2)
 		moon.Size = Vector3.new(size * 0.8, size * 0.8, 0.2)
-		sun.CFrame = CFrame.lookAt(camPos + sunDir * R, camPos)
-		moon.CFrame = CFrame.lookAt(camPos - sunDir * R, camPos)
+		sun.CFrame = CFrame.lookAt(camPos + sunDir * orbit, camPos)
+		moon.CFrame = CFrame.lookAt(camPos - sunDir * orbit, camPos)
 		occAcc += dt
 		if occAcc > 0.15 then
 			occAcc = 0

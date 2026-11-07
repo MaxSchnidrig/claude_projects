@@ -124,6 +124,8 @@ function DebugOverlay.init()
 			Remotes.get("DebugAction"):FireServer({ type = "skipTime" }) -- server ignores outside Studio
 		elseif input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_HURT_SELF] and RunService:IsStudio() then
 			Remotes.get("DebugAction"):FireServer({ type = "hurtSelf" })
+		elseif input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_GIVE_KIT] and RunService:IsStudio() then
+			Remotes.get("DebugAction"):FireServer({ type = "giveKit" })
 		elseif input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_SPAWN_MOB] and RunService:IsStudio() then
 			Remotes.get("DebugAction"):FireServer({ type = "spawnMob" })
 		elseif input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_KEEP_TEMP] then
@@ -178,7 +180,7 @@ function DebugOverlay.init()
 			else tostring(Config.MAX_LIVE_EDITABLE)
 
 		label.Text = table.concat({
-			`{GameInfo.TITLE} {GameInfo.VERSION}   {string.format("%.0f", fps)} fps   [F3 hide, F4 backend, F6 keep live edits, J +6h, K hurt, L spawn mob (Studio)]`,
+			`{GameInfo.TITLE} {GameInfo.VERSION}   {string.format("%.0f", fps)} fps   [F3 hide, F4 backend, F6 keep live edits, J +6h, K hurt, L spawn mob, G torches (Studio)]`,
 			`pos {posText}   biome {biomeText}   camera {CameraController.mode}`,
 			targetLine() .. (if BlockInteraction.mobTarget then `   aiming at mob #{BlockInteraction.mobTarget}` else ""),
 			string.format("mobs: known %d, with visible model %d   snapshot packets %d   model build errors %d%s",

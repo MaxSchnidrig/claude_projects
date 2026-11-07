@@ -12,7 +12,9 @@ are original to this project (see `ARCHITECTURE.md` → "Naming rules").
 voxel-survival/
 ├── default.project.json   Rojo tree (what goes where in the place)
 ├── rokit.toml             Pinned toolchain (Rojo, Lune)
-├── ARCHITECTURE.md        Design, data layouts, benchmarks, phase roadmap
+├── ARCHITECTURE.md        Design, data layouts, benchmarks
+├── ROADMAP.md             Phase 8+ plan and first public release
+├── SOUNDS.md              Every sound slot and what to search for
 ├── src/
 │   ├── shared/  -> ReplicatedStorage.Shared          pure, deterministic, used by both sides
 │   │   ├── Config, GameInfo
@@ -123,6 +125,7 @@ In Studio you spawn with a test kit (pickaxes of each tier, blocks) from `Config
 | J | Studio only: skip 6 game hours |
 | K | Studio only: take 3 damage |
 | L | Studio only: spawn the next mob type 4 blocks in front of you |
+| G | Studio only: get 64 torches and 16 coal |
 
 Set render distance for testing: select your Player in Explorer during Play and add a number attribute `RenderDistance` (2–12).
 

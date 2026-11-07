@@ -180,5 +180,6 @@ Config.DEBUG_KEY_KEEP_TEMP = "F6" -- keep edited sections on their live mesh (co
 Config.DEBUG_KEY_SKIP_TIME = "J" -- Studio only: +6 game hours (quarter day)
 Config.DEBUG_KEY_HURT_SELF = "K" -- Studio only: take 3 damage
 Config.DEBUG_KEY_SPAWN_MOB = "L" -- Studio only: spawn the next mob type in front of you
+Config.DEBUG_KEY_GIVE_KIT = "G" -- Studio only: give 64 torches and 16 coal (saved players get no starter kit)
 
 return Config

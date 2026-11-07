@@ -13,6 +13,9 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 local AssetDiagnostics = {}
+-- Asset IDs already investigated: requested by Studio/the engine itself (not by ROCRAFT), so they
+-- are not reported again. 203785492: Studio's own request ("Asset type does not match").
+local KNOWN_ENGINE: { [string]: boolean } = { ["203785492"] = true }
 
 -- Asset-referencing properties to check, per class.
 local PROPS: { [string]: { string } } = {
@@ -240,6 +243,9 @@ function AssetDiagnostics.init()
 		end
 		local side = if RunService:IsServer() then "server" else "client"
 		for id in unresolved do
+			if KNOWN_ENGINE[id] then
+				continue -- investigated: Studio requests it internally; nothing to fix on our side
+			end
 			warn(`[AssetDiagnostics:{side}] rbxassetid://{id} is not referenced by any instance in any readable service; it is requested internally (engine/default asset){describePhase(id)}`)
 		end
 	end)

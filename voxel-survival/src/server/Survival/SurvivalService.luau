@@ -423,6 +423,9 @@ function SurvivalService.init()
 			DayNightService.addTicks(6000)
 		elseif a.type == "hurtSelf" then
 			SurvivalService.damage(p, 3, "hurt themselves (debug)")
+		elseif a.type == "giveKit" then
+			InventoryService.add(p, "torch", 64)
+			InventoryService.add(p, "coal", 16)
 		end
 	end)
 
