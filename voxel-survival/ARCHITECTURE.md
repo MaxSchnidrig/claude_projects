@@ -191,6 +191,17 @@ Phase 2 server validation for break and place:
 | Dropped items | Mined blocks, thrown items (Q) and container contents become item entities. They rest on the first solid block below and re-settle if it's mined. Picked up within 1.6 blocks (0.5 s delay, 2 s for thrown items), despawn after 5 min, max 400. Spin/bob is animated client-side |
 | Not yet | Saving block entities and inventories (phase 6), item merging on the ground, drag-to-distribute |
 
+## 5d. Phase 4: survival (built)
+
+| Piece | Design |
+|---|---|
+| Rules | `Gameplay/SurvivalRules` (pure, tested): 20 HP; 20 food + saturation ≤ food; exhaustion 4.0 per point (sprint 0.1/block, jump 0.05, sprint-jump 0.2, block break 0.005, damage 0.1, healing 6.0); regen 1 HP/0.5 s at food 20 with saturation, 1 HP/4 s at food ≥ 18; starvation 1 per 4 s at food 0 (Normal: not below 1 HP); sprint needs food > 6; fall damage `ceil(blocks − 3)`, none into liquid |
+| Server | `SurvivalService` owns Humanoid.Health (MaxHealth 20; Roblox's default regen script removed). Ground, water, lava and air are read from voxel data at the character's position (the server has no terrain physics). Drowning after 15 s underwater, 2 HP/s; lava 4 HP per 0.5 s; below y −64 instant death |
+| Eating | Hold right-click with food: 1.6 s, server checks elapsed time, held slot and that food < 20. Food items with classic values (apple, bread, raw/cooked pork, beef/steak, chicken, mutton); meats smelt to cooked versions; apples 0.5 % and sticks 2 % from leaves |
+| Death | Drops the whole inventory (incl. crafting grid and cursor) where you died, death screen with cause, Respawn button → world spawn with full health and hunger; automatic respawn after 120 s as a safety net |
+| Day/night | 20-minute day (24000 ticks): 0 sunrise, 6000 noon, 12000 sunset, 18000 midnight. The server publishes a reference (ticks at server time); clients compute time locally each frame and set ClockTime, brightness, ambient and fog colour along a daylight curve (dusk 12000–13800, dawn 22200–24000) |
+| Swimming | Humanoids only swim in Roblox Terrain water, so the client does it: hold jump to rise, sink slowly otherwise, 0.6× speed in liquid |
+
 ## 6. Mechanics spec (later phases)
 
 Values follow the classic formula. Speeds are in blocks/s; at 3 studs per block, walk 4.317 → 13 studs/s and sprint 5.612 → 16.8 studs/s.

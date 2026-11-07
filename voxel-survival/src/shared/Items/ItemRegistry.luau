@@ -12,6 +12,7 @@ export type ItemDef = {
 	stack: number,
 	block: number?, -- block id placed by this item
 	tool: ItemDefs.ToolDef?,
+	food: ItemDefs.FoodDef?,
 	color: { number },
 }
 
@@ -43,6 +44,7 @@ for _, d in ItemDefs do
 		stack = d.stack or 64,
 		block = nil,
 		tool = d.tool,
+		food = d.food,
 		color = d.color or { 255, 0, 255 },
 	}
 end

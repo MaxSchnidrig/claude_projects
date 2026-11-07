@@ -22,6 +22,7 @@ export type BlockDef = {
 	transparent: boolean,
 	liquid: boolean,
 	cullSelf: boolean,
+	bonusDrops: { { item: string, chance: number } },
 	-- texture index per face direction (see Directions below)
 	faceTexture: { number },
 }
@@ -112,6 +113,7 @@ for _, d in BlockDefs do
 		transparent = d.transparent == true,
 		liquid = d.liquid == true,
 		cullSelf = if d.cullSelf == nil then true else d.cullSelf,
+		bonusDrops = d.bonusDrops or {},
 		faceTexture = { sideTex, sideTex, texId(top), texId(bottom), sideTex, sideTex },
 	}
 	byId[d.id] = def

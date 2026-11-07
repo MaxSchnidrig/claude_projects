@@ -18,6 +18,7 @@
 --   transparent light/vision passes through; neighbours' faces stay visible (default false)
 --   liquid      fluid block (default false)
 --   cullSelf    hide faces between two blocks of this same type (glass, water) (default true)
+--   bonusDrops  extra chance drops when broken by hand or any tool: { { item, chance } }
 
 export type BlockDefInput = {
 	id: number,
@@ -34,6 +35,7 @@ export type BlockDefInput = {
 	transparent: boolean?,
 	liquid: boolean?,
 	cullSelf: boolean?,
+	bonusDrops: { { item: string, chance: number } }?,
 }
 
 local defs: { BlockDefInput } = {
@@ -55,13 +57,13 @@ local defs: { BlockDefInput } = {
 
 	-- Wood ------------------------------------------------------------------------------------
 	{ id = 11, key = "oak_log", name = "Oak Log", hardness = 2.0, tool = "axe", textures = { top = "oak_log_top", side = "oak_log", bottom = "oak_log_top" } },
-	{ id = 12, key = "oak_leaves", name = "Oak Leaves", hardness = 0.2, tool = "hoe", drop = false, textures = { all = "oak_leaves" } },
+	{ id = 12, key = "oak_leaves", name = "Oak Leaves", hardness = 0.2, tool = "hoe", drop = false, textures = { all = "oak_leaves" }, bonusDrops = { { item = "apple", chance = 0.005 }, { item = "stick", chance = 0.02 } } },
 	{ id = 13, key = "oak_planks", name = "Oak Planks", hardness = 2.0, tool = "axe", textures = { all = "oak_planks" } },
 	{ id = 14, key = "birch_log", name = "Birch Log", hardness = 2.0, tool = "axe", textures = { top = "birch_log_top", side = "birch_log", bottom = "birch_log_top" } },
-	{ id = 15, key = "birch_leaves", name = "Birch Leaves", hardness = 0.2, tool = "hoe", drop = false, textures = { all = "birch_leaves" } },
+	{ id = 15, key = "birch_leaves", name = "Birch Leaves", hardness = 0.2, tool = "hoe", drop = false, textures = { all = "birch_leaves" }, bonusDrops = { { item = "stick", chance = 0.02 } } },
 	{ id = 16, key = "birch_planks", name = "Birch Planks", hardness = 2.0, tool = "axe", textures = { all = "birch_planks" } },
 	{ id = 17, key = "spruce_log", name = "Spruce Log", hardness = 2.0, tool = "axe", textures = { top = "spruce_log_top", side = "spruce_log", bottom = "spruce_log_top" } },
-	{ id = 18, key = "spruce_leaves", name = "Spruce Leaves", hardness = 0.2, tool = "hoe", drop = false, textures = { all = "spruce_leaves" } },
+	{ id = 18, key = "spruce_leaves", name = "Spruce Leaves", hardness = 0.2, tool = "hoe", drop = false, textures = { all = "spruce_leaves" }, bonusDrops = { { item = "stick", chance = 0.02 } } },
 	{ id = 19, key = "spruce_planks", name = "Spruce Planks", hardness = 2.0, tool = "axe", textures = { all = "spruce_planks" } },
 
 	-- Ores ------------------------------------------------------------------------------------

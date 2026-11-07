@@ -124,15 +124,25 @@ Config.STUDIO_STARTER_KIT = {
 	{ "oak_planks", 64 },
 	{ "cobblestone", 64 },
 	{ "glass", 64 },
+	{ "apple", 16 },
+	{ "steak", 16 },
 }
 
 -- Roblox default UI turned off on the client (our UI replaces them). Remove entries to test.
 Config.CORE_GUI_DISABLE = { "Backpack", "Health", "EmotesMenu" }
+
+-- Survival (phase 4) ---------------------------------------------------------------------------
+Config.DAY_LENGTH_SECONDS = 1200 -- classic 20-minute day (24000 ticks at 20 ticks/s)
+Config.START_TIME_TICKS = 1000 -- morning (0 = sunrise, 6000 = noon, 18000 = midnight)
+Config.AUTO_RESPAWN_SECONDS = 120 -- safety net if the death screen never sends "respawn"
+Config.DIFFICULTY = "normal" -- "easy": starvation stops at 10 HP, "normal": 1 HP, "hard": no limit
 
 -- Debug -------------------------------------------------------------------------------------
 -- KeyCode names (strings, so this module stays loadable in headless tests).
 Config.DEBUG_KEY_OVERLAY = "F3" -- toggle the performance overlay
 Config.DEBUG_KEY_BACKEND = "F4" -- switch render backend (A/B test)
 Config.DEBUG_KEY_KEEP_TEMP = "F6" -- keep edited sections on their live mesh (compare to baked)
+Config.DEBUG_KEY_SKIP_TIME = "F7" -- Studio only: +6 game hours (quarter day)
+Config.DEBUG_KEY_HURT_SELF = "F9" -- Studio only: take 3 damage
 
 return Config

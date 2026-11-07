@@ -24,6 +24,11 @@ local VoxelRaycast = require(Shared.World.VoxelRaycast)
 local ClientWorld = require(script.Parent.Parent.World.ClientWorld)
 local CameraController = require(script.Parent.Parent.Player.CameraController)
 local InventoryClient = require(script.Parent.Parent.Player.InventoryClient)
+local SurvivalClient = require(script.Parent.Parent.Survival.SurvivalClient)
+local SurvivalHUD = require(script.Parent.Parent.Survival.SurvivalHUD)
+local SurvivalRules = require(Shared.Gameplay.SurvivalRules)
+
+local EAT_SECONDS = 1.6
 
 local BS = Config.BLOCK_SIZE
 local AIR = 0
@@ -42,6 +47,8 @@ type MiningState = { x: number, y: number, z: number, item: string?, progress: n
 
 local breakHeld = false
 local placeHeld = false
+local useHeld = false -- right button held with food: eating
+local eating: { progress: number, slot: number }? = nil
 local mining: MiningState? = nil
 local cooldownUntil = 0
 local nextPlaceAt = 0
@@ -137,9 +144,44 @@ local function modifiers(): Mining.Modifiers
 	}
 end
 
+local function stopEating()
+	if eating then
+		SurvivalClient.eatCancel()
+		eating = nil
+	end
+	SurvivalHUD.setEatProgress(nil)
+end
+
+-- Hold right mouse with food: eat over 1.6 s (only when not full), repeat while held.
+local function updateEating(dt: number)
+	local item = ItemRegistry.get(InventoryClient.heldItem())
+	local canEat = useHeld and item ~= nil and item.food ~= nil
+		and SurvivalClient.food < SurvivalRules.MAX_FOOD and not SurvivalClient.dead
+	if not canEat or (eating and eating.slot ~= InventoryClient.selected) then
+		stopEating()
+		return
+	end
+	if not eating then
+		eating = { progress = 0, slot = InventoryClient.selected }
+		SurvivalClient.eatStart()
+	end
+	local e = eating :: { progress: number, slot: number }
+	e.progress += dt / EAT_SECONDS
+	SurvivalHUD.setEatProgress(e.progress)
+	if e.progress >= 1 then
+		SurvivalClient.eatFinish()
+		eating = nil -- next bite starts next frame if still held
+	end
+end
+
 local function update(dt: number)
 	local now = os.clock()
-	if InventoryClient.uiOpen then
+	if InventoryClient.uiOpen or SurvivalClient.dead then
+		useHeld = false
+		stopEating()
+	end
+	updateEating(dt)
+	if InventoryClient.uiOpen or SurvivalClient.dead then
 		-- a window is open: no mining/placing, no highlight
 		breakHeld, placeHeld = false, false
 		if mining then
@@ -249,10 +291,16 @@ local function makeTouchButtons()
 			InventoryClient.openBlock(hit.x, hit.y, hit.z)
 			return
 		end
+		local held = ItemRegistry.get(InventoryClient.heldItem())
+		if held and held.food then
+			useHeld = true
+			return
+		end
 		placeHeld = true
 		nextPlaceAt = 0
 	end, function()
 		placeHeld = false
+		useHeld = false
 	end)
 	gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
 end
@@ -271,8 +319,11 @@ function BlockInteraction.init()
 		elseif t == Enum.UserInputType.MouseButton2 or input.KeyCode == Enum.KeyCode.ButtonL2 then
 			local hit = BlockInteraction.target
 			local shift = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+			local held = ItemRegistry.get(InventoryClient.heldItem())
 			if hit and INTERACTABLE[hit.id] and not shift then
 				InventoryClient.openBlock(hit.x, hit.y, hit.z) -- server opens the window; the UI follows
+			elseif held and held.food then
+				useHeld = true -- eat
 			else
 				placeHeld = true
 				nextPlaceAt = 0 -- first placement is immediate
@@ -288,6 +339,7 @@ function BlockInteraction.init()
 			breakHeld = false
 		elseif t == Enum.UserInputType.MouseButton2 or input.KeyCode == Enum.KeyCode.ButtonL2 then
 			placeHeld = false
+			useHeld = false
 		end
 	end)
 	if UserInputService.TouchEnabled then

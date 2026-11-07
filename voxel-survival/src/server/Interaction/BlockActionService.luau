@@ -30,6 +30,11 @@ local AIR = 0
 local isLiquid = BlockRegistry.isLiquid
 
 local BlockActionService = {}
+-- Set by SurvivalService (avoids a require cycle): called after a player breaks a block.
+local onBlockBroken: ((Player) -> ())? = nil
+function BlockActionService.setBlockBrokenCallback(fn: (Player) -> ())
+	onBlockBroken = fn
+end
 BlockActionService.stats = { accepted = 0, rejected = 0, lastReject = "" }
 
 type Pending = { x: number, y: number, z: number, t: number, item: string? }
@@ -197,6 +202,17 @@ local function finishBreak(player: Player, st: PState, x: number, y: number, z: 
 	if def and def.drop and Mining.canHarvest(id, item) then
 		local count = if def.dropMax > def.dropMin then math.random(def.dropMin, def.dropMax) else def.dropMin
 		ItemEntityService.spawn({ item = def.drop, count = count }, center)
+	end
+	if def then
+		-- chance drops (apples / sticks from leaves), any tool or bare hands
+		for _, bonus in def.bonusDrops do
+			if math.random() < bonus.chance then
+				ItemEntityService.spawn({ item = bonus.item, count = 1 }, center)
+			end
+		end
+	end
+	if onBlockBroken then
+		(onBlockBroken :: (Player) -> ())(player) -- survival: exhaustion
 	end
 	if BlockEntityService.kindOf(id) then
 		-- chest / furnace contents spill out

@@ -134,6 +134,32 @@ function InventoryService.damageSelectedTool(player: Player, n: number)
 	i.dirty = true
 end
 
+-- Death: everything the player carries spills on the ground at `pos`.
+function InventoryService.dropAll(player: Player, pos: Vector3)
+	local i = inv(player)
+	local stacks: { Stack } = {}
+	for idx = 1, N do
+		local s = i.slots[idx]
+		if s then
+			table.insert(stacks, s)
+		end
+		i.slots[idx] = nil
+	end
+	for idx, s in i.craft do
+		if s then
+			table.insert(stacks, s)
+		end
+		i.craft[idx] = nil
+	end
+	if i.cursor then
+		table.insert(stacks, i.cursor :: Stack)
+		i.cursor = nil
+	end
+	i.window = { kind = "inventory" }
+	i.dirty = true
+	ItemEntityService.spawnAround(stacks, pos)
+end
+
 ---------------------------------------------------------------------------------------------
 -- Windows
 ---------------------------------------------------------------------------------------------

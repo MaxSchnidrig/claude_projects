@@ -8,7 +8,10 @@
 --   BlockAction   C -> S  (action, x, y, z)    "start" | "cancel" | "finish" | "place"
 --   InventorySync S -> C  { slots = {stack|false ...}, selected = n }
 --   SelectSlot    C -> S  (n)                  hotbar slot 1..9
---   InventoryAction C -> S { type = "click" | "open" | "openInventory" | "close" | "drop" | "dropCursor", ... }
+--   InventoryAction C -> S { type = "click" | "open" | "openInventory" | "close" | "drop" | "dropSlot" | "dropCursor", ... }
+--   SurvivalSync  S -> C  { food, saturation, air, maxAir, canSprint, event? = "hurt" | "died", cause? }
+--   SurvivalAction C -> S { type = "sprint", on } | { type = "eatStart" | "eatFinish" | "eatCancel" } | { type = "respawn" }
+--   DebugAction   C -> S  { type = "skipTime" | "hurtSelf" }  (Studio only)
 
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -22,6 +25,9 @@ local NAMES = {
 	"InventorySync",
 	"SelectSlot",
 	"InventoryAction",
+	"SurvivalSync",
+	"SurvivalAction",
+	"DebugAction",
 }
 
 local Remotes = {}

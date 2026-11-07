@@ -14,7 +14,6 @@ local AvatarService = require(script.Parent.AvatarService)
 
 local BS = Config.BLOCK_SIZE
 local READY_TIMEOUT = 20 -- seconds
-local RESPAWN_DELAY = 3 -- phase 4 replaces this with a death screen
 
 local SpawnService = {}
 
@@ -31,6 +30,11 @@ local function spawn(player: Player)
 	AvatarService.spawn(player, spawnCFrame())
 end
 
+-- Respawn at the world spawn (phase 6+: beds / personal spawn points).
+function SpawnService.respawn(player: Player)
+	spawn(player)
+end
+
 function SpawnService.init()
 	Players.CharacterAutoLoads = false
 
@@ -39,9 +43,7 @@ function SpawnService.init()
 		player.CharacterAdded:Connect(function(character)
 			local humanoid = character:WaitForChild("Humanoid") :: Humanoid
 			AvatarService.configureHumanoid(humanoid)
-			humanoid.Died:Connect(function()
-				task.delay(RESPAWN_DELAY, spawn, player)
-			end)
+			-- Death and respawn are handled by SurvivalService (death screen -> "respawn").
 		end)
 		task.delay(READY_TIMEOUT, function()
 			if player.Parent and not player.Character then

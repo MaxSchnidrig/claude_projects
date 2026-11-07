@@ -23,6 +23,9 @@ local CollisionBuilder = require(script.Parent.Parent.Render.CollisionBuilder)
 local LiveEditPool = require(script.Parent.Parent.Render.LiveEditPool)
 local SpecialPartsBackend = require(script.Parent.Parent.Render.SpecialPartsBackend)
 local Hotbar = require(script.Parent.Parent.UI.Hotbar)
+local SurvivalClient = require(script.Parent.Parent.Survival.SurvivalClient)
+local DayNightClient = require(script.Parent.Parent.Survival.DayNightClient)
+local Remotes = require(Shared.Net.Remotes)
 local BlockInteraction = require(script.Parent.Parent.Interaction.BlockInteraction)
 local InventoryClient = require(script.Parent.Parent.Player.InventoryClient)
 local CameraController = require(script.Parent.Parent.Player.CameraController)
@@ -44,6 +47,12 @@ local function fmtMb(mb: number?): string
 end
 
 local DebugOverlay = {}
+
+local function healthText(): string
+	local c = Players.LocalPlayer.Character
+	local h = c and c:FindFirstChildOfClass("Humanoid")
+	return if h then string.format("%d/%d", math.ceil(h.Health), h.MaxHealth) else "-"
+end
 
 local function yes(b: boolean): string
 	return if b then "yes" else "NO"
@@ -110,6 +119,10 @@ function DebugOverlay.init()
 		end
 		if input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_OVERLAY] then
 			gui.Enabled = not gui.Enabled
+		elseif input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_SKIP_TIME] then
+			Remotes.get("DebugAction"):FireServer({ type = "skipTime" }) -- server ignores outside Studio
+		elseif input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_HURT_SELF] then
+			Remotes.get("DebugAction"):FireServer({ type = "hurtSelf" })
 		elseif input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_KEEP_TEMP] then
 			ClientWorld.setKeepTemp(not ChunkRenderer.keepTemp)
 		elseif input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_BACKEND] then
@@ -162,9 +175,12 @@ function DebugOverlay.init()
 			else tostring(Config.MAX_LIVE_EDITABLE)
 
 		label.Text = table.concat({
-			`{GameInfo.TITLE} {GameInfo.VERSION}   {string.format("%.0f", fps)} fps   [F3 hide, F4 backend, F6 keep live edits]`,
+			`{GameInfo.TITLE} {GameInfo.VERSION}   {string.format("%.0f", fps)} fps   [F3 hide, F4 backend, F6 keep live edits, F7 +6h, F9 hurt (Studio)]`,
 			`pos {posText}   biome {biomeText}   camera {CameraController.mode}`,
 			targetLine(),
+			string.format("survival: health %s  food %d  saturation %.1f  air %.1f s  sprint %s   time %s (tick %d)",
+				healthText(), SurvivalClient.food, SurvivalClient.saturation, SurvivalClient.air,
+				if SurvivalClient.canSprint then "ok" else "too hungry", DayNightClient.clockText(), DayNightClient.timeOfDay),
 			hotbarLines(),
 			`render distance {ClientWorld.effectiveRenderDistance()}/{ClientWorld.getRenderDistance()}{if ClientWorld.isMobile() then " (mobile)" else ""}   backend {backend}`,
 			`chunks loaded {ws.loaded}   waiting: gen {ws.pendingGen}, mesh {ws.pendingMesh} sections`,

@@ -17,11 +17,15 @@ export type ToolDef = {
 	blockSpeeds: { [string]: number }?,
 }
 
+-- Food values (classic): hunger points restored and saturation gained.
+export type FoodDef = { hunger: number, saturation: number }
+
 export type ItemDefInput = {
 	key: string,
 	name: string,
 	stack: number?, -- max stack size (default 64)
 	tool: ToolDef?,
+	food: FoodDef?,
 	color: { number }?, -- placeholder icon colour (RGB)
 }
 
@@ -43,7 +47,17 @@ local defs: { ItemDefInput } = {
 	{ key = "flint", name = "Flint", color = { 60, 60, 64 } },
 	{ key = "snowball", name = "Snowball", stack = 16, color = { 246, 250, 252 } },
 	{ key = "clay_ball", name = "Clay Ball", color = { 164, 170, 186 } },
-	{ key = "apple", name = "Apple", color = { 210, 40, 40 } },
+	-- Food
+	{ key = "apple", name = "Apple", color = { 210, 40, 40 }, food = { hunger = 4, saturation = 2.4 } },
+	{ key = "bread", name = "Bread", color = { 196, 150, 80 }, food = { hunger = 5, saturation = 6 } },
+	{ key = "raw_porkchop", name = "Raw Porkchop", color = { 236, 150, 150 }, food = { hunger = 3, saturation = 1.8 } },
+	{ key = "cooked_porkchop", name = "Cooked Porkchop", color = { 200, 120, 80 }, food = { hunger = 8, saturation = 12.8 } },
+	{ key = "raw_beef", name = "Raw Beef", color = { 200, 60, 60 }, food = { hunger = 3, saturation = 1.8 } },
+	{ key = "steak", name = "Steak", color = { 130, 70, 40 }, food = { hunger = 8, saturation = 12.8 } },
+	{ key = "raw_chicken", name = "Raw Chicken", color = { 240, 200, 180 }, food = { hunger = 2, saturation = 1.2 } },
+	{ key = "cooked_chicken", name = "Cooked Chicken", color = { 210, 150, 90 }, food = { hunger = 6, saturation = 7.2 } },
+	{ key = "raw_mutton", name = "Raw Mutton", color = { 210, 80, 80 }, food = { hunger = 2, saturation = 1.2 } },
+	{ key = "cooked_mutton", name = "Cooked Mutton", color = { 150, 80, 50 }, food = { hunger = 6, saturation = 9.6 } },
 }
 
 -- Tools: generated for every material x kind, with classic stats.

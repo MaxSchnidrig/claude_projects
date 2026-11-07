@@ -28,6 +28,15 @@ Startup.run("client", {
 	system("CoreGuiSetup", function()
 		return client.UI.CoreGuiSetup
 	end),
+	system("SurvivalClient", function()
+		return client.Survival.SurvivalClient
+	end),
+	system("DayNightClient", function()
+		return client.Survival.DayNightClient
+	end),
+	system("SurvivalHUD", function()
+		return client.Survival.SurvivalHUD
+	end),
 	-- UI and input first: they don't need the world, and must appear even if the world is slow.
 	system("InventoryClient", function()
 		return client.Player.InventoryClient

@@ -10,9 +10,19 @@ local UserInputService = game:GetService("UserInputService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
+local BlockRegistry = require(Shared.Blocks.BlockRegistry)
+local SurvivalClient = require(script.Parent.Parent.Survival.SurvivalClient)
+local ClientWorld = require(script.Parent.Parent.World.ClientWorld)
+
+local BS = Config.BLOCK_SIZE
+local isLiquid = BlockRegistry.isLiquid
+local SWIM_UP_SPEED = 9 -- studs/s while holding jump in water
+local SINK_SPEED = 5 -- max sinking speed in water (studs/s)
+local SWIM_SPEED_FACTOR = 0.6 -- walking speed multiplier in liquid
 
 local MovementController = {}
 MovementController.sprinting = false
+MovementController.inLiquid = false
 
 local sprintHeld = false
 local BASE_FOV = 70
@@ -55,10 +65,31 @@ function MovementController.init()
 		if not humanoid or not root then
 			return
 		end
-		-- Sprint only while moving forward (relative to where the body faces).
+		-- Sprint only while moving forward (relative to where the body faces) and not too hungry.
 		local forward = humanoid.MoveDirection:Dot(root.CFrame.LookVector) > 0.5
-		MovementController.sprinting = sprintHeld and forward
-		humanoid.WalkSpeed = if MovementController.sprinting then Config.SPRINT_SPEED else Config.WALK_SPEED
+		local sprinting = sprintHeld and forward and SurvivalClient.canSprint and not SurvivalClient.dead
+		if sprinting ~= MovementController.sprinting then
+			MovementController.sprinting = sprinting
+			SurvivalClient.setSprinting(sprinting) -- the server charges sprint exhaustion
+		end
+
+		-- Swimming (water/lava): Humanoids only swim in Roblox Terrain water, so we do it by hand:
+		-- hold jump to rise, otherwise sink slowly; move slower.
+		local p = root.Position
+		local bx, bz = math.floor(p.X / BS), math.floor(p.Z / BS)
+		local bodyId = ClientWorld.getBlock(bx, math.floor(p.Y / BS), bz)
+		local feetId = ClientWorld.getBlock(bx, math.floor((p.Y - 2.5) / BS), bz)
+		local inLiquid = (bodyId ~= nil and isLiquid[bodyId + 1]) or (feetId ~= nil and isLiquid[feetId + 1])
+		MovementController.inLiquid = inLiquid
+		local speed = if sprinting then Config.SPRINT_SPEED else Config.WALK_SPEED
+		if inLiquid and not root.Anchored then
+			speed *= SWIM_SPEED_FACTOR
+			local v = root.AssemblyLinearVelocity
+			local up = humanoid.Jump or UserInputService:IsKeyDown(Enum.KeyCode.Space)
+			local vy = if up then SWIM_UP_SPEED else math.max(v.Y, -SINK_SPEED)
+			root.AssemblyLinearVelocity = Vector3.new(v.X, vy, v.Z)
+		end
+		humanoid.WalkSpeed = speed
 		local camera = workspace.CurrentCamera
 		local targetFov = if MovementController.sprinting then BASE_FOV * 1.1 else BASE_FOV
 		camera.FieldOfView += (targetFov - camera.FieldOfView) * 0.2

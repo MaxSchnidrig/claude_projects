@@ -4,7 +4,7 @@ A voxel survival sandbox for Roblox, managed with [Rojo](https://rojo.space). Th
 mechanics follow the classic block-survival formula. All art, sounds, UI and every invented name
 are original to this project (see `ARCHITECTURE.md` → "Naming rules").
 
-**Status:** Phase 3 (inventory, crafting, smelting, chests, dropped items) ready for Studio testing. Next: Phase 4 (survival).
+**Status:** Phase 4 (survival: health, hunger, fall damage, drowning, lava, day/night, death and respawn) ready for Studio testing. Next: Phase 5 (mobs).
 
 ## Structure
 
@@ -18,7 +18,7 @@ voxel-survival/
 │   │   ├── Config, GameInfo
 │   │   ├── Blocks/    BlockDefs (data), TexturePalette, BlockRegistry (lookups)
 │   │   ├── Items/     ItemDefs, ItemRegistry, Recipes (data), Crafting, SlotLogic, FurnaceLogic
-│   │   ├── Gameplay/  Mining (classic break-time formula, harvest tiers)
+│   │   ├── Gameplay/  Mining (break-time formula, harvest tiers), SurvivalRules (hunger, regen, fall damage)
 │   │   ├── World/     Noise, ChunkData, Biomes, TerrainGen, Features/{Ores,Trees}, VoxelRaycast
 │   │   ├── Meshing/   SectionSampler, GreedyMesher, BoxMerger
 │   │   ├── Net/       Remotes
@@ -28,7 +28,8 @@ voxel-survival/
 │   │   ├── World/     WorldService (chunks + diffs), ChunkStreamer (sends diffs)
 │   │   ├── Interaction/ BlockActionService (validates break/place)
 │   │   ├── World/     (+) ItemEntityService (dropped items), BlockEntityService (furnaces, chests)
-│   │   └── Player/    SpawnService, AvatarService (blocky R6), InventoryService (windows, crafting)
+│   │   ├── Player/    SpawnService, AvatarService (blocky R6), InventoryService (windows, crafting)
+│   │   └── Survival/  SurvivalService (health, hunger, air, falls, death), DayNightService (world time)
 │   └── client/  -> StarterPlayer.StarterPlayerScripts  rendering, input, UI
 │       ├── Main.client.luau   the only client LocalScript
 │       ├── World/     ClientWorld (streaming, generation, job picking)
@@ -36,6 +37,7 @@ voxel-survival/
 │       ├── Player/    CameraController, MovementController, InventoryClient
 │       ├── Interaction/ BlockInteraction (targeting, mining, placing)
 │       ├── UI/        Hotbar, Crosshair, InventoryUI, ItemIcon, CoreGuiSetup
+│       ├── Survival/  SurvivalClient, SurvivalHUD (pips, death screen), DayNightClient (lighting)
 │       └── Debug/     DebugOverlay
 └── tests/lune/          headless tests + benchmarks for the pure shared modules
 ```
@@ -69,7 +71,9 @@ Build a place file without Studio: `rojo build -o rocraft.rbxl`.
 | E | Inventory (2×2 crafting). Esc or E closes |
 | Right mouse on Crafting Table / Furnace / Chest | Open it (Shift + right mouse places against it) |
 | In a window | Left: pick up/put/merge/swap · Right: take half/put one · Shift-click: quick-move · Result slot: craft (Shift: craft all) · Click outside: drop carried stack |
-| Q / Ctrl+Q | Drop one / the whole held stack |
+| Q / Ctrl+Q | Drop one / the whole held stack (in a window: of the hovered slot) |
+| Right mouse (hold) with food | Eat (1.6 s, only when not full) |
+| Space in water | Swim up |
 | V | Camera: first person → behind → front (`Config.KEY_CAMERA`) |
 | Gamepad | R2 mine, L2 place, R1/L1 hotbar, L3 sprint, right stick look |
 | Touch | Drag to look, "Mine"/"Place" buttons, tap a slot |
@@ -81,6 +85,9 @@ In Studio you spawn with a test kit (pickaxes of each tier, blocks) from `Config
 |---|---|
 | F3 | Toggle the performance overlay (FPS, chunk queues, gen/mesh ms, MeshParts, triangles, errors) |
 | F4 | Switch render backend: EditableMesh ↔ greedy Parts. Rebuilds everything so you can compare. |
+| F6 | Keep edited sections on their live mesh (compare with baked terrain) |
+| F7 | Studio only: skip 6 game hours |
+| F9 | Studio only: take 3 damage |
 
 Set render distance for testing: select your Player in Explorer during Play and add a number attribute `RenderDistance` (2–12).
 

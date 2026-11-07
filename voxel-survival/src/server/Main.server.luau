@@ -39,4 +39,10 @@ Startup.run("server", {
 	{ name = "SpawnService", run = function()
 		require(server.Player.SpawnService).init()
 	end },
+	{ name = "DayNightService", run = function()
+		require(server.Survival.DayNightService).init()
+	end },
+	{ name = "SurvivalService", run = function()
+		require(server.Survival.SurvivalService).init()
+	end },
 })

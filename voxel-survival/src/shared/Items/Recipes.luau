@@ -74,6 +74,10 @@ Recipes.smelting = {
 	oak_log = "charcoal",
 	birch_log = "charcoal",
 	spruce_log = "charcoal",
+	raw_porkchop = "cooked_porkchop",
+	raw_beef = "steak",
+	raw_chicken = "cooked_chicken",
+	raw_mutton = "cooked_mutton",
 } :: { [string]: string }
 
 -- Fuel burn time in seconds (one coal smelts 8 items).

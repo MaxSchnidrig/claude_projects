@@ -482,6 +482,52 @@ test("furnace smelts with fuel, classic timings", function()
 	eq(p.slots[3].item, "glass"); eq(p.slots[3].count, 1)
 end)
 
+print("Survival rules")
+local SurvivalRules = Loader.require("src/shared/Gameplay/SurvivalRules")
+test("exhaustion drains saturation first, then food", function()
+	local h = SurvivalRules.newHunger()
+	SurvivalRules.addExhaustion(h, 4 * 5) -- 5 points: all saturation
+	eq(h.saturation, 0); eq(h.food, 20)
+	SurvivalRules.addExhaustion(h, 4 * 3 + 1)
+	eq(h.food, 17); assert(math.abs(h.exhaustion - 1) < 1e-9)
+end)
+test("eating caps food at 20 and saturation at food", function()
+	local h = SurvivalRules.newHunger()
+	h.food, h.saturation = 10, 0
+	SurvivalRules.eat(h, 8, 12.8) -- steak
+	eq(h.food, 18); eq(h.saturation, 12.8)
+	SurvivalRules.eat(h, 8, 12.8)
+	eq(h.food, 20); eq(h.saturation, 20)
+end)
+test("regeneration and starvation timings", function()
+	local h = SurvivalRules.newHunger() -- food 20, sat 5: fast regen
+	local heal = SurvivalRules.tick(h, 2.0, 10, 20, 1)
+	eq(heal, 4) -- 1 HP / 0.5 s
+	h.food, h.saturation, h.regenTimer = 18, 0, 0
+	heal = SurvivalRules.tick(h, 8.0, 10, 20, 1)
+	eq(heal, 2) -- 1 HP / 4 s
+	h.food, h.saturation = 17, 0
+	heal = SurvivalRules.tick(h, 8.0, 10, 20, 1)
+	eq(heal, 0)
+	h.food = 0
+	local _, dmg = SurvivalRules.tick(h, 12.0, 10, 20, 1)
+	eq(dmg, 3) -- 1 / 4 s
+	local _, dmg2 = SurvivalRules.tick(h, 40.0, 2, 20, 1)
+	eq(dmg2, 1) -- Normal: never below 1 HP
+end)
+test("fall damage and sprint threshold", function()
+	eq(SurvivalRules.fallDamage(3, false), 0)
+	eq(SurvivalRules.fallDamage(3.5, false), 1)
+	eq(SurvivalRules.fallDamage(4, false), 1)
+	eq(SurvivalRules.fallDamage(23, false), 20)
+	eq(SurvivalRules.fallDamage(50, true), 0)
+	local h = SurvivalRules.newHunger()
+	h.food = 6
+	assert(not SurvivalRules.canSprint(h))
+	h.food = 7
+	assert(SurvivalRules.canSprint(h))
+end)
+
 print(`\n{passed} passed, {failed} failed`)
 if failed > 0 then
 	process.exit(1)

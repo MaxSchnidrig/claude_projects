@@ -62,8 +62,7 @@ local function applyFog(rd: number)
 	lastFogDistance = rd
 	local edge = (rd - 0.5) * CS * BS
 	Lighting.FogEnd = edge
-	Lighting.FogStart = edge * 0.55
-	Lighting.FogColor = Color3.fromRGB(170, 200, 235)
+	Lighting.FogStart = edge * 0.55 -- fog colour follows the time of day (DayNightClient)
 end
 local anchoredByUs = false
 
