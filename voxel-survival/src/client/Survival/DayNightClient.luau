@@ -6,7 +6,8 @@
 --   lighting   Brightness / ambient follow a daylight curve; no global shadows (terrain light and
 --              ambient occlusion are baked into the meshes, Java style)
 --   fog        linear fog ending at the render distance; its colour is the horizon colour
---   sky        a dome of our own: a closed box of panels around the camera just beyond the fog
+--   sky        two modes (Config.SKY_MODE, Studio key F7): "atmosphere" uses Roblox's Atmosphere
+--              (sky gradient + distance haze, no sky geometry); "fog" is a dome of our own: a closed box of panels around the camera just beyond the fog
 --              end is fully fogged, so the horizon is exactly the fog colour everywhere (Roblox's
 --              skybox, which fog doesn't touch, is never visible); a large glowing "zenith" plane
 --              high above the camera shows the sky colour, and fog fades it into the horizon
@@ -118,6 +119,11 @@ function DayNightClient.setBlockSource(fn: (number, number, number) -> number?, 
 	isOpaque = opaque
 end
 
+-- Sky mode: "atmosphere" (Roblox Atmosphere gives the sky gradient and the distance haze; no
+-- sky geometry at all) or "fog" (linear fog at the render distance plus our zenith plane and a
+-- fogged shell). Studio key F7 switches to compare.
+DayNightClient.mode = Config.SKY_MODE
+
 function DayNightClient.init()
 	Lighting.GlobalShadows = false
 	Lighting.EnvironmentDiffuseScale = 0
@@ -131,12 +137,16 @@ function DayNightClient.init()
 	(sky :: Sky).CelestialBodiesShown = false;
 	(sky :: Sky).StarCount = 0
 
+	local atmosphere = Instance.new("Atmosphere")
+	atmosphere.Name = "RocraftAtmosphere"
+	atmosphere.Glare = 0
+	atmosphere.Offset = 0.2
+
 	local folder = Instance.new("Folder")
 	folder.Name = "SkyDome"
 	folder.Parent = workspace
 	local zenith = skyPart("Zenith", Vector3.new(2000, 1, 2000), DAY.sky)
 	zenith.Parent = folder
-	-- fog shell: 6 panels, plain material (fully fogged = exactly the fog colour)
 	local shell: { { part: Part, normal: Vector3 } } = {}
 	for _, n in { Vector3.xAxis, -Vector3.xAxis, Vector3.yAxis, -Vector3.yAxis, Vector3.zAxis, -Vector3.zAxis } do
 		local p = skyPart("Shell", Vector3.new(1, 1, 1), Color3.new(0, 0, 0))
@@ -148,14 +158,15 @@ function DayNightClient.init()
 	sun.Parent = folder
 	local moon = skyPart("Moon", Vector3.new(1, 1, 1), Color3.fromRGB(214, 220, 236))
 	moon.Parent = folder
-	-- stars: small squares just under the zenith plane
-	local stars: { { part: Part, offset: Vector3 } } = {}
+	-- stars: small squares in random directions above the horizon
+	local stars: { { part: Part, dir: Vector3 } } = {}
 	local rng = Random.new(1337)
-	for _ = 1, 140 do
-		local s = skyPart("Star", Vector3.new(1, 0.2, 1), Color3.fromRGB(255, 255, 255))
+	for _ = 1, 160 do
+		local s = skyPart("Star", Vector3.new(0.6, 0.6, 0.1), Color3.fromRGB(255, 255, 255))
 		s.Transparency = 1
 		s.Parent = folder
-		table.insert(stars, { part = s, offset = Vector3.new(rng:NextNumber(-1, 1), 0, rng:NextNumber(-1, 1)) })
+		local dir = Vector3.new(rng:NextNumber(-1, 1), rng:NextNumber(0.15, 1), rng:NextNumber(-1, 1)).Unit
+		table.insert(stars, { part = s, dir = dir })
 	end
 
 	local occAcc, sunHidden, moonHidden = 0, false, false
@@ -182,29 +193,49 @@ function DayNightClient.init()
 		end
 		local camPos = cam.CFrame.Position
 		local fogStart = math.max(Lighting.FogStart, 60)
-		-- neon renders brighter than its colour; scale down to look like the plain sky colour
-		zenith.Color = Color3.new(skyColor.R * 0.72, skyColor.G * 0.72, skyColor.B * 0.72)
 		local fogEnd = math.max(Lighting.FogEnd, fogStart + 10)
-		local zH = fogStart * 0.9
-		-- reach past the fog end in every direction (Parts are at most 2048 studs)
-		local half = math.min(1024, math.sqrt(math.max(fogEnd * fogEnd - zH * zH, 0)) * 1.25 + 20)
-		zenith.Size = Vector3.new(half * 2, 1, half * 2)
-		zenith.CFrame = CFrame.new(camPos + Vector3.new(0, zH, 0))
-		local R = math.min(1000, fogEnd * 1.05 + 10)
-		for _, sp in shell do
-			local n = sp.normal
-			sp.part.Size = Vector3.new(
-				if n.X ~= 0 then 1 else R * 2 + 2,
-				if n.Y ~= 0 then 1 else R * 2 + 2,
-				if n.Z ~= 0 then 1 else R * 2 + 2
-			)
-			sp.part.CFrame = CFrame.new(camPos + n * R)
-			sp.part.Color = fog
+		local atmo = DayNightClient.mode == "atmosphere"
+
+		if atmo then
+			-- the haze reaches (nearly) full at the render distance; Roblox ignores FogStart/End
+			-- while an Atmosphere exists
+			atmosphere.Parent = Lighting
+			local rdStuds = math.max(fogEnd, 60)
+			atmosphere.Density = math.clamp(Config.ATMOSPHERE_DENSITY * 264 / rdStuds, 0.15, 0.9)
+			atmosphere.Color = fog
+			atmosphere.Decay = skyColor
+			atmosphere.Haze = 1.2 * d + 0.4
+			zenith.Parent = nil
+			for _, sp in shell do
+				sp.part.Parent = nil
+			end
+		else
+			atmosphere.Parent = nil
+			zenith.Parent = folder
+			-- neon renders brighter than its colour; scale down to look like the plain sky colour
+			zenith.Color = Color3.new(skyColor.R * 0.72, skyColor.G * 0.72, skyColor.B * 0.72)
+			local zH = fogStart * 0.9
+			local half = math.min(1024, math.sqrt(math.max(fogEnd * fogEnd - zH * zH, 0)) * 1.25 + 20)
+			zenith.Size = Vector3.new(half * 2, 1, half * 2)
+			zenith.CFrame = CFrame.new(camPos + Vector3.new(0, zH, 0))
+			-- far beyond the fog end, so it is surely fully fogged
+			local R = math.min(1000, fogEnd * 3)
+			for _, sp in shell do
+				local n = sp.normal
+				sp.part.Parent = folder
+				sp.part.Size = Vector3.new(
+					if n.X ~= 0 then 1 else R * 2 + 2,
+					if n.Y ~= 0 then 1 else R * 2 + 2,
+					if n.Z ~= 0 then 1 else R * 2 + 2
+				)
+				sp.part.CFrame = CFrame.new(camPos + n * R)
+				sp.part.Color = fog
+			end
 		end
 
-		-- sun and moon: square, 20 blocks wide at the classic scale, on a circle (radius R) that
-		-- turns with the time of day (sunrise in the east = +X)
-		local orbit = fogStart * 0.5
+		-- sun and moon: square, on a circle around the camera that turns with the time of day
+		-- (sunrise in the east = +X); hidden when blocks are in front of them
+		local orbit = if atmo then 150 else fogStart * 0.5
 		local angle = (t / 24000) * math.pi * 2 -- 0 = sunrise
 		local sunDir = Vector3.new(math.cos(angle), math.sin(angle), 0)
 		local size = orbit * 0.16
@@ -225,7 +256,7 @@ function DayNightClient.init()
 		local starAlpha = math.clamp(1 - d * 1.4, 0, 1)
 		for _, st in stars do
 			st.part.Transparency = 1 - starAlpha * 0.85
-			st.part.CFrame = CFrame.new(camPos + Vector3.new(st.offset.X * zH * 1.6, zH - 1, st.offset.Z * zH * 1.6))
+			st.part.CFrame = CFrame.lookAt(camPos + st.dir * orbit * 1.2, camPos)
 		end
 	end)
 end

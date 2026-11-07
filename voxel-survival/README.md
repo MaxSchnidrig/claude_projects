@@ -126,6 +126,7 @@ In Studio you spawn with a test kit (pickaxes of each tier, blocks) from `Config
 | K | Studio only: take 3 damage |
 | L | Studio only: spawn the next mob type 4 blocks in front of you |
 | G | Studio only: get 64 torches and 16 coal |
+| F7 | Studio only: switch the sky between "atmosphere" and "fog" mode (compare; default in `Config.SKY_MODE`) |
 
 Set render distance for testing: select your Player in Explorer during Play and add a number attribute `RenderDistance` (2–12).
 
@@ -149,3 +150,4 @@ lune run tests/lune/compile_all
 - `bench`: terrain statistics, timings, and instance counts for each rendering approach.
 - `compile_all`: syntax-checks every file, including Roblox-only ones.
 - `bench_lit` (`lune run tests/lune/bench_lit`): lighting and lit-meshing timings (phase 7).
+- `bench_height` (`lune run tests/lune/bench_height 128` / `384`): world-height experiment.

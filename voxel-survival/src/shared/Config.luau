@@ -80,6 +80,9 @@ Config.FACE_SHADE = {
 Config.TEXTURES = true
 Config.MESH_MAX_TRIANGLES = 19000 -- split a section into several meshes above this
 Config.TORCH_POINT_LIGHTS = 24 -- nearest torches that also carry a Roblox PointLight
+Config.SKY_MODE = "atmosphere" -- "atmosphere" (Roblox Atmosphere sky + haze) or "fog" (our fog dome)
+Config.ATMOSPHERE_DENSITY = 0.45 -- haze density at render distance 6 (scaled for others)
+Config.DEBUG_KEY_SKY_MODE = "F7" -- Studio only: switch the sky mode to compare
 Config.CLOUD_Y = 132 -- cloud layer height (blocks); low enough to stay inside the fog distance
 
 -- Player & interaction (phase 2) -----------------------------------------------------------

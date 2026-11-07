@@ -3,7 +3,7 @@
 
 local GameInfo = {
 	TITLE = "ROCRAFT",
-	VERSION = "0.7.1-skyfix",
+	VERSION = "0.7.2-skymodes",
 }
 
 return GameInfo

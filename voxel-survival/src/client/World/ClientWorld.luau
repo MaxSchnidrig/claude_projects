@@ -137,6 +137,10 @@ local function lightReady(rec: Rec): boolean
 		and litAt(rec.cx, rec.cz + 1) and litAt(rec.cx, rec.cz - 1)
 end
 
+-- While an edit relights, the touched sections are collected here so they rebuild with the edit
+-- (same frame where the live-edit pool has room, else as priority bakes) instead of waiting.
+local collecting: { [any]: { rec: Rec, section: ChunkRenderer.Section } }? = nil
+
 -- Light changed at a block: the sections that sample it (its own, and across a border) re-mesh.
 local function lightChanged(wx: number, wy: number, wz: number)
 	local cx, cz = wx // CS, wz // CS
@@ -148,6 +152,10 @@ local function lightChanged(wx: number, wy: number, wz: number)
 			local sec = rec.sections[s + 1]
 			if not sec.renderDirty then
 				sec.renderDirty = true
+			end
+			local c = collecting
+			if c and not c[sec] then
+				c[sec] = { rec = rec, section = sec }
 			end
 		end
 	end
@@ -451,18 +459,22 @@ local function rebuildNow(touched: { { rec: Rec, section: ChunkRenderer.Section 
 		local rec, s = t.rec, t.section
 		local data = rec.data
 		local dx, dz = rec.cx - centerX, rec.cz - centerZ
-		if urgentLeft > 0 and data and rec.diffsReady and s.alive then
+		if data and rec.diffsReady and s.alive then
 			-- render (only where we'd render anyway, and once neighbours exist for border culling)
-			if dx * dx + dz * dz <= meshLimit and neighborsReady(rec) and (s.render ~= nil or not s.culled) then
+			local visible = dx * dx + dz * dz <= meshLimit and neighborsReady(rec) and (s.render ~= nil or not s.culled)
+			if visible and urgentLeft > 0 then
 				urgentLeft -= 1
 				ChunkRenderer.renderUrgent(s, data, neighbors(rec))
 				if s.renderDirty then
 					table.insert(editQueue, { rec = rec, section = s })
 				end
+			elseif visible and s.renderDirty then
+				-- over this frame's instant budget: still a priority bake, ahead of background work
+				table.insert(editQueue, { rec = rec, section = s })
 			end
 			-- collision: rebuild now if this section has collision, so you can walk into the hole
 			-- (or stand on the new block) immediately
-			if s.collision ~= nil then
+			if s.collision ~= nil and s.collisionDirty then
 				ChunkRenderer.collideSection(s, data)
 			end
 		end
@@ -660,10 +672,35 @@ function ClientWorld.setBlock(wx: number, wy: number, wz: number, id: number, in
 	if TorchRules.isTorch(id) or TorchRules.isTorch(old) then
 		TorchRenderer.set(wx, wy, wz, id)
 	end
+	local lit: { [any]: { rec: Rec, section: ChunkRenderer.Section } } = {}
 	if data.light then
+		collecting = lit
 		light:blockChanged(wx, wy, wz) -- before the instant rebuild, so it shows the new light
+		collecting = nil
 	end
 	local touched = markDirty(wx, wy, wz)
+	-- sections whose light changed rebuild together with the edit, nearest first
+	local seen = {}
+	for _, t in touched do
+		seen[t.section] = true
+	end
+	local extra = {}
+	for sec, t in lit do
+		if not seen[sec] then
+			table.insert(extra, t)
+		end
+	end
+	local cx0, cz0 = wx // CS, wz // CS
+	local sy0 = wy // SS
+	table.sort(extra, function(a, b)
+		local da = math.abs(a.rec.cx - cx0) + math.abs(a.rec.cz - cz0) + math.abs(a.section.sy - sy0)
+		local db = math.abs(b.rec.cx - cx0) + math.abs(b.rec.cz - cz0) + math.abs(b.section.sy - sy0)
+		return da < db
+	end)
+	for _, t in extra do
+		t.section.version += 1
+		table.insert(touched, t)
+	end
 	if instant then
 		rebuildNow(touched)
 	end
