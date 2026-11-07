@@ -60,6 +60,40 @@ local sim = { active = false, sx = 0, sz = 0, acc = 0, jumpTick = false, lastCmd
 -- Held-jump delay (Java noJumpDelay): 10 ticks after a jump while jump stays held.
 local lastJumpAt = -math.huge
 local jumpEnabled = true
+local heldSinceJump = false -- jump held without a break since the last jump
+-- The player's own movement input this frame (the movement simulation overrides MoveDirection).
+local inputDir = Vector3.zero
+-- Sneak edge guard: last position standing on support while sneaking, whether we're in the air
+-- because of a jump (then the guard is off), and a small invisible ledge under the body centre:
+-- Java lets you lean out until the 0.6-wide box loses support, Roblox would drop you as soon as
+-- the centre passes the edge.
+local lastSupported: Vector3? = nil
+local airborneByJump = false
+local ledge: Part? = nil
+
+local function setLedge(pos: Vector3?)
+	if not pos then
+		if ledge then
+			ledge.Parent = nil
+		end
+		return
+	end
+	local l = ledge
+	if not l then
+		local p = Instance.new("Part")
+		p.Name = "SneakLedge"
+		p.Anchored = true
+		p.Transparency = 1
+		p.CanTouch = false
+		p.CastShadow = false
+		p.Size = Vector3.new(0.6, 0.2, 0.6)
+		ledge = p
+		l = p
+	end
+	local part = l :: Part
+	part.CFrame = CFrame.new(pos)
+	part.Parent = workspace
+end
 
 local function startSim(vx: number, vz: number)
 	sim.active = true
@@ -86,6 +120,12 @@ local function configure(humanoid: Humanoid)
 	local character = humanoid.Parent
 	if character and character:IsA("Model") then
 		SneakPose.remember(character)
+		-- Java has no friction against walls and ceilings: a head bump must not slow you down
+		for _, d in character:GetDescendants() do
+			if d:IsA("BasePart") then
+				d.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0, 0, 100, 1)
+			end
+		end
 	end
 	MovementController.sneaking = false
 	MovementController.eyeHeight = Config.EYE_HEIGHT
@@ -94,6 +134,8 @@ local function configure(humanoid: Humanoid)
 	humanoid.StateChanged:Connect(function(_, new)
 		if new == Enum.HumanoidStateType.Jumping then
 			lastJumpAt = os.clock()
+			heldSinceJump = true
+			airborneByJump = true -- jumping off an edge while sneaking is allowed
 			local root = humanoid.Parent and humanoid.Parent:FindFirstChild("HumanoidRootPart") :: BasePart?
 			if not sim.active and root then
 				-- leaving the ground at full speed: Java's stored velocity is disp x 0.546
@@ -136,6 +178,12 @@ local STEP = 0.6 -- Java max step height (blocks)
 -- Something to stand on within STEP below the feet box at (x, z)?
 local function supported(x: number, feetY: number, z: number): boolean
 	return solidIn(x - HALF + 1e-3, feetY - STEP, z - HALF + 1e-3, x + HALF - 1e-3, feetY - 1e-3, z + HALF - 1e-3)
+end
+
+-- Would the body box (Java 0.6 wide) collide after moving by (dx, dz)?
+local function bodyBlocked(x: number, feetY: number, z: number, dx: number, dz: number, height: number): boolean
+	local cx, cz = x + dx, z + dz
+	return solidIn(cx - HALF, feetY + 0.05, cz - HALF, cx + HALF, feetY + height - 0.05, cz + HALF)
 end
 
 local function roomToStand(x: number, feetY: number, z: number): boolean
@@ -184,6 +232,9 @@ function MovementController.init()
 		local character = Players.LocalPlayer.Character
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		if humanoid then
+			inputDir = humanoid.MoveDirection -- just set by the control script from the player's input
+		end
 		if not MovementController.sneaking or not humanoid or not root or root.Anchored then
 			return
 		end
@@ -221,7 +272,10 @@ function MovementController.init()
 		-- Java: while jump is held, the next jump waits 10 ticks after the last one; letting go of
 		-- jump clears the wait, so pressing it again jumps at once.
 		local held = humanoid.Jump
-		local allow = not held or os.clock() - lastJumpAt >= PlayerPhysics.JUMP_DELAY_TICKS / 20
+		if not held then
+			heldSinceJump = false -- any release clears the delay (Java noJumpDelay = 0)
+		end
+		local allow = not heldSinceJump or os.clock() - lastJumpAt >= PlayerPhysics.JUMP_DELAY_TICKS / 20
 		if allow ~= jumpEnabled then
 			jumpEnabled = allow
 			humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, allow)
@@ -244,17 +298,19 @@ function MovementController.init()
 			sim.active = false -- the sneak edge check needs the Humanoid's own walking
 			return
 		end
-		-- a blocked axis loses its velocity (Java collision)
-		local actual = root.AssemblyLinearVelocity
-		local cmd = sim.lastCmd
-		if math.abs(cmd.X) > 1 and math.abs(actual.X) < 0.25 * math.abs(cmd.X) then
+		-- a blocked axis loses its velocity (Java collision). Tested against the blocks themselves:
+		-- a slowdown from touching a ceiling is not a collision.
+		local pb = root.Position / BS
+		local feetB = (root.Position.Y - FEET_BELOW_ROOT) / BS
+		local h = if MovementController.sneaking then 1.5 else 1.8
+		if sim.sx ~= 0 and bodyBlocked(pb.X, feetB, pb.Z, math.sign(sim.sx) * 0.03, 0, h) then
 			sim.sx = 0
 		end
-		if math.abs(cmd.Z) > 1 and math.abs(actual.Z) < 0.25 * math.abs(cmd.Z) then
+		if sim.sz ~= 0 and bodyBlocked(pb.X, feetB, pb.Z, 0, math.sign(sim.sz) * 0.03, h) then
 			sim.sz = 0
 		end
 
-		local md = humanoid.MoveDirection
+		local md = inputDir
 		local scale = PlayerPhysics.INPUT_DAMPING
 		if MovementController.sneaking then
 			scale *= Config.SNEAK_SPEED_FACTOR
@@ -370,17 +426,32 @@ function MovementController.init()
 
 		-- Sprint latch: needs forward movement, food > 6, not sneaking or using an item, and not
 		-- pushing against a wall.
-		local forward = humanoid.MoveDirection:Dot(root.CFrame.LookVector) > 0.5
+		-- Forward input comes from the player's keys/stick, not from the Humanoid's move direction,
+		-- which the Java movement simulation sets while airborne or landing.
+		local look = root.CFrame.LookVector
+		local forward = inputDir:Dot(look) > 0.5
 		if UserInputService:IsKeyDown(keySprint) and forward and canStartSprint(humanoid) then
 			sprintLatch = true -- Ctrl held while walking forward
 		end
 		if not forward or not canStartSprint(humanoid) then
 			sprintLatch = false
 		end
+		-- Java: sprint stops on a real horizontal collision in the facing direction (more than a
+		-- glancing touch): the body box is blocked just ahead AND we actually stopped moving
+		-- forward. Jumps, landings and ceiling bumps don't count.
 		local v = root.AssemblyLinearVelocity
-		if sprintLatch and Vector3.new(v.X, 0, v.Z).Magnitude < Config.WALK_SPEED * 0.4 then
+		local headOn = false
+		if sprintLatch then
+			local lb = Vector3.new(look.X, 0, look.Z)
+			lb = if lb.Magnitude > 1e-3 then lb.Unit else Vector3.zero
+			local pb = root.Position / BS
+			local feetB = (root.Position.Y - FEET_BELOW_ROOT) / BS
+			headOn = bodyBlocked(pb.X, feetB, pb.Z, lb.X * 0.05, lb.Z * 0.05, 1.8)
+				and Vector3.new(v.X, 0, v.Z):Dot(lb) < Config.WALK_SPEED * 0.4
+		end
+		if headOn then
 			blockedTime += dt
-			if blockedTime > 0.15 then
+			if blockedTime > 0.1 then
 				sprintLatch = false -- ran into a wall
 			end
 		else
@@ -415,6 +486,40 @@ function MovementController.init()
 			root.AssemblyLinearVelocity = Vector3.new(v.X, vy, v.Z)
 		end
 		humanoid.WalkSpeed = speed
+
+		-- Sneak edge guard (after physics, whatever moved us: walking, the movement simulation,
+		-- knockback): while sneaking on the ground you can't leave the support of the block you
+		-- stand on if the drop is more than 0.6 blocks. Jumping off stays possible.
+		local here = root.Position
+		local feetNow = (here.Y - FEET_BELOW_ROOT) / BS
+		local onSupport = supported(here.X / BS, feetNow, here.Z / BS)
+		local vyNow = root.AssemblyLinearVelocity.Y
+		local groundedNow = humanoid.FloorMaterial ~= Enum.Material.Air
+		if airborneByJump and groundedNow and vyNow <= 1 and os.clock() - lastJumpAt > 0.1 then
+			airborneByJump = false
+		end
+		if crouch and not root.Anchored and not inLiquid and humanoid.Health > 0 and not airborneByJump then
+			if onSupport and vyNow <= 1 then
+				if groundedNow then
+					lastSupported = here
+				end
+				local base = lastSupported
+				if base then
+					-- ledge top exactly at foot level, under the body centre
+					setLedge(Vector3.new(here.X, base.Y - FEET_BELOW_ROOT - 0.1, here.Z))
+				end
+			elseif not onSupport and lastSupported
+				and (Vector3.new(here.X, 0, here.Z) - Vector3.new((lastSupported :: Vector3).X, 0, (lastSupported :: Vector3).Z)).Magnitude < BS
+			then
+				local back = lastSupported :: Vector3
+				root.CFrame = CFrame.new(back) * (root.CFrame - root.CFrame.Position)
+				root.AssemblyLinearVelocity = Vector3.zero
+				sim.active = false
+			end
+		else
+			setLedge(nil)
+			lastSupported = if crouch and onSupport and groundedNow then here else nil
+		end
 
 		-- Java terminal velocity
 		local vel = root.AssemblyLinearVelocity

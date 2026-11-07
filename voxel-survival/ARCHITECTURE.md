@@ -289,6 +289,9 @@ every other tool 1 (before: 1 for everything); hitting a mob costs swords 1, oth
 | Held jump (0.6.1) | re-jump on every landing | 10-tick delay after a jump while jump stays held; releasing clears it |
 | Air movement (0.6.1) | Roblox Humanoid (full speed, instant turns) | Java per tick: sprint-jump +0.2 b/tick forward on the (ground) jump tick, air accel 0.02 / 0.026 sprinting, air drag 0.91, ground friction 0.546 until the landing settles; held sprint-jumping averages 7.11 b/s (wiki 7.127), in a 2-high tunnel 6.5 b/s with held jump |
 | Sneak height (0.6.1) | body sank ~2 studs | feet stay on the ground; only the top of the body and the eyes lower |
+| Sprint through jumps (0.6.2) | could stop on jumps/landings (forward test read the simulated move direction; a slowdown counted as a wall) | forward = the player's own input; sprint stops only on a real collision ahead (body box blocked by blocks and forward speed lost); character parts have no friction against walls/ceilings |
+| Sneak edge (0.6.2) | only the walking input was clipped | also enforced after physics in every state (walking, landing, knockback): you lean out until Java's 0.6-wide box loses support (an invisible ledge under the body centre keeps the Humanoid standing), anything further is undone; jumping off is allowed |
+| Jump delay (0.6.2) | applied to repeated presses | only while jump is held without a break since the last jump; each release clears it |
 
 ### Not replicated yet
 
