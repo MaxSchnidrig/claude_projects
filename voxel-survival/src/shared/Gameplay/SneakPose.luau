@@ -5,10 +5,10 @@
 -- rotated so they stay upright (hips). The server sets the same C0s so every player sees it; the
 -- owner sets them at once locally.
 --
--- Collision (owner only, physics is client-side): while crouched the visual body parts are moved
--- to the GHOST collision group and a single box from the feet+2 to the feet+4.5 studs collides
--- instead: with the legs' 2-stud hover that makes the body 4.5 studs = 1.5 blocks tall (Java's
--- sneaking height), so you fit under 1.5-block gaps.
+-- Collision (owner only, physics is client-side): while crouched the head and torso are moved to
+-- the GHOST collision group and a box from feet+2 to feet+4.5 studs collides instead, so the top
+-- of the body is 4.5 studs = 1.5 blocks (Java's sneaking height). The feet don't move: the
+-- HumanoidRootPart (which the Humanoid uses to stand on the floor) keeps colliding normally.
 
 local Config = require(script.Parent.Parent.Config)
 
@@ -93,7 +93,9 @@ function SneakPose.setCollision(character: Model, on: boolean)
 		cap = p
 	end
 	(cap :: BasePart).CanCollide = on
-	for _, name in { "Head", "Torso", "HumanoidRootPart" } do
+	-- The HumanoidRootPart stays in the default group: the Humanoid finds the floor through it,
+	-- and ghosting it made the character sink until the collider box hit the ground.
+	for _, name in { "Head", "Torso" } do
 		local part = character:FindFirstChild(name)
 		if part and part:IsA("BasePart") then
 			pcall(function()

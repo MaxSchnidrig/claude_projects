@@ -827,6 +827,48 @@ test("save format: player state round trip, clamps bad values", function()
 	eq(rx, -1); eq(rz, 1)
 end)
 
+local PlayerPhysics = Loader.require("src/shared/Gameplay/PlayerPhysics")
+-- Java reference run: forward input, jump held, flat ground or a ceiling; returns blocks/s.
+local function javaRun(sprint: boolean, jump: boolean, ceiling: number?): number
+	local sx, y, vy, ground, delay, x = 0, 0, 0, true, 0, 0
+	local input = PlayerPhysics.INPUT_DAMPING
+	for _ = 1, 2000 do
+		if delay > 0 then
+			delay -= 1
+		end
+		if jump and ground and delay == 0 then
+			vy = PlayerPhysics.JUMP_VELOCITY
+			if sprint then
+				sx += PlayerPhysics.SPRINT_JUMP_BOOST
+			end
+			delay = PlayerPhysics.JUMP_DELAY_TICKS
+		end
+		local dx, _, nsx = PlayerPhysics.tick(sx, 0, input, 0, ground, sprint)
+		x += dx
+		sx = nsx
+		local ny = y + vy
+		if ceiling and ny > ceiling - 1.8 then
+			ny, vy = ceiling - 1.8, 0
+		end
+		if ny <= 0 then
+			ny, vy, ground = 0, 0, true
+		else
+			ground = false
+			vy = PlayerPhysics.verticalAfter(vy)
+		end
+		y = ny
+	end
+	return x / 2000 * 20
+end
+test("player physics: Java walk, sprint and sprint-jump speeds", function()
+	near(javaRun(false, false), 4.317, 0.005, "walk")
+	near(javaRun(true, false), 5.612, 0.005, "sprint")
+	near(javaRun(true, true), 7.127, 0.03, "held sprint-jump (wiki 7.127)")
+	assert(javaRun(true, true, 2.0) > 5.612, "sprint-jumping in a 2-high tunnel beats sprinting")
+	local bx, bz = PlayerPhysics.jumpBoost(0, -1)
+	eq(bx, 0); near(bz, -0.2)
+end)
+
 print(`\n{passed} passed, {failed} failed`)
 if failed > 0 then
 	process.exit(1)

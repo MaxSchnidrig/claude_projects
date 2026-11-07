@@ -12,6 +12,10 @@
 --              where nothing is within 0.6 blocks below your feet box. You stay crouched while
 --              there's no room to stand. (Not while a window is open.)
 --   item use   eating: speed x 0.2 (x 0.06 when also sneaking), no sprinting
+--   jumping    holding jump re-jumps only 10 ticks after the previous jump (Java noJumpDelay);
+--              from a jump, a fall or a knockback until the landing settles, horizontal movement
+--              follows Java per tick (PlayerPhysics): sprint-jump +0.2 blocks/tick forward, air
+--              acceleration 0.02 (0.026 sprinting), air drag 0.91, ground friction 0.546
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -25,6 +29,7 @@ local SurvivalClient = require(script.Parent.Parent.Survival.SurvivalClient)
 local ClientWorld = require(script.Parent.Parent.World.ClientWorld)
 local InventoryClient = require(script.Parent.Parent.Player.InventoryClient)
 local SneakPose = require(Shared.Gameplay.SneakPose)
+local PlayerPhysics = require(Shared.Gameplay.PlayerPhysics)
 
 local BS = Config.BLOCK_SIZE
 local isLiquid = BlockRegistry.isLiquid
@@ -49,8 +54,18 @@ local touchSneak = false
 local peakFeetY: number? = nil
 local FEET_BELOW_ROOT = 3
 local BASE_FOV = 70
--- Active knockback: horizontal velocity (studs/s) decaying with Java friction.
-local knockback: { vel: Vector3, t: number }? = nil
+-- Java horizontal movement (PlayerPhysics) takes over from the Humanoid from a jump, a fall or a
+-- knockback until a landing has settled back to normal ground speed. Velocities in blocks/tick.
+local sim = { active = false, sx = 0, sz = 0, acc = 0, jumpTick = false, lastCmd = Vector3.zero }
+-- Held-jump delay (Java noJumpDelay): 10 ticks after a jump while jump stays held.
+local lastJumpAt = -math.huge
+local jumpEnabled = true
+
+local function startSim(vx: number, vz: number)
+	sim.active = true
+	sim.sx, sim.sz = vx, vz
+	sim.acc = 0
+end
 
 -- Java: a full-strength sprint hit ends the sprint.
 function MovementController.stopSprint()
@@ -74,6 +89,21 @@ local function configure(humanoid: Humanoid)
 	end
 	MovementController.sneaking = false
 	MovementController.eyeHeight = Config.EYE_HEIGHT
+	sim.active = false
+	jumpEnabled = true
+	humanoid.StateChanged:Connect(function(_, new)
+		if new == Enum.HumanoidStateType.Jumping then
+			lastJumpAt = os.clock()
+			local root = humanoid.Parent and humanoid.Parent:FindFirstChild("HumanoidRootPart") :: BasePart?
+			if not sim.active and root then
+				-- leaving the ground at full speed: Java's stored velocity is disp x 0.546
+				local v = root.AssemblyLinearVelocity / BS / 20
+				startSim(v.X * PlayerPhysics.GROUND_FRICTION, v.Z * PlayerPhysics.GROUND_FRICTION)
+			end
+			sim.active = true
+			sim.jumpTick = true
+		end
+	end)
 end
 
 local function onGround(humanoid: Humanoid): boolean
@@ -180,13 +210,108 @@ function MovementController.init()
 		end
 	end)
 
+	-- Held-jump delay and Java air movement (after the control script and the sneak edge check).
+	RunService:BindToRenderStep("RocraftJavaMove", Enum.RenderPriority.Input.Value + 2, function(dt)
+		local character = Players.LocalPlayer.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		if not humanoid or not root then
+			return
+		end
+		-- Java: while jump is held, the next jump waits 10 ticks after the last one; letting go of
+		-- jump clears the wait, so pressing it again jumps at once.
+		local held = humanoid.Jump
+		local allow = not held or os.clock() - lastJumpAt >= PlayerPhysics.JUMP_DELAY_TICKS / 20
+		if allow ~= jumpEnabled then
+			jumpEnabled = allow
+			humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, allow)
+		end
+
+		if root.Anchored or humanoid.Health <= 0 or MovementController.inLiquid then
+			sim.active = false
+			return
+		end
+		local grounded = onGround(humanoid)
+		if not sim.active then
+			if grounded then
+				return
+			end
+			-- walked off a ledge: continue with the air velocity
+			local v = root.AssemblyLinearVelocity / BS / 20
+			startSim(v.X * PlayerPhysics.AIR_FRICTION, v.Z * PlayerPhysics.AIR_FRICTION)
+		end
+		if grounded and MovementController.sneaking then
+			sim.active = false -- the sneak edge check needs the Humanoid's own walking
+			return
+		end
+		-- a blocked axis loses its velocity (Java collision)
+		local actual = root.AssemblyLinearVelocity
+		local cmd = sim.lastCmd
+		if math.abs(cmd.X) > 1 and math.abs(actual.X) < 0.25 * math.abs(cmd.X) then
+			sim.sx = 0
+		end
+		if math.abs(cmd.Z) > 1 and math.abs(actual.Z) < 0.25 * math.abs(cmd.Z) then
+			sim.sz = 0
+		end
+
+		local md = humanoid.MoveDirection
+		local scale = PlayerPhysics.INPUT_DAMPING
+		if MovementController.sneaking then
+			scale *= Config.SNEAK_SPEED_FACTOR
+		end
+		if MovementController.usingItem then
+			scale *= Config.ITEM_USE_SPEED_FACTOR
+		end
+		local ix, iz = md.X * scale, md.Z * scale
+		local sprinting = MovementController.sprinting
+		sim.acc += dt
+		local dx, dz = sim.sx, sim.sz
+		local ticked = false
+		while sim.acc >= 0.05 do
+			sim.acc -= 0.05
+			local g = grounded or sim.jumpTick
+			if sim.jumpTick and sprinting then
+				local look = root.CFrame.LookVector
+				local bx, bz = PlayerPhysics.jumpBoost(look.X, look.Z)
+				sim.sx += bx
+				sim.sz += bz
+			end
+			sim.jumpTick = false
+			dx, dz, sim.sx, sim.sz = PlayerPhysics.tick(sim.sx, sim.sz, ix, iz, g, sprinting)
+			ticked = true
+		end
+		if ticked then
+			local v = Vector3.new(dx, 0, dz) * 20 * BS
+			sim.lastCmd = v
+			if v.Magnitude > 0.05 then
+				humanoid.WalkSpeed = v.Magnitude
+				humanoid:Move(v.Unit, false)
+			else
+				humanoid:Move(Vector3.zero, false)
+			end
+			-- landed and back to normal ground speed: hand control back to the Humanoid
+			if grounded then
+				local gx, gz = PlayerPhysics.steadyGround(ix, iz, sprinting)
+				if math.abs(dx - gx) < 0.004 and math.abs(dz - gz) < 0.004 then
+					sim.active = false
+				end
+			end
+		else
+			local v = sim.lastCmd
+			if v.Magnitude > 0.05 then
+				humanoid.WalkSpeed = v.Magnitude
+				humanoid:Move(v.Unit, false)
+			end
+		end
+	end)
+
 	Players.LocalPlayer.CharacterAdded:Connect(function(character)
 		configure(character:WaitForChild("Humanoid") :: Humanoid)
 	end)
 
 	-- Knockback from hits/explosions (the client simulates its own character's physics).
 	-- Hits use Java's formula on our own velocity and ground state (Combat.knockback); the
-	-- horizontal push is held for a short moment so the Humanoid's walking doesn't cancel it.
+	-- horizontal part then runs through the Java movement simulation (friction, air drag).
 	local Remotes = require(Shared.Net.Remotes)
 	local Combat = require(Shared.Gameplay.Combat)
 	Remotes.get("Knockback").OnClientEvent:Connect(function(kb: any)
@@ -207,7 +332,9 @@ function MovementController.init()
 		else
 			return
 		end
-		knockback = { vel = Vector3.new(nv.X, 0, nv.Z) * 20 * BS, t = 0 }
+		-- Java: knockback changes the stored velocity; the movement simulation carries it on
+		startSim(nv.X, nv.Z)
+		sim.lastCmd = Vector3.zero
 		root.AssemblyLinearVelocity = nv * 20 * BS
 	end)
 	if Players.LocalPlayer.Character then
@@ -288,21 +415,6 @@ function MovementController.init()
 			root.AssemblyLinearVelocity = Vector3.new(v.X, vy, v.Z)
 		end
 		humanoid.WalkSpeed = speed
-
-		-- Knockback: keep the pushed horizontal velocity, decaying like Java (ground 0.546 per
-		-- tick, air 0.91), until it falls below walking speed; the Humanoid would cancel it.
-		local kb = knockback
-		if kb and not root.Anchored then
-			local onGround = humanoid.FloorMaterial ~= Enum.Material.Air
-			kb.vel *= (if onGround then 0.546 else 0.91) ^ (dt * 20)
-			kb.t += dt
-			if kb.vel.Magnitude < Config.WALK_SPEED * 0.5 or kb.t > 1.5 then
-				knockback = nil
-			else
-				local cur = root.AssemblyLinearVelocity
-				root.AssemblyLinearVelocity = Vector3.new(kb.vel.X, cur.Y, kb.vel.Z)
-			end
-		end
 
 		-- Java terminal velocity
 		local vel = root.AssemblyLinearVelocity

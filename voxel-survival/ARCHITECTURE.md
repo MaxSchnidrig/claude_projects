@@ -286,6 +286,9 @@ every other tool 1 (before: 1 for everything); hitting a mob costs swords 1, oth
 | Sneaking | none | Left Shift: ×0.3 speed, no sprint, 1.5-block body, edge stop (no support within 0.6 blocks below the feet box), forced while no room to stand, mobs notice you at 80 % range, pose seen by everyone |
 | Using items | full speed | ×0.2 speed, sprint stops |
 | Towering | placement rejected if the server's lagging view still overlapped you | the server re-checks such a placement every frame for 0.6 s before rejecting it |
+| Held jump (0.6.1) | re-jump on every landing | 10-tick delay after a jump while jump stays held; releasing clears it |
+| Air movement (0.6.1) | Roblox Humanoid (full speed, instant turns) | Java per tick: sprint-jump +0.2 b/tick forward on the (ground) jump tick, air accel 0.02 / 0.026 sprinting, air drag 0.91, ground friction 0.546 until the landing settles; held sprint-jumping averages 7.11 b/s (wiki 7.127), in a 2-high tunnel 6.5 b/s with held jump |
+| Sneak height (0.6.1) | body sank ~2 studs | feet stay on the ground; only the top of the body and the eyes lower |
 
 ### Not replicated yet
 
