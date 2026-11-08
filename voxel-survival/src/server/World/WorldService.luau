@@ -168,7 +168,7 @@ function WorldService.init(worldSeed: number)
 		end
 		scheduler:step()
 	end)
-	print(`[WorldService] seed {seed}, spawn block {spawnBlock}`)
+	print(`[WorldService] seed {seed}, spawn block {spawnBlock.X}, {spawnBlock.Y - Config.Y_OFFSET}, {spawnBlock.Z} (Java y)`)
 end
 
 function WorldService.getSeed(): number

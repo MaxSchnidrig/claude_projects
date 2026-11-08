@@ -84,7 +84,7 @@ local function targetLine(): string
 	local t = Mining.breakSeconds(hit.id, held)
 	local tText = if t == math.huge then "unbreakable" else string.format("%.2f s", t)
 	local drops = if Mining.canHarvest(hit.id, held) then "drops" else "no drop"
-	return `target {if def then def.name else "?"} ({hit.x} {hit.y} {hit.z})   {tText} with {heldName}, {drops}`
+	return `target {if def then def.name else "?"} ({hit.x} {hit.y - Config.Y_OFFSET} {hit.z})   {tText} with {heldName}, {drops}`
 end
 
 function DebugOverlay.init()
