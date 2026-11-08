@@ -436,6 +436,13 @@ function SurvivalService.init()
 			DayNightService.addTicks(6000)
 		elseif a.type == "hurtSelf" then
 			SurvivalService.damage(p, 3, "hurt themselves (debug)")
+		elseif a.type == "giveItem" then
+			-- Studio test menu (C): any item, up to one full stack
+			local def = typeof(a.item) == "string" and ItemRegistry.get(a.item)
+			local n = if typeof(a.count) == "number" then math.clamp(math.floor(a.count), 1, 64) else 1
+			if def then
+				InventoryService.add(p, def.key, math.min(n, def.stack))
+			end
 		elseif a.type == "giveKit" then
 			InventoryService.add(p, "torch", 64)
 			InventoryService.add(p, "coal", 16)

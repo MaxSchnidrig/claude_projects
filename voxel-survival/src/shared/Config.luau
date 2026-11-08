@@ -194,6 +194,7 @@ Config.DEBUG_KEY_SPAWN_MOB = "L" -- Studio only: spawn the next mob type in fron
 Config.DEBUG_KEY_SPECTATOR = "N" -- Studio only: spectator flying (no collision); Space up, Shift down, double-tap W sprints
 Config.SPECTATOR_SPEED = 10.92 -- blocks/s (Java flying speed; Ctrl doubles it)
 Config.TERRAIN_MATERIAL = "Plastic" -- rougher than SmoothPlastic: less shine on blocks
+Config.DEBUG_KEY_ITEM_MENU = "C" -- Studio only: menu with every block and item (click = full stack)
 Config.DEBUG_KEY_GIVE_KIT = "G" -- Studio only: test kit (torches, coal, buckets, flint and steel, TNT, sand, gravel, campfires, beef, planks)
 
 return Config

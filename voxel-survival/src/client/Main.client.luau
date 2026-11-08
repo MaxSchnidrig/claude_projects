@@ -72,6 +72,9 @@ Startup.run("client", {
 	system("InventoryUI", function()
 		return client.UI.InventoryUI
 	end),
+	system("CreativeMenu", function()
+		return client.UI.CreativeMenu
+	end),
 	system("MovementController", function()
 		return client.Player.MovementController
 	end),

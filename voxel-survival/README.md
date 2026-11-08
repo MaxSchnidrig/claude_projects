@@ -128,6 +128,7 @@ In Studio you spawn with a test kit (pickaxes of each tier, blocks) from `Config
 | K | Studio only: take 3 damage |
 | L | Studio only: spawn the next mob type 4 blocks in front of you |
 | G | Studio only: test kit (torches, coal, buckets, flint and steel, TNT, sand, gravel, campfires, raw beef, planks) |
+| C | Studio only: menu with every block and item (click = full stack, right-click = one, search box; C or Esc closes) |
 | N | Studio only: spectator mode: fly through blocks (Space up, Shift down, double-tap W to fly faster), no interaction |
 | F7 | Studio only: switch the sky between "atmosphere" and "fog" mode (compare; default in `Config.SKY_MODE`) |
 
