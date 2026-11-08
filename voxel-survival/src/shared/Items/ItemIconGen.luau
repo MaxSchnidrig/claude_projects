@@ -219,7 +219,39 @@ local function sphere(img: buffer, c: { number })
 	put(img, 8, 8, { 20, 10, 40 })
 end
 
+local function bucket(img: buffer, fill: { number }?)
+	local metal = { 196, 198, 204 }
+	for y = 5, 13 do
+		local half = 5 - (y - 5) // 4
+		for x = 8 - half, 7 + half do
+			local edge = x == 8 - half or x == 7 + half or y == 13
+			put(img, x, y, if edge then shade(metal, 0.75) else metal)
+		end
+	end
+	-- handle
+	for x = 4, 11 do
+		put(img, x, 3, shade(metal, 0.7))
+	end
+	put(img, 3, 4, shade(metal, 0.7))
+	put(img, 12, 4, shade(metal, 0.7))
+	if fill then
+		for x = 4, 11 do
+			put(img, x, 5, fill)
+			put(img, x, 6, shade(fill, 0.85))
+		end
+	end
+end
+
 local SHAPES: { [string]: (buffer, { number }, number) -> () } = {
+	bucket = function(img, _c)
+		bucket(img, nil)
+	end,
+	water_bucket = function(img, c)
+		bucket(img, c)
+	end,
+	lava_bucket = function(img, c)
+		bucket(img, c)
+	end,
 	bar = function(img, c)
 		bar(img, c)
 	end,
@@ -275,6 +307,7 @@ local SHAPE_OF: { [string]: string } = {
 	rotten_flesh = "meat",
 	arrow = "arrow", feather = "feather", bone = "bone", string = "string",
 	bread = "loaf", void_shard = "sphere",
+	bucket = "bucket", water_bucket = "water_bucket", lava_bucket = "lava_bucket",
 }
 
 -- `def` is an ItemRegistry definition (fields used: key, tool, color).
@@ -288,6 +321,19 @@ function ItemIconGen.generate(def: any): buffer
 	end
 	if tool and tools[tool.kind] then
 		tools[tool.kind](img, color)
+	elseif tool and tool.kind == "flint_and_steel" then
+		-- a dark flint chip and a curved steel striker
+		for y = 8, 13 do
+			for x = 2, 6 do
+				if (x - 4) ^ 2 + (y - 10.5) ^ 2 < 7 then
+					put(img, x, y, { 54, 54, 58 })
+				end
+			end
+		end
+		for i = 0, 6 do
+			put(img, 8 + i, 3 + math.floor(math.abs(i - 3) * 0.7), { 190, 190, 196 })
+			put(img, 8 + i, 4 + math.floor(math.abs(i - 3) * 0.7), { 140, 140, 146 })
+		end
 	elseif tool and tool.kind == "shears" then
 		for i = 0, 5 do
 			put(img, 4 + i, 4 + i, { 200, 200, 206 })

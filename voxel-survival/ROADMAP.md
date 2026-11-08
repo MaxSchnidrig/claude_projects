@@ -114,6 +114,38 @@ are fine.
 - Fishing rod with the Java loot table (fish, treasure, junk), plus cod, salmon, pufferfish and
   tropical fish as items.
 
+## Phase 9b – Caves and mineshafts (L)
+
+Caves are where players spend much of their time, so they get their own phase before the big
+world-generation overhaul.
+
+**Cave shapes:** Java's modern noise caves:
+- Cheese caves: huge open caverns with pillars.
+- Spaghetti caves: long winding tunnels.
+- Noodle caves: thin squiggly tunnels.
+- Carved canyons (ravines) and cave openings to the surface.
+- Aquifers: underground water and lava levels instead of floating water.
+- Lava lakes below Java y 0 only.
+
+**Underground stone and ores**
+- A deepslate-role stone layer below Java y 0 (name to approve), with its own cobbled variant
+  and ore variants.
+- Tuff and granite/diorite/andesite blobs.
+- Java's exact ore shapes and height curves: triangular bands, fewer ores where exposed to air,
+  large copper/iron veins.
+
+**Cave features:** dripstone and pointed dripstone (falling, damage), moss and glow lichen on cave
+walls, amethyst geodes, fossils.
+
+**Structures** (Java placement and loot tables, our own designs)
+- **Mineshafts:** corridors, crossings and stairs, rails, wooden supports, cobwebs, chest
+  minecarts, cave-spider spawners. The badlands variant comes with phase 13.
+- **Dungeons:** spawner rooms with loot chests.
+
+**Look:** better cave textures and lighting contrast, cave ambience sounds (licensed).
+
+**Hostile spawning** follows the new cave light levels.
+
 ## Phase 10 – Experience, enchanting, anvils, smithing (L)
 
 **Experience**
@@ -199,8 +231,8 @@ are fine.
 ## Phase 13 – Overworld generation overhaul (XL)
 
 **Terrain**
-- Java 1.18+ multi-noise terrain: continents, erosion, peaks and valleys, rivers, aquifers,
-  noise caves (cheese, spaghetti and noodle).
+- Java 1.18+ multi-noise terrain: continents, erosion, peaks and valleys, rivers. (Caves,
+  aquifers, ore shapes and mineshafts already come in phase 9b.)
 - Java ore distribution by height and biome.
 - World height −64 to 320 is already in place (0.7.3). Remaining here: deepslate-role stone
   below Java y 0 (name to approve) and the exact 1.18 ore shapes.
@@ -229,7 +261,7 @@ tints) and features.
 
 **Structures** (Java placement rules and loot tables; buildings all our own designs)
 - Villages in 5 styles; pillager outposts.
-- Mineshafts (incl. badlands), dungeons with spawners.
+- Badlands mineshafts (regular mineshafts and dungeons come in phase 9b).
 - Desert pyramid, jungle temple, swamp hut, igloo.
 - Shipwrecks, ocean ruins, buried treasure with maps, ocean monument.
 - Woodland mansion, ruined portals, strongholds.

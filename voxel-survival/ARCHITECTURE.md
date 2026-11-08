@@ -314,6 +314,19 @@ status effects (spider eye poison), and the attack-cooldown reset on swings that
 | Effects | Crack overlay from the atlas stages; break bursts (3×3×3) and dig flecks in the block's own texture colours (pooled anchored Parts). |
 | Sound | `SoundConfig`: every sound and music track with id, volume, pitch range and a Toolbox search term (SOUNDS.md). `AudioClient`: footsteps per material (~1 per block), dig/break/place per material, eating, hurt, landing, chest open/close, lava pops, mob hurt/death/idle, Sneaker fuse, Voidling teleport/anger, explosions, crits; music with 10–20 min gaps. Empty ids are silent. |
 
+## 5h. Phase 8a: world simulation (built)
+
+| Piece | Design |
+|---|---|
+| Block updates | `World/BlockUpdates`: a 20 TPS game-tick clock, Java-style scheduled block ticks (one per block and kind), neighbour updates on every block change, capped work per tick, and batched `BlockBatch` messages to the players who have the chunk |
+| Fluids | `Shared/World/Fluids` (pure, tested) + `Simulation/FluidService`. One block id per Java level (source, 7 flowing, falling) for water and lava. Java rules: water every 5 ticks, lava every 30; drop 1 / 2 per block (7 / 3 blocks of spread); down first; sideways only towards the nearest way down within 4 / 2 blocks; infinite water (2 sources over solid); lava + water: obsidian / cobblestone / stone; washes torches away; puts out fire and campfires. Surfaces drawn at Java heights (source 8/9, flowing (8 − level)/9). Players are pushed by currents |
+| Buckets | Empty bucket picks up sources (water / lava); filled buckets place a source; lava bucket is furnace fuel (1000 s) and leaves the bucket |
+| Falling blocks | Sand and gravel fall 2 ticks after a neighbour change when there's air, fire or fluid below; entity physics (gravity 0.04, drag 0.98); land as a block or drop as an item if the spot is taken (e.g. a torch) |
+| TNT | Lit by flint and steel, fire, or explosions (10–29 tick fuse); 80-tick fuse; hop and soft bounces; power-4 explosion; no block damage in water. Explosions light TNT instead of destroying it |
+| Fire | Java FireBlock: survival on sturdy blocks / next to flammables, aging, burn-out, burning neighbours by flammability (1/300 sideways, 1/250 up/down), spread to air up to 1 sideways / 1 down / 4 up with Java odds. Hurts and sets entities on fire (8 s). Lava setting things on fire needs random ticks (phase 9) |
+| Campfire | Lit / unlit blocks; light 15; hurts when walked on unless sneaking; cooks 4 raw foods in 30 s; shovel or water puts it out; flint and steel relights; drops 2 charcoal. ⚠ Until non-cube shapes (8b) it collides as a full block |
+| Gravel | Drops flint 10 % of the time |
+
 ## 6. Mechanics spec (later phases)
 
 Values follow the classic formula. Speeds are in blocks/s; at 3 studs per block, walk 4.317 → 12.95 studs/s and sprint 5.612 → 16.84 studs/s.

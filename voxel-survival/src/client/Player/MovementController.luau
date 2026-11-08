@@ -4,7 +4,7 @@
 --
 --   walk 4.317 b/s, sprint 5.612 b/s, jump 1.2522 blocks, gravity 32 b/s^2
 --   sprint     starts on a second W press within 7 ticks (0.35 s) of the first (the trigger is
---              armed by a W press while on the ground), or Ctrl while moving forward; ends when W
+--              armed by a W press while on the ground), or the gamepad stick click; ends when W
 --              is released, forward movement stops, you hit a wall, get hungry (food <= 6), sneak
 --              or use an item. Holding W again after a sprint ends does NOT resume it.
 --   sneak      hold Left Shift: speed x 0.3, no sprinting, eyes 1.27 blocks, body 1.5 blocks
@@ -30,6 +30,7 @@ local ClientWorld = require(script.Parent.Parent.World.ClientWorld)
 local InventoryClient = require(script.Parent.Parent.Player.InventoryClient)
 local SneakPose = require(Shared.Gameplay.SneakPose)
 local PlayerPhysics = require(Shared.Gameplay.PlayerPhysics)
+local Fluids = require(Shared.World.Fluids)
 
 local BS = Config.BLOCK_SIZE
 local isLiquid = BlockRegistry.isLiquid
@@ -154,6 +155,9 @@ local function onGround(humanoid: Humanoid): boolean
 end
 
 local function canStartSprint(humanoid: Humanoid): boolean
+	if MovementController.spectating then
+		return true -- spectators sprint-fly regardless of hunger
+	end
 	return SurvivalClient.canSprint and not SurvivalClient.dead and not MovementController.sneaking
 		and not MovementController.usingItem
 end
@@ -193,7 +197,6 @@ end
 
 function MovementController.init()
 	workspace.Gravity = Config.GRAVITY -- Java gravity (the server sets it too)
-	local keySprint = (Enum.KeyCode :: any)[Config.KEY_SPRINT]
 	UserInputService.InputBegan:Connect(function(input, processed)
 		if processed then
 			return
@@ -211,13 +214,13 @@ function MovementController.init()
 				if now <= sprintTriggerUntil then
 					sprintLatch = true
 					sprintTriggerUntil = -math.huge
-				elseif onGround(humanoid) then
+				elseif onGround(humanoid) or MovementController.spectating then
 					sprintTriggerUntil = now + Config.SPRINT_DOUBLE_TAP
 				end
 			end
-		elseif input.KeyCode == keySprint or input.KeyCode == Enum.KeyCode.ButtonL3 then
+		elseif input.KeyCode == Enum.KeyCode.ButtonL3 then
 			if canStartSprint(humanoid) then
-				sprintLatch = true -- Ctrl (+W) / left stick click; needs forward movement below
+				sprintLatch = true -- gamepad: left stick click; needs forward movement below
 			end
 		end
 	end)
@@ -276,8 +279,8 @@ function MovementController.init()
 		if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
 			up -= 1
 		end
-		local fast = UserInputService:IsKeyDown((Enum.KeyCode :: any)[Config.KEY_SPRINT])
-		local speed = Config.SPECTATOR_SPEED * BS * (if fast then 2 else 1)
+		-- sprint-flying like Java: double-tap W, ends when W is released
+		local speed = Config.SPECTATOR_SPEED * BS * (if MovementController.sprinting then 2 else 1)
 		local v = Vector3.new(move.X, 0, move.Z) * speed + Vector3.new(0, up * speed, 0)
 		local look = cam.CFrame.LookVector
 		local yaw = math.atan2(-look.X, -look.Z)
@@ -489,9 +492,6 @@ function MovementController.init()
 		-- which the Java movement simulation sets while airborne or landing.
 		local look = root.CFrame.LookVector
 		local forward = inputDir:Dot(look) > 0.5
-		if UserInputService:IsKeyDown(keySprint) and forward and canStartSprint(humanoid) then
-			sprintLatch = true -- Ctrl held while walking forward
-		end
 		if not forward or not canStartSprint(humanoid) then
 			sprintLatch = false
 		end
@@ -500,7 +500,7 @@ function MovementController.init()
 		-- forward. Jumps, landings and ceiling bumps don't count.
 		local v = root.AssemblyLinearVelocity
 		local headOn = false
-		if sprintLatch then
+		if sprintLatch and not MovementController.spectating then
 			local lb = Vector3.new(look.X, 0, look.Z)
 			lb = if lb.Magnitude > 1e-3 then lb.Unit else Vector3.zero
 			local pb = root.Position / BS
@@ -538,6 +538,14 @@ function MovementController.init()
 			speed *= Config.ITEM_USE_SPEED_FACTOR
 		end
 		if inLiquid and not root.Anchored then
+			-- Java: flowing water pushes you along its current (0.014 blocks/tick per tick with
+			-- water drag 0.8 -> about 1.4 blocks/s when you don't swim against it)
+			local fx, fz = Fluids.flow(ClientWorld.getBlock, bx, math.floor((p.Y - 2.5) / BS), bz)
+			if fx ~= 0 or fz ~= 0 then
+				local cv = root.AssemblyLinearVelocity
+				local push = 0.07 * 20 * BS
+				root.AssemblyLinearVelocity = cv + Vector3.new(fx, 0, fz) * push * math.min(1, dt * 10)
+			end
 			speed *= SWIM_SPEED_FACTOR
 			local v = root.AssemblyLinearVelocity
 			local up = humanoid.Jump or UserInputService:IsKeyDown(Enum.KeyCode.Space)

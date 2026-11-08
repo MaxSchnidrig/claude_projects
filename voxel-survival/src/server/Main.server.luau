@@ -76,6 +76,25 @@ Startup.run("server", {
 	{ name = "MobService", run = function()
 		require(server.Mobs.MobService).init()
 	end },
+	-- world simulation: block ticks, fluids, falling blocks / TNT, fire, campfires, item use
+	{ name = "BlockUpdates", run = function()
+		require(server.World.BlockUpdates).init()
+	end },
+	{ name = "FluidService", run = function()
+		require(server.Simulation.FluidService).init()
+	end },
+	{ name = "EntityService", run = function()
+		require(server.Simulation.EntityService).init()
+	end },
+	{ name = "FireService", run = function()
+		require(server.Simulation.FireService).init()
+	end },
+	{ name = "CampfireService", run = function()
+		require(server.Simulation.CampfireService).init()
+	end },
+	{ name = "ItemUseService", run = function()
+		require(server.Simulation.ItemUseService).init()
+	end },
 	{ name = "Persistence", run = function()
 		Persistence.startWorld({
 			InventoryService = require(server.Player.InventoryService),

@@ -618,10 +618,60 @@ recipes.torch = function(seed)
 	return img
 end
 
+recipes.fire = function(seed)
+	-- tongues of flame rising from the bottom, hotter (yellow) at the base; transparent elsewhere
+	local img = new()
+	for x = 0, N - 1 do
+		local top = 3 + math.floor(rnd(seed, x, 0, 80) * 7 + math.sin(x * 1.3) * 2)
+		for y = 0, N - 1 do
+			if y >= top then
+				local t = (y - top) / math.max(1, N - top)
+				local c = if t > 0.7 then { 255, 236, 120 } elseif t > 0.35 then { 255, 160, 40 } else { 220, 72, 24 }
+				put(img, x, y, shade(c, 0.9 + rnd(seed, x, y) * 0.2), if y == top then 160 else 255)
+			else
+				put(img, x, y, { 0, 0, 0 }, 0)
+			end
+		end
+	end
+	return img
+end
+
+recipes.campfire_log = function(seed)
+	-- a log seen from the side with a charred band in the middle
+	local img = logSide(seed, P.oakBark, false)
+	for x = 0, N - 1 do
+		for y = 6, 9 do
+			put(img, x, y, shade({ 40, 30, 24 }, 0.8 + rnd(seed, x, y) * 0.3))
+		end
+	end
+	return img
+end
+
+recipes.campfire_top = function(seed)
+	-- crossed logs seen from above over glowing embers
+	local img = new()
+	for y = 0, N - 1 do
+		for x = 0, N - 1 do
+			local log = (x >= 2 and x <= 5) or (x >= 10 and x <= 13) or (y >= 2 and y <= 5) or (y >= 10 and y <= 13)
+			local c = if log then shade(P.oakBark, 0.85 + rnd(seed, x, y) * 0.3)
+				else shade({ 220, 90, 30 }, 0.7 + rnd(seed, x, y, 3) * 0.5)
+			put(img, x, y, c)
+		end
+	end
+	return img
+end
+
 -- Public -------------------------------------------------------------------------------------
 
 -- Fallback for texture keys without a recipe: noisy fill of the average colour.
+-- Fluid level keys ("water_3", "lava_falling") share their fluid's art.
+local function baseKey(key: string): string
+	return string.match(key, "^(%a+)_%d$") or string.match(key, "^(%a+)_falling$") or key
+end
+TextureGen.baseKey = baseKey
+
 function TextureGen.generate(key: string, fallback: RGB?): Img
+	key = baseKey(key)
 	local recipe = recipes[key]
 	local seed = seedOf(key)
 	if recipe then
@@ -631,7 +681,7 @@ function TextureGen.generate(key: string, fallback: RGB?): Img
 end
 
 function TextureGen.hasRecipe(key: string): boolean
-	return recipes[key] ~= nil
+	return recipes[baseKey(key)] ~= nil
 end
 
 -- Mining crack overlay, stage 0..9: dark lines growing from the middle; transparent elsewhere.

@@ -49,6 +49,10 @@ local defs: { ItemDefInput } = {
 	{ key = "flint", name = "Flint", color = { 60, 60, 64 } },
 	{ key = "snowball", name = "Snowball", stack = 16, color = { 246, 250, 252 } },
 	{ key = "clay_ball", name = "Clay Ball", color = { 164, 170, 186 } },
+	-- Buckets (Java: empty buckets stack to 16, filled ones don't)
+	{ key = "bucket", name = "Bucket", stack = 16, color = { 190, 192, 198 } },
+	{ key = "water_bucket", name = "Water Bucket", stack = 1, color = { 60, 110, 220 } },
+	{ key = "lava_bucket", name = "Lava Bucket", stack = 1, color = { 236, 110, 30 } },
 	-- Food
 	-- Mob drops
 	{ key = "leather", name = "Leather", color = { 150, 90, 50 } },
@@ -118,6 +122,13 @@ for tierIndex, t in TIERS do
 		})
 	end
 end
+table.insert(defs, {
+	key = "flint_and_steel",
+	name = "Flint and Steel",
+	stack = 1,
+	tool = { kind = "flint_and_steel", tier = 0, speed = 1, durability = 64 },
+	color = { 150, 150, 156 },
+})
 table.insert(defs, {
 	key = "shears",
 	name = "Shears",

@@ -12,7 +12,7 @@ local FurnaceLogic = require(Shared.Items.FurnaceLogic)
 
 export type Stack = { item: string, count: number, durability: number? }
 export type Entity = {
-	kind: string, -- "furnace" | "chest"
+	kind: string, -- "furnace" | "chest" | "campfire"
 	x: number,
 	y: number,
 	z: number,
@@ -23,6 +23,8 @@ export type Entity = {
 local KINDS = {
 	[BlockRegistry.id("furnace")] = "furnace",
 	[BlockRegistry.id("chest")] = "chest",
+	[BlockRegistry.id("campfire")] = "campfire",
+	[BlockRegistry.id("campfire_unlit")] = "campfire",
 }
 local CHEST_SLOTS = 27
 
@@ -55,6 +57,17 @@ end
 
 function BlockEntityService.onDirty(fn: (x: number, z: number) -> ())
 	table.insert(dirtyListeners, fn)
+end
+
+-- Every entity of one kind (e.g. all campfires).
+function BlockEntityService.ofKind(kind: string): { Entity }
+	local out = {}
+	for _, e in entities do
+		if e.kind == kind then
+			table.insert(out, e)
+		end
+	end
+	return out
 end
 
 -- Entities whose x/z lie in [x0, x1) x [z0, z1).

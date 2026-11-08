@@ -26,7 +26,12 @@ local DayNightService = require(script.Parent.DayNightService)
 local BS = Config.BLOCK_SIZE
 local FEET_BELOW_ROOT = 3 -- R6: HumanoidRootPart centre is 3 studs above the feet
 local EAT_SECONDS = 1.6
-local LAVA = BlockRegistry.id("lava")
+local FIRE = BlockRegistry.id("fire")
+local CAMPFIRE = BlockRegistry.id("campfire")
+local function isLava(id: number): boolean
+	local def = BlockRegistry.byId[id]
+	return def ~= nil and def.fluid == "lava"
+end
 local isSolid = BlockRegistry.isSolid
 local isLiquid = BlockRegistry.isLiquid
 local MIN_STARVE_HEALTH = ({ easy = 10, normal = 1, hard = 0 } :: { [string]: number })[Config.DIFFICULTY] or 1
@@ -255,11 +260,19 @@ local function stepPlayer(p: Player, s: State, dt: number)
 
 	-- Lava: 4 damage (every tick, so every 0.5 s through invulnerability) and 15 s of fire;
 	-- fire burns 1 per second until it runs out or you step into water (Java).
-	if feetBlock == LAVA or bodyBlock == LAVA then
+	if isLava(feetBlock) or isLava(bodyBlock) then
 		s.burning = 15
 		SurvivalService.damage(p, SurvivalRules.LAVA_DAMAGE, "tried to swim in lava")
 	elseif s.inLiquid then
 		s.burning = 0
+	elseif feetBlock == FIRE or bodyBlock == FIRE then
+		-- Java: standing in fire hurts 1 per hit and sets you on fire for 8 s
+		s.burning = math.max(s.burning, 8)
+		SurvivalService.damage(p, 1, "went up in flames")
+	end
+	-- Java: walking on a lit campfire hurts (1), unless sneaking
+	if grounded and not s.sneaking and block(bx, belowY, bz) == CAMPFIRE then
+		SurvivalService.damage(p, 1, "was burned on a campfire")
 	end
 	if s.burning > 0 then
 		s.burning -= dt
@@ -426,6 +439,17 @@ function SurvivalService.init()
 		elseif a.type == "giveKit" then
 			InventoryService.add(p, "torch", 64)
 			InventoryService.add(p, "coal", 16)
+			-- phase 8a test kit
+			InventoryService.add(p, "bucket", 2)
+			InventoryService.add(p, "water_bucket", 1)
+			InventoryService.add(p, "lava_bucket", 1)
+			InventoryService.add(p, "flint_and_steel", 1)
+			InventoryService.add(p, "tnt", 8)
+			InventoryService.add(p, "sand", 32)
+			InventoryService.add(p, "gravel", 32)
+			InventoryService.add(p, "campfire", 2)
+			InventoryService.add(p, "raw_beef", 4)
+			InventoryService.add(p, "oak_planks", 32)
 		end
 	end)
 

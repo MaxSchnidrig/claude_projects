@@ -156,6 +156,13 @@ function InventoryService.selectedStack(player: Player): Stack?
 	return i.slots[i.selected]
 end
 
+-- Replace the held stack (buckets: empty <-> filled). nil empties the slot.
+function InventoryService.replaceSelected(player: Player, stack: Stack?)
+	local i = inv(player)
+	i.slots[i.selected] = stack
+	i.dirty = true
+end
+
 function InventoryService.consumeSelected(player: Player, n: number): boolean
 	local i = inv(player)
 	local s = i.slots[i.selected]

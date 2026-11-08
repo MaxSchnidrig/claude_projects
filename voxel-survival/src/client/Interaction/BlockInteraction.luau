@@ -21,6 +21,7 @@ local BlockRegistry = require(Shared.Blocks.BlockRegistry)
 local ItemRegistry = require(Shared.Items.ItemRegistry)
 local Mining = require(Shared.Gameplay.Mining)
 local VoxelRaycast = require(Shared.World.VoxelRaycast)
+local Crafting = require(Shared.Items.Crafting)
 local ClientWorld = require(script.Parent.Parent.World.ClientWorld)
 local CameraController = require(script.Parent.Parent.Player.CameraController)
 local InventoryClient = require(script.Parent.Parent.Player.InventoryClient)
@@ -43,6 +44,11 @@ local INTERACTABLE = {
 	[BlockRegistry.id("chest")] = true,
 }
 local isLiquid = BlockRegistry.isLiquid
+local Fluids = require(Shared.World.Fluids)
+local CAMPFIRE = BlockRegistry.id("campfire")
+local CAMPFIRE_UNLIT = BlockRegistry.id("campfire_unlit")
+
+
 
 local BlockInteraction = {}
 -- Events for sounds, particles and the first-person hand:
@@ -52,6 +58,7 @@ BlockInteraction.placed = Instance.new("BindableEvent")
 BlockInteraction.broken = Instance.new("BindableEvent")
 BlockInteraction.digging = Instance.new("BindableEvent")
 BlockInteraction.swing = Instance.new("BindableEvent")
+BlockInteraction.used = Instance.new("BindableEvent") -- (held item key, target block id) on a right-click use
 BlockInteraction.target = nil :: VoxelRaycast.Hit?
 BlockInteraction.mobTarget = nil :: number? -- mob under the crosshair within melee reach
 
@@ -134,6 +141,46 @@ RunService.Heartbeat:Connect(function()
 		lastSwing = os.clock()
 	end
 end)
+
+-- Items used with right-click on a block (server: Simulation/ItemUseService).
+local USE_ITEMS = { bucket = true, water_bucket = true, lava_bucket = true, flint_and_steel = true }
+
+-- Right-click "use": buckets, flint and steel, shovel / raw food on campfires. Returns true if the
+-- click was used up here (no placing / eating).
+local function tryUse(): boolean
+	local held = InventoryClient.heldItem()
+	local def = ItemRegistry.get(held)
+	local hit = BlockInteraction.target
+	if held == "bucket" then
+		-- an empty bucket looks for the first water or lava SOURCE along the view
+		local eye, look = CameraController.getEyeAndLook()
+		if not eye then
+			return true
+		end
+		local o = eye / BS
+		local fh = VoxelRaycast.cast(blockAt, o.X, o.Y, o.Z, look.X, look.Y, look.Z, Config.REACH, function(id)
+			return id ~= AIR and (not isLiquid[id + 1] or Fluids.isSource(id))
+		end)
+		if fh and Fluids.isSource(fh.id) then
+			Remotes.get("UseItem"):FireServer({ x = fh.x, y = fh.y, z = fh.z, nx = fh.nx, ny = fh.ny, nz = fh.nz })
+			BlockInteraction.used:Fire("bucket_fill", fh.id)
+			BlockInteraction.swing:Fire()
+		end
+		return true
+	end
+	if not hit then
+		return held ~= nil and USE_ITEMS[held] == true
+	end
+	local cookable = def and def.food and Crafting.smeltResult(held) ~= nil
+	local onCampfire = hit.id == CAMPFIRE or hit.id == CAMPFIRE_UNLIT
+	if (held and USE_ITEMS[held]) or (onCampfire and (cookable or (def and def.tool and def.tool.kind == "shovel"))) then
+		Remotes.get("UseItem"):FireServer({ x = hit.x, y = hit.y, z = hit.z, nx = hit.nx, ny = hit.ny, nz = hit.nz })
+		BlockInteraction.used:Fire(held or "", hit.id)
+		BlockInteraction.swing:Fire()
+		return true
+	end
+	return false
+end
 
 local function send(action: string, x: number, y: number, z: number, nx: number?, ny: number?, nz: number?)
 	Remotes.get("BlockAction"):FireServer(action, x, y, z, nx, ny, nz)
@@ -421,6 +468,9 @@ local function makeTouchButtons()
 			InventoryClient.openBlock(hit.x, hit.y, hit.z)
 			return
 		end
+		if tryUse() then
+			return
+		end
 		local held = ItemRegistry.get(InventoryClient.heldItem())
 		if held and held.food then
 			useHeld = true
@@ -459,6 +509,8 @@ function BlockInteraction.init()
 			local held = ItemRegistry.get(InventoryClient.heldItem())
 			if hit and INTERACTABLE[hit.id] and not shift then
 				InventoryClient.openBlock(hit.x, hit.y, hit.z) -- server opens the window; the UI follows
+			elseif tryUse() then
+				-- bucket / flint and steel / campfire handled
 			elseif held and held.food then
 				useHeld = true -- eat
 			else

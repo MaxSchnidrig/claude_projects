@@ -28,10 +28,11 @@ local NOT_ITEMS = {
 	wall_torch_west = true,
 	wall_torch_south = true,
 	wall_torch_north = true,
+	fire = true,
 }
 
 for _, def in BlockRegistry.byId do
-	if not NOT_ITEMS[def.key] then
+	if not NOT_ITEMS[def.key] and not def.fluid and def.key ~= "campfire_unlit" then
 		byKey[def.key] = {
 			key = def.key,
 			name = def.name,

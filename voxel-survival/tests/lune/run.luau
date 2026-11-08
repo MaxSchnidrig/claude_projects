@@ -1004,6 +1004,114 @@ test("lit mesher: one quad per face, AO darkens corners, specials merge", functi
 	eq(#rw.groups[wt] // GreedyMesher.QUAD, 6) -- 1 merged quad per side
 end)
 
+local Fluids = Loader.require("src/shared/World/Fluids")
+-- tiny world: a dict of blocks, a tick scheduler like BlockUpdates (neighbours rescheduled)
+local function fluidWorld(floorY: number)
+	local blocks: { [string]: number } = {}
+	local queue: { [number]: { { number } } } = {}
+	local now = 0
+	local w: any = {}
+	local function key(x, y, z)
+		return `{x},{y},{z}`
+	end
+	function w.get(x, y, z)
+		if y <= floorY then
+			return BlockRegistry.id("stone")
+		end
+		return blocks[key(x, y, z)] or 0
+	end
+	local function schedule(x, y, z)
+		local id = w.get(x, y, z)
+		local f = Fluids.info(id)
+		if f then
+			local at = now + Fluids.DELAY[f]
+			queue[at] = queue[at] or {}
+			table.insert(queue[at], { x, y, z })
+		end
+	end
+	function w.set(x, y, z, id)
+		blocks[key(x, y, z)] = id
+		for _, d in { { 0, 0, 0 }, { 1, 0, 0 }, { -1, 0, 0 }, { 0, 1, 0 }, { 0, -1, 0 }, { 0, 0, 1 }, { 0, 0, -1 } } do
+			schedule(x + d[1], y + d[2], z + d[3])
+		end
+	end
+	w.drops = 0
+	function w.drop()
+		w.drops += 1
+	end
+	function w.fizz() end
+	function w.run(ticks)
+		for _ = 1, ticks do
+			now += 1
+			local list = queue[now]
+			queue[now] = nil
+			if list then
+				local seen = {}
+				for _, p in list do
+					local k = key(p[1], p[2], p[3])
+					if not seen[k] then
+						seen[k] = true
+						Fluids.tick(w, p[1], p[2], p[3])
+					end
+				end
+			end
+		end
+	end
+	return w
+end
+test("fluids: Java spread distances, infinite water, lava + water", function()
+	local WATER, LAVA = BlockRegistry.id("water"), BlockRegistry.id("lava")
+	local w = fluidWorld(0)
+	w.set(0, 1, 0, WATER)
+	w.run(400)
+	local f7, l7 = Fluids.info(w.get(7, 1, 0))
+	eq(f7, "water"); eq(l7, 7)
+	eq(w.get(8, 1, 0), 0) -- water reaches 7 blocks on flat ground
+	local _, l3 = Fluids.info(w.get(2, 1, 1))
+	eq(l3, 3) -- diamond shape: 2 + 1 = 3 steps away
+	-- lava: 3 blocks
+	local lw = fluidWorld(0)
+	lw.set(0, 1, 0, LAVA)
+	lw.run(1000)
+	local lf, ll = Fluids.info(lw.get(3, 1, 0))
+	eq(lf, "lava"); eq(ll, 6)
+	eq(lw.get(4, 1, 0), 0)
+	-- infinite water: two sources with a 1-block gap on stone make a third
+	local iw = fluidWorld(0)
+	for x = -5, 5 do
+		for z = -1, 1 do
+			if z ~= 0 then
+				iw.set(x, 1, z, BlockRegistry.id("stone"))
+			end
+		end
+	end
+	iw.set(-1, 1, 0, BlockRegistry.id("stone"))
+	iw.set(3, 1, 0, BlockRegistry.id("stone"))
+	iw.set(0, 1, 0, WATER)
+	iw.set(2, 1, 0, WATER)
+	iw.run(100)
+	assert(Fluids.isSource(iw.get(1, 1, 0)), "middle became a source")
+	-- removing the source makes the flow dry up
+	w.set(0, 1, 0, 0)
+	w.run(600)
+	eq(w.get(3, 1, 0), 0)
+	-- lava source next to water -> obsidian; flowing lava -> cobblestone
+	local mw = fluidWorld(0)
+	mw.set(0, 1, 0, LAVA)
+	mw.set(1, 1, 0, WATER)
+	mw.run(200)
+	eq(mw.get(0, 1, 0), BlockRegistry.id("obsidian"))
+	-- water washes a torch away (it drops)
+	local tw = fluidWorld(0)
+	tw.set(2, 1, 0, BlockRegistry.id("torch"))
+	tw.set(0, 1, 0, WATER)
+	tw.run(100)
+	eq(Fluids.info(tw.get(2, 1, 0)), "water")
+	eq(tw.drops, 1)
+	-- surface heights
+	eq(Fluids.height(0), 8 / 9); eq(Fluids.height(7), 1 / 9); eq(Fluids.height(8), 1)
+end)
+
 print(`\n{passed} passed, {failed} failed`)
 if failed > 0 then
 	process.exit(1)

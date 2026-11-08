@@ -4,7 +4,7 @@ A voxel survival sandbox for Roblox, managed with [Rojo](https://rojo.space). Th
 mechanics follow the classic block-survival formula. All art, sounds, UI and every invented name
 are original to this project (see `ARCHITECTURE.md` → "Naming rules").
 
-**Status:** 0.7.3: Java world height (−64 to 320) with cave culling, ready for desktop and phone testing. Next: Phase 8a.
+**Status:** Phase 8a (flowing water and lava, buckets, falling sand/gravel, fire, campfires, TNT) ready for testing. Next: 8b (doors, ladders, fences, slabs, stairs, signs, item frames).
 
 ## Structure
 
@@ -29,6 +29,7 @@ voxel-survival/
 │   │   ├── Net/       Remotes
 │   │   └── Util/      Hash (deterministic RNG), Scheduler (time-sliced jobs)
 │   ├── server/  -> ServerScriptService               authoritative world
+│   │   ├── Simulation/ FluidService, EntityService (falling blocks, TNT), FireService, CampfireService, ItemUseService
 │   │   ├── Main.server.luau   the only server Script
 │   │   ├── World/     WorldService (chunks + diffs), ChunkStreamer (sends diffs)
 │   │   ├── Interaction/ BlockActionService (validates break/place)
@@ -98,7 +99,7 @@ Build a place file without Studio: `rojo build -o rocraft.rbxl`.
 |---|---|
 | Mouse | Look (mouse is locked to the centre) |
 | WASD / Space | Move / jump (jump height 1.2 blocks) |
-| Double-tap W, or Ctrl+W | Sprint (until you release W, stop, hit a wall, sneak, eat, or are too hungry; holding W again does not resume it) |
+| Double-tap W | Sprint (until you release W, stop, hit a wall, sneak, eat, or are too hungry; holding W again does not resume it). No sprint key |
 | Left Shift (hold) | Sneak: 30 % speed, lower eyes, 1.5-block body, can't walk off edges |
 | Left mouse (hold) | Mine the targeted block |
 | Left mouse on a mob (3 blocks) | Attack (full damage once the weapon has recharged; critical hit ×1.5 while falling after a jump) |
@@ -109,6 +110,7 @@ Build a place file without Studio: `rojo build -o rocraft.rbxl`.
 | In a window | Left: pick up/put/merge/swap · Right: take half/put one · Shift-click: quick-move · Result slot: craft (Shift: craft all) · Click outside: drop carried stack · Drag with a stack: left spreads it evenly, right puts one per slot · Double-click: gather matching items into the cursor |
 | Q / Ctrl+Q | Drop one / the whole held stack (in a window: of the hovered slot) |
 | Right mouse (hold) with food | Eat (1.6 s, only when not full; you move at 20 % speed meanwhile) |
+| Right mouse with a bucket / flint and steel | Scoop or pour water and lava; light fire, TNT or a campfire. Raw food or a shovel on a campfire: cook / put it out |
 | Space in water | Swim up |
 | V | Camera: first person → behind → front (`Config.KEY_CAMERA`) |
 | Gamepad | R2 mine, L2 place, R1/L1 hotbar, L3 sprint, right stick look |
@@ -125,8 +127,8 @@ In Studio you spawn with a test kit (pickaxes of each tier, blocks) from `Config
 | J | Studio only: skip 6 game hours |
 | K | Studio only: take 3 damage |
 | L | Studio only: spawn the next mob type 4 blocks in front of you |
-| G | Studio only: get 64 torches and 16 coal |
-| N | Studio only: spectator mode: fly through blocks (Space up, Shift down, Ctrl faster), no interaction |
+| G | Studio only: test kit (torches, coal, buckets, flint and steel, TNT, sand, gravel, campfires, raw beef, planks) |
+| N | Studio only: spectator mode: fly through blocks (Space up, Shift down, double-tap W to fly faster), no interaction |
 | F7 | Studio only: switch the sky between "atmosphere" and "fog" mode (compare; default in `Config.SKY_MODE`) |
 
 Set render distance for testing: select your Player in Explorer during Play and add a number attribute `RenderDistance` (2–12).

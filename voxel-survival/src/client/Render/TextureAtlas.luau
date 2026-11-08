@@ -69,12 +69,20 @@ end
 function TextureAtlas.init()
 	local data = buffer.create(SIZE * SIZE * 4)
 	local n = 0
+	local byBase: { [string]: number } = {}
 	for index, key in BlockRegistry.textureKeys do
 		local img = TextureGen.generate(key, TexturePalette[key])
 		pixels[index] = img
-		cells[index] = n
-		blit(data, n, img)
-		n += 1
+		local base = TextureGen.baseKey(key)
+		local shared = byBase[base]
+		if shared then
+			cells[index] = shared -- fluid levels share their fluid's cell
+		else
+			cells[index] = n
+			byBase[base] = n
+			blit(data, n, img)
+			n += 1
+		end
 	end
 	for stage = 0, TextureGen.CRACK_STAGES - 1 do
 		crackCell[stage] = n

@@ -107,6 +107,7 @@ Startup.run("client", {
 				Particles.dig(x, y, z, id, n)
 			end)
 			require(client.Player.ViewModel).init(BlockInteraction.swing)
+			require(client.World.EntityClient).init(ClientWorld.getBlock)
 			require(client.World.Clouds).init()
 			local BlockRegistry = require(Shared.Blocks.BlockRegistry) :: any
 			require(client.Survival.DayNightClient).setBlockSource(ClientWorld.getBlock, BlockRegistry.isOpaque)
@@ -121,6 +122,7 @@ Startup.run("client", {
 				MovementController = require(client.Player.MovementController),
 				InventoryClient = require(client.Player.InventoryClient),
 				MobClient = require(client.Mobs.MobClient),
+				EntityClient = require(client.World.EntityClient),
 			})
 		end,
 	},

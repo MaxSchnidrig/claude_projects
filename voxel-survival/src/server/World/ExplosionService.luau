@@ -30,14 +30,28 @@ local ExplosionService = {}
 -- Hooks set by other services (avoid require cycles).
 local damagePlayer: ((Player, number, string) -> ())? = nil
 local damageMobs: ((center: Vector3, power: number) -> ())? = nil
+local primeTnt: ((x: number, y: number, z: number) -> ())? = nil
+local TNT = BlockRegistry.id("tnt")
+
+-- Explosions don't destroy TNT: they light it with a short fuse (EntityService).
+function ExplosionService.setTntHook(fn: (x: number, y: number, z: number) -> ())
+	primeTnt = fn
+end
 function ExplosionService.setHooks(playerDamage: (Player, number, string) -> (), mobDamage: (Vector3, number) -> ())
 	damagePlayer = playerDamage
 	damageMobs = mobDamage
 end
 
 -- `center` in BLOCK units.
-function ExplosionService.explode(center: Vector3, power: number, cause: string)
-	-- 1. blocks
+export type Options = { breakBlocks: boolean? }
+
+function ExplosionService.explode(center: Vector3, power: number, cause: string, opts: Options?)
+	-- the flash for everyone nearby
+	for _, p in Players:GetPlayers() do
+		Remotes.get("MobEvent"):FireClient(p, { type = "explode", pos = center * BS })
+	end
+	-- 1. blocks (not when the explosion is in water: Java's water absorbs the blast)
+	local breakBlocks = not opts or opts.breakBlocks ~= false
 	local r = math.ceil(power * 1.3)
 	local cx, cy, cz = math.floor(center.X), math.floor(center.Y), math.floor(center.Z)
 	local changed: { { number } } = {}
@@ -45,7 +59,14 @@ function ExplosionService.explode(center: Vector3, power: number, cause: string)
 		for y = math.max(1, cy - r), math.min(Config.WORLD_HEIGHT - 1, cy + r) do
 			for z = cz - r, cz + r do
 				local id = WorldService.getBlockIfLoaded(x, y, z)
-				if id and id ~= 0 and not RESISTANT[id] and not BlockRegistry.isLiquid[id + 1] then
+				if breakBlocks and id == TNT and primeTnt then
+					local d = (Vector3.new(x + 0.5, y + 0.5, z + 0.5) - center).Magnitude
+					if d <= power then
+						WorldService.setBlock(x, y, z, 0)
+						table.insert(changed, { x, y, z })
+						primeTnt(x, y, z)
+					end
+				elseif breakBlocks and id and id ~= 0 and not RESISTANT[id] and not BlockRegistry.isLiquid[id + 1] then
 					local d = (Vector3.new(x + 0.5, y + 0.5, z + 0.5) - center).Magnitude
 					if d <= power * (0.7 + math.random() * 0.6) then
 						WorldService.setBlock(x, y, z, 0)

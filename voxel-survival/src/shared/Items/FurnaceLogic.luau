@@ -50,7 +50,8 @@ function FurnaceLogic.step(st: State, dt: number): boolean
 			end
 			fuel.count -= 1
 			if fuel.count <= 0 then
-				st.slots[2] = nil
+				local rest = Recipes.fuelRemainder[fuel.item]
+				st.slots[2] = if rest then { item = rest, count = 1 } else nil
 			end
 			st.burn, st.burnMax = seconds, seconds
 			changed = true

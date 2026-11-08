@@ -239,7 +239,12 @@ local function finishBreak(player: Player, st: PState, x: number, y: number, z: 
 	local def = BlockRegistry.get(id)
 	if def and def.drop and Mining.canHarvest(id, item) then
 		local count = if def.dropMax > def.dropMin then math.random(def.dropMin, def.dropMax) else def.dropMin
-		ItemEntityService.spawn({ item = def.drop, count = count }, center)
+		local dropItem = def.drop
+		local alt = def.altDrop
+		if alt and math.random() < alt.chance then
+			dropItem = alt.item -- Java: gravel drops flint 10 % of the time
+		end
+		ItemEntityService.spawn({ item = dropItem, count = count }, center)
 	end
 	if def then
 		-- chance drops (apples / sticks from leaves), any tool or bare hands

@@ -71,6 +71,15 @@ SoundConfig.sounds = {
 	["lava.ambient"] = E("", 0.25, 0.9, 1.0, "lava ambient bubbling loop"),
 	["fire.crackle"] = E("", 0.4, 0.9, 1.1, "fire crackle"),
 	["fire.extinguish"] = E("", 0.5, 0.9, 1.1, "fire hiss extinguish"),
+	["fire.ignite"] = E("", 0.6, 0.9, 1.1, "lighter flick spark"),
+	["fizz"] = E("", 0.5, 0.9, 1.1, "steam hiss short"),
+	["bucket.fill"] = E("", 0.6, 0.9, 1.1, "water scoop bucket"),
+	["bucket.fill_lava"] = E("", 0.6, 0.9, 1.1, "thick liquid scoop"),
+	["bucket.empty"] = E("", 0.6, 0.9, 1.1, "water pour splash"),
+	["bucket.empty_lava"] = E("", 0.6, 0.9, 1.1, "thick liquid pour"),
+	["tnt.primed"] = E("", 0.8, 0.95, 1.05, "fuse hiss burning"),
+	["sand.land"] = E("", 0.5, 0.9, 1.1, "sand thud"),
+	["campfire.crackle"] = E("", 0.3, 0.9, 1.1, "campfire crackle loop"),
 
 	-- containers, doors
 	["chest.open"] = E("", 0.5, 0.9, 1.0, "wooden chest open creak"),

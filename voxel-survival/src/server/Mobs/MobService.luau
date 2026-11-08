@@ -41,7 +41,11 @@ local DayNightService = require(script.Parent.Parent.Survival.DayNightService)
 local BS = Config.BLOCK_SIZE
 local H = Config.WORLD_HEIGHT
 local TICK = 0.05
-local LAVA = BlockRegistry.id("lava")
+local FIRE = BlockRegistry.id("fire")
+local function isLava(id: number?): boolean
+	local def = id and BlockRegistry.byId[id]
+	return def ~= nil and def.fluid == "lava"
+end
 local isSolid = BlockRegistry.isSolid
 local isOpaque = BlockRegistry.isOpaque
 local isLiquid = BlockRegistry.isLiquid
@@ -434,9 +438,13 @@ local function stepPhysics(m: Mob, dt: number)
 
 	-- lava: 4 damage (every 0.5 s through invulnerability) and 15 s of fire
 	local bodyId = MobService.blockAt(math.floor(m.x), math.floor(m.y + h / 2), math.floor(m.z))
-	if feetBlock(m) == LAVA or bodyId == LAVA then
+	local feet = feetBlock(m)
+	if isLava(feet) or isLava(bodyId) then
 		m.burning = 15
 		MobService.damage(m, 4, { kind = "lava" })
+	elseif feet == FIRE or bodyId == FIRE then
+		m.burning = math.max(m.burning, 8)
+		MobService.damage(m, 1, { kind = "fire" })
 	end
 	-- undead catch fire in daylight (Java: brightness > 0.5, chance (b - 0.4) * 2 / 30 per tick,
 	-- open sky above the eyes, not wet) and burn for 8 s

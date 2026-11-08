@@ -33,6 +33,7 @@ local wantedOrder: { number } = {} -- wanted keys, nearest to a player first
 local populated: { [number]: boolean } = {} -- chunks that already had their first load (animals)
 local loadedListeners: { (key: number, firstTime: boolean) -> () } = {}
 local blockSetListeners: { (chunkKey: number) -> () } = {}
+local changeListeners: { (x: number, y: number, z: number, old: number, new: number) -> () } = {}
 -- Light sources placed by players (torches), per chunk: block index -> light level. The server has
 -- no light engine; hostile spawning checks an estimate from these (see blockLightAt).
 local sources: { [number]: { [number]: number } } = {}
@@ -312,6 +313,7 @@ function WorldService.setBlock(wx: number, wy: number, wz: number, id: number): 
 	local cx, cz, lx, lz = ChunkData.worldToChunk(wx, wz)
 	local chunk = WorldService.getChunkSync(cx, cz)
 	local key = ChunkData.key(cx, cz)
+	local old = ChunkData.get(chunk, lx, wy, lz)
 	ChunkData.set(chunk, lx, wy, lz, id)
 	local d = diffs[key]
 	if not d then
@@ -324,7 +326,18 @@ function WorldService.setBlock(wx: number, wy: number, wz: number, id: number): 
 	for _, fn in blockSetListeners do
 		fn(key)
 	end
+	if old ~= id then
+		for _, fn in changeListeners do
+			fn(wx, wy, wz, old, id)
+		end
+	end
 	return key
+end
+
+-- Every block change (players, explosions, fluids, fire...): (x, y, z, old id, new id).
+-- Listeners must not set blocks directly (schedule a tick instead) to avoid deep recursion.
+function WorldService.onBlockChanged(fn: (x: number, y: number, z: number, old: number, new: number) -> ())
+	table.insert(changeListeners, fn)
 end
 
 return WorldService

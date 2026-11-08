@@ -53,6 +53,18 @@ local palette: { [string]: { number } } = {
 	tnt_side = { 210, 70, 55 },
 	white_wool = { 236, 236, 236 },
 	torch = { 250, 200, 90 },
+	fire = { 240, 140, 40 },
+	campfire_log = { 96, 70, 42 },
+	campfire_top = { 120, 92, 56 },
 }
+
+-- Flowing water and lava levels reuse the source colour (their own keys let the renderer give
+-- each level its own surface height).
+for _, f in { "water", "lava" } do
+	for level = 1, 7 do
+		palette[`{f}_{level}`] = palette[f]
+	end
+	palette[`{f}_falling`] = palette[f]
+end
 
 return palette

@@ -27,8 +27,13 @@ export type BlockDef = {
 	faceTexture: { number },
 	light: number, -- emitted light 0-15
 	sound: string, -- sound group (Audio/SoundConfig)
-	shape: string, -- "cube" | "torch" | "wall_torch"
+	shape: string, -- "cube" | "torch" | "wall_torch" | "fire" | "campfire"
 	facing: string?, -- wall torches
+	fluid: string?,
+	fluidLevel: number?,
+	gravity: boolean,
+	flammable: { number }?,
+	altDrop: { item: string, chance: number }?,
 }
 
 local BlockRegistry = {}
@@ -129,6 +134,11 @@ for _, d in BlockDefs do
 		sound = d.sound or (d.tool and SOUND_BY_TOOL[d.tool]) or "stone",
 		shape = d.shape or "cube",
 		facing = d.facing,
+		fluid = d.fluid,
+		fluidLevel = d.fluidLevel,
+		gravity = d.gravity == true,
+		flammable = d.flammable,
+		altDrop = d.altDrop,
 	}
 	byId[d.id] = def
 	byKey[d.key] = def

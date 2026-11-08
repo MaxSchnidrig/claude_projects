@@ -527,7 +527,7 @@ local function onDiffs(list: any)
 				for idx in diffs do
 					local x, y, z = ChunkData.unindex(idx)
 					markDirty(rec.cx * CS + x, y, rec.cz * CS + z)
-					if TorchRules.isTorch(diffs[idx]) then
+					if TorchRenderer.hasModel(diffs[idx]) then
 						TorchRenderer.set(rec.cx * CS + x, y, rec.cz * CS + z, diffs[idx])
 					end
 					if rec.lit then
@@ -628,6 +628,20 @@ function ClientWorld.init()
 		light:fillPadded(out, chunk, sy)
 	end)
 	Remotes.get("ChunkDiffs").OnClientEvent:Connect(onDiffs)
+	-- World changes made by game systems (fluids, fire, falling blocks), batched per tick.
+	Remotes.get("BlockBatch").OnClientEvent:Connect(function(flat: any)
+		if typeof(flat) ~= "table" then
+			return
+		end
+		for i = 1, #flat - 3, 4 do
+			local x, y, z, id = flat[i], flat[i + 1], flat[i + 2], flat[i + 3]
+			if typeof(x) == "number" and typeof(y) == "number" and typeof(z) == "number" and typeof(id) == "number" then
+				if ClientWorld.getBlock(x, y, z) ~= id then
+					ClientWorld.setBlock(x, y, z, id, true)
+				end
+			end
+		end
+	end)
 	-- Authoritative block changes (other players' edits, and confirmations/corrections of ours).
 	Remotes.get("BlockChanged").OnClientEvent:Connect(function(x: any, y: any, z: any, id: any)
 		if typeof(x) == "number" and typeof(y) == "number" and typeof(z) == "number" and typeof(id) == "number" then
@@ -701,7 +715,7 @@ function ClientWorld.setBlock(wx: number, wy: number, wz: number, id: number, in
 	end
 	local old = ChunkData.get(data, lx, wy, lz)
 	ChunkData.set(data, lx, wy, lz, id)
-	if TorchRules.isTorch(id) or TorchRules.isTorch(old) then
+	if TorchRenderer.hasModel(id) or TorchRenderer.hasModel(old) then
 		TorchRenderer.set(wx, wy, wz, id)
 	end
 	local lit: { [any]: { rec: Rec, section: ChunkRenderer.Section } } = {}

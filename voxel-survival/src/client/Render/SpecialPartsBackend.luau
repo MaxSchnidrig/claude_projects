@@ -18,6 +18,21 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local GreedyMesher = require(Shared.Meshing.GreedyMesher)
 local RenderStyle = require(script.Parent.RenderStyle)
+local BlockRegistry = require(Shared.Blocks.BlockRegistry)
+local Fluids = require(Shared.World.Fluids)
+
+-- Fluid surfaces: texture -> (fluid, surface height 0..1). Java draws a source 8/9 of a block high
+-- and each flowing level lower; the top layer's side faces are cut to the same height.
+local fluidTex: { [number]: { fluid: string, height: number } } = {}
+for _, def in BlockRegistry.byId do
+	if def.fluid then
+		fluidTex[def.faceTexture[BlockRegistry.Dir.TOP]] = { fluid = def.fluid, height = Fluids.height(def.fluidLevel or 0) }
+	end
+end
+local function fluidOfId(id: number): string?
+	local def = BlockRegistry.byId[id]
+	return def and def.fluid
+end
 
 local BS = Config.BLOCK_SIZE
 local SHADE = Config.FACE_SHADE
@@ -87,6 +102,25 @@ function Backend.build(groups: { [number]: { number } }, padded: buffer, originS
 			local plane = (if dir.sign > 0 then k + 1 else k) * BS
 			size[dir.axis + 1] = THICKNESS
 			center[dir.axis + 1] = plane - dir.sign * THICKNESS / 2
+			local ft = fluidTex[tex]
+			if ft and ft.height < 1 then
+				local drop = (1 - ft.height) * BS
+				if d == 3 then
+					center[2] -= drop -- the surface sits lower than the block top
+				elseif d ~= 4 then
+					-- side face: cut its top to the surface height unless more fluid is above
+					local topRow, yAxisIsU = 0, dir.u == 1
+					topRow = if yAxisIsU then i + w - 1 else j + h - 1
+					local pu = if yAxisIsU then topRow + 1 else i
+					local pv = if yAxisIsU then j else topRow + 1
+					local p = (k + 1) * STRIDE[dir.axis] + (pu + 1) * STRIDE[dir.u] + (pv + 1) * STRIDE[dir.v]
+					local above = buffer.readu8(padded, p)
+					if fluidOfId(above) ~= ft.fluid then
+						size[2] -= drop
+						center[2] -= drop / 2
+					end
+				end
+			end
 
 			local s = DIR_SHADE[d]
 			local part = Instance.new("Part")

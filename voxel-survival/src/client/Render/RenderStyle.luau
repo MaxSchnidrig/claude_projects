@@ -23,7 +23,9 @@ function RenderStyle.forTexture(tex: number): Style
 	end
 	local rgb = BlockRegistry.textureColor(tex)
 	local key = BlockRegistry.textureKeys[tex]
-	local o = (Config.TEXTURE_STYLE :: any)[key] or {}
+	-- fluid level keys ("water_3", "lava_falling") use their fluid's style
+	local base = string.match(key, "^(%a+)_%d$") or string.match(key, "^(%a+)_falling$") or key
+	local o = (Config.TEXTURE_STYLE :: any)[key] or (Config.TEXTURE_STYLE :: any)[base] or {}
 	s = {
 		color = Color3.fromRGB(rgb[1], rgb[2], rgb[3]),
 		transparency = o.transparency or 0,

@@ -109,6 +109,29 @@ function AudioClient.init(deps: { [string]: any })
 	BlockInteraction.digging.Event:Connect(function(x, y, z, id)
 		playMaterial("dig", id, blockCenter(x, y, z))
 	end)
+	BlockInteraction.used.Event:Connect(function(held: string, target: number)
+		if held == "bucket_fill" then
+			local def = BlockRegistry.byId[target]
+			AudioClient.play(if def and def.fluid == "lava" then "bucket.fill_lava" else "bucket.fill")
+		elseif held == "water_bucket" then
+			AudioClient.play("bucket.empty")
+		elseif held == "lava_bucket" then
+			AudioClient.play("bucket.empty_lava")
+		elseif held == "flint_and_steel" then
+			AudioClient.play("fire.ignite")
+		end
+	end)
+	if deps.EntityClient then
+		deps.EntityClient.events.Event:Connect(function(kind: string, entityKind: string, pos: Vector3)
+			if kind == "spawn" and entityKind == "tnt" then
+				AudioClient.play("tnt.primed", pos)
+			elseif kind == "remove" and entityKind == "falling" then
+				AudioClient.play("sand.land", pos)
+			elseif kind == "fizz" then
+				AudioClient.play("fizz", pos)
+			end
+		end)
+	end
 
 	-- footsteps, landing, eating
 	local walked = 0

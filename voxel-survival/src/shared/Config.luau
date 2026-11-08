@@ -103,7 +103,7 @@ Config.EYE_HEIGHT_SNEAK = 0.81 -- sneaking: feet + 3.81 studs = Java 1.27 blocks
 Config.WALK_SPEED = 12.95 -- studs/s (Java 4.317 blocks/s)
 Config.SPRINT_SPEED = 16.84 -- studs/s (Java 5.612 blocks/s)
 Config.JUMP_HEIGHT = 3.757 -- studs (Java 1.2522 blocks): clears 1-block steps, never 2
-Config.KEY_SPRINT = "LeftControl" -- hold while walking forward; double-tapping W also sprints
+-- Sprinting: double-tap W (gamepad: click the left stick). No sprint key on purpose.
 Config.SPRINT_DOUBLE_TAP = 0.35 -- Java: a second W press within 7 ticks of the first starts a sprint
 Config.KEY_SNEAK = "LeftShift" -- hold to sneak
 Config.SNEAK_SPEED_FACTOR = 0.3 -- Java sneaking: movement input x 0.3
@@ -172,6 +172,10 @@ Config.MOB_SEND_DISTANCE = 96 -- mobs within this range are sent to a client (ba
 Config.MOB_SNAPSHOT_HZ = 10
 Config.SHIFT_CLICK_INTO_CRAFT_GRID = true -- Java: shift-click from the inventory fills the 3x3 grid first (slots 1-9, merging first), then hotbar <-> inventory
 
+-- World simulation (phase 8) ----------------------------------------------------------------
+Config.MAX_BLOCK_TICKS_PER_TICK = 3000 -- scheduled block ticks per game tick (fluids, fire...)
+Config.DIFFICULTY_FIRE = 2 -- Java fire spread uses the difficulty id (Normal = 2)
+
 -- Saving (phase 6) ----------------------------------------------------------------------------
 Config.DATASTORE_NAME = "RocraftWorlds_v1" -- Studio uses DATASTORE_NAME .. "_Studio" (never live data)
 Config.AUTOSAVE_SECONDS = 60
@@ -187,9 +191,9 @@ Config.DEBUG_KEY_KEEP_TEMP = "F6" -- keep edited sections on their live mesh (co
 Config.DEBUG_KEY_SKIP_TIME = "J" -- Studio only: +6 game hours (quarter day)
 Config.DEBUG_KEY_HURT_SELF = "K" -- Studio only: take 3 damage
 Config.DEBUG_KEY_SPAWN_MOB = "L" -- Studio only: spawn the next mob type in front of you
-Config.DEBUG_KEY_SPECTATOR = "N" -- Studio only: spectator flying (no collision); Space up, Shift down, Ctrl faster
+Config.DEBUG_KEY_SPECTATOR = "N" -- Studio only: spectator flying (no collision); Space up, Shift down, double-tap W sprints
 Config.SPECTATOR_SPEED = 10.92 -- blocks/s (Java flying speed; Ctrl doubles it)
 Config.TERRAIN_MATERIAL = "Plastic" -- rougher than SmoothPlastic: less shine on blocks
-Config.DEBUG_KEY_GIVE_KIT = "G" -- Studio only: give 64 torches and 16 coal (saved players get no starter kit)
+Config.DEBUG_KEY_GIVE_KIT = "G" -- Studio only: test kit (torches, coal, buckets, flint and steel, TNT, sand, gravel, campfires, beef, planks)
 
 return Config

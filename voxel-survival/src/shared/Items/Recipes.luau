@@ -31,6 +31,8 @@ local shaped: { Shaped } = {
 	{ pattern = { "ss", "ss" }, key = { s = "string" }, result = { item = "white_wool", count = 1 } },
 	{ pattern = { "GSG", "SGS", "GSG" }, key = { G = "gunpowder", S = "sand" }, result = { item = "tnt", count = 1 } },
 	{ pattern = { "C", "S" }, key = { C = "#coals", S = "stick" }, result = { item = "torch", count = 4 } },
+	{ pattern = { "I I", " I " }, key = { I = "iron_ingot" }, result = { item = "bucket", count = 1 } },
+	{ pattern = { " S ", "SCS", "LLL" }, key = { S = "stick", C = "#coals", L = "#logs" }, result = { item = "campfire", count = 1 } },
 }
 
 -- Tools: same shapes for every material tier.
@@ -59,10 +61,14 @@ for _, m in TOOL_MATERIALS do
 end
 
 local shapeless: { Shapeless } = {
+	{ ingredients = { "iron_ingot", "flint" }, result = { item = "flint_and_steel", count = 1 } },
 	{ ingredients = { "oak_log" }, result = { item = "oak_planks", count = 4 } },
 	{ ingredients = { "birch_log" }, result = { item = "birch_planks", count = 4 } },
 	{ ingredients = { "spruce_log" }, result = { item = "spruce_planks", count = 4 } },
 }
+
+-- Fuel that leaves an item behind in the fuel slot.
+Recipes.fuelRemainder = { lava_bucket = "bucket" } :: { [string]: string }
 
 Recipes.shaped = shaped
 Recipes.shapeless = shapeless
@@ -87,6 +93,7 @@ Recipes.smelting = {
 
 -- Fuel burn time in seconds (one coal smelts 8 items).
 Recipes.fuel = {
+	lava_bucket = 1000, -- leaves an empty bucket behind (Recipes.fuelRemainder)
 	coal = 80,
 	charcoal = 80,
 	oak_planks = 15,
