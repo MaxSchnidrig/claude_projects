@@ -1,6 +1,6 @@
 --!strict
 --!native
--- Chunk storage: 16 x 384 x 16 block IDs in one 96 KB buffer (1 byte per block).
+-- Chunk storage: 16 x 384 x 16 block IDs in one 192 KB buffer (u16 per block, byte offset index * 2).
 --
 -- Layout: index = x + z * 16 + y * 256   (x, z in 0..15, internal y in 0..383)
 -- A horizontal 16x16 layer is contiguous, and a 16-high render section is a contiguous 4 KB slice.
@@ -31,7 +31,7 @@ function ChunkData.new(cx: number, cz: number): Chunk
 	return {
 		cx = cx,
 		cz = cz,
-		blocks = buffer.create(VOLUME),
+		blocks = buffer.create(VOLUME * 2),
 		biomes = buffer.create(LAYER),
 		heights = buffer.create(LAYER),
 		diffs = {},
@@ -67,11 +67,11 @@ function ChunkData.get(chunk: Chunk, x: number, y: number, z: number): number
 	if y < 0 or y >= H then
 		return 0
 	end
-	return buffer.readu8(chunk.blocks, x + z * CS + y * LAYER)
+	return buffer.readu16(chunk.blocks, (x + z * CS + y * LAYER) * 2)
 end
 
 function ChunkData.set(chunk: Chunk, x: number, y: number, z: number, id: number)
-	buffer.writeu8(chunk.blocks, x + z * CS + y * LAYER, id)
+	buffer.writeu16(chunk.blocks, (x + z * CS + y * LAYER) * 2, id)
 end
 
 -- World block coordinate -> chunk coordinate + local coordinate.
@@ -81,11 +81,11 @@ function ChunkData.worldToChunk(wx: number, wz: number): (number, number, number
 	return cx, cz, wx - cx * CS, wz - cz * CS
 end
 
--- Diff packing for the network / DataStore: sequence of (u16 index, u8 id) records.
+-- Diff packing for the network / DataStore: sequence of (u24 index, u16 id) records.
 function ChunkData.packDiffs(diffs: { [number]: number }): string
 	local parts = {}
 	for idx, id in diffs do
-		table.insert(parts, string.pack("<I3B", idx, id))
+		table.insert(parts, string.pack("<I3I2", idx, id))
 	end
 	return table.concat(parts)
 end
@@ -94,8 +94,8 @@ function ChunkData.unpackDiffs(data: string): { [number]: number }
 	local out = {}
 	local pos = 1
 	local n = #data
-	while pos + 3 <= n do
-		local idx, id, nextPos = string.unpack("<I3B", data, pos)
+	while pos + 4 <= n do
+		local idx, id, nextPos = string.unpack("<I3I2", data, pos)
 		out[idx] = id
 		pos = nextPos
 	end
@@ -105,7 +105,7 @@ end
 -- Apply a diff table onto the generated blocks.
 function ChunkData.applyDiffs(chunk: Chunk, diffs: { [number]: number })
 	for idx, id in diffs do
-		buffer.writeu8(chunk.blocks, idx, id)
+		buffer.writeu16(chunk.blocks, idx * 2, id)
 		chunk.diffs[idx] = id
 	end
 end

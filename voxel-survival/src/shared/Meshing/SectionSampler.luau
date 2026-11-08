@@ -18,6 +18,7 @@ local P2 = P * P
 local SectionSampler = {}
 SectionSampler.SIZE = P
 SectionSampler.VOLUME = P * P * P
+SectionSampler.BYTES = P * P * P * 2 -- block ids are u16: padded block buffers are this many bytes
 
 -- Block id used for missing neighbours / below the world: opaque, so border faces are culled.
 local BORDER_SOLID = 1 -- stone
@@ -29,7 +30,7 @@ local function idx(px: number, py: number, pz: number): number
 end
 SectionSampler.index = idx
 
--- Writes into `out` (a buffer of SectionSampler.VOLUME bytes, reused between calls).
+-- Writes into `out` (a buffer of SectionSampler.BYTES bytes, one u16 id per cell, reused between calls).
 function SectionSampler.fill(out: buffer, chunk: any, nb: Neighbors, sectionY: number)
 	local blocks: buffer = chunk.blocks
 	local y0 = sectionY * SS
@@ -41,7 +42,7 @@ function SectionSampler.fill(out: buffer, chunk: any, nb: Neighbors, sectionY: n
 			-- below the world: treat as solid so the underside of bedrock is never drawn
 			for pz = 0, P - 1 do
 				for px = 0, P - 1 do
-					buffer.writeu8(out, idx(px, py, pz), BORDER_SOLID)
+					buffer.writeu16(out, (idx(px, py, pz)) * 2, BORDER_SOLID)
 				end
 			end
 		elseif y < H then
@@ -50,14 +51,14 @@ function SectionSampler.fill(out: buffer, chunk: any, nb: Neighbors, sectionY: n
 			for lz = 0, CS - 1 do
 				local src = rowBase + lz * CS
 				local dst = idx(1, py, lz + 1)
-				buffer.copy(out, dst, blocks, src, CS)
+				buffer.copy(out, dst * 2, blocks, src * 2, CS * 2)
 			end
 			local e, w, s, n = nb.east, nb.west, nb.south, nb.north
 			for l = 0, CS - 1 do
-				buffer.writeu8(out, idx(P - 1, py, l + 1), if e then buffer.readu8(e.blocks, rowBase + l * CS) else BORDER_SOLID)
-				buffer.writeu8(out, idx(0, py, l + 1), if w then buffer.readu8(w.blocks, rowBase + l * CS + (CS - 1)) else BORDER_SOLID)
-				buffer.writeu8(out, idx(l + 1, py, P - 1), if s then buffer.readu8(s.blocks, rowBase + l) else BORDER_SOLID)
-				buffer.writeu8(out, idx(l + 1, py, 0), if n then buffer.readu8(n.blocks, rowBase + (CS - 1) * CS + l) else BORDER_SOLID)
+				buffer.writeu16(out, (idx(P - 1, py, l + 1)) * 2, if e then buffer.readu16(e.blocks, (rowBase + l * CS) * 2) else BORDER_SOLID)
+				buffer.writeu16(out, (idx(0, py, l + 1)) * 2, if w then buffer.readu16(w.blocks, (rowBase + l * CS + (CS - 1)) * 2) else BORDER_SOLID)
+				buffer.writeu16(out, (idx(l + 1, py, P - 1)) * 2, if s then buffer.readu16(s.blocks, (rowBase + l) * 2) else BORDER_SOLID)
+				buffer.writeu16(out, (idx(l + 1, py, 0)) * 2, if n then buffer.readu16(n.blocks, (rowBase + (CS - 1) * CS + l) * 2) else BORDER_SOLID)
 			end
 		end
 		-- y >= H stays 0 (air above the world)

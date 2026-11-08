@@ -30,7 +30,7 @@ for cz = -R, R do
 		TerrainGen.generate(gen, c)
 		if height > 128 then
 			-- shift the 128-tall terrain up by 64 and fill a new underground below it
-			buffer.copy(c.blocks, 64 * LAYER, c.blocks, 0, 128 * LAYER)
+			buffer.copy(c.blocks, 64 * LAYER * 2, c.blocks, 0, 128 * LAYER * 2)
 			for y = 0, 63 do
 				for z = 0, 15 do
 					for x = 0, 15 do
@@ -40,7 +40,7 @@ for cz = -R, R do
 						if id == STONE and Hash.hash3f(9, wx, y, wz) > 0.992 then
 							id = ORES[1 + (wx + y + wz) % #ORES]
 						end
-						buffer.writeu8(c.blocks, x + z * 16 + y * LAYER, id)
+						buffer.writeu16(c.blocks, (x + z * 16 + y * LAYER) * 2, id)
 					end
 				end
 			end
@@ -60,7 +60,7 @@ for _, c in world do
 end
 local tl = os.clock() - t
 
-local padded = buffer.create(SectionSampler.VOLUME)
+local padded = buffer.create(SectionSampler.BYTES)
 local light = buffer.create(SectionSampler.VOLUME)
 local tm, quads, meshed, buried, empty, chunksM = 0, 0, 0, 0, 0, 0
 for cz = -2, 2 do

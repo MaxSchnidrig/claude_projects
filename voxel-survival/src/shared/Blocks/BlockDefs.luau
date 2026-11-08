@@ -5,7 +5,7 @@
 -- Leave gaps instead of deleting.
 --
 -- Fields:
---   id          permanent numeric ID (1..255, 0 is air)
+--   id          permanent numeric ID (1..4095, 0 is air; stored as u16)
 --   key         internal string key (snake_case)
 --   name        display name
 --   hardness    seconds-scale hardness (same scale as classic voxel-survival games); -1 = unbreakable

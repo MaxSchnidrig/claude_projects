@@ -27,7 +27,7 @@ Backend.stats = { parts = 0 }
 -- buried on all 6 sides (never seen, so any box may cover it), else 0 (skip).
 function Backend.partKey(padded: buffer, id: number, p: number): number
 	for i = 1, 6 do
-		local n = buffer.readu8(padded, p + OFFS[i])
+		local n = buffer.readu16(padded, (p + OFFS[i]) * 2)
 		if n == 0 or (not isOpaque[n + 1] and n ~= id and not (isLiquid[id + 1] and isLiquid[n + 1])) then
 			return id
 		end

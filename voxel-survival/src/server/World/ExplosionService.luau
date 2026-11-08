@@ -16,7 +16,7 @@ local BlockRegistry = require(Shared.Blocks.BlockRegistry)
 local Combat = require(Shared.Gameplay.Combat)
 local WorldService = require(script.Parent.WorldService)
 local ItemEntityService = require(script.Parent.ItemEntityService)
-local ChunkStreamer = require(script.Parent.ChunkStreamer)
+local BlockUpdates = require(script.Parent.BlockUpdates)
 local BlockEntityService = require(script.Parent.BlockEntityService)
 
 local BS = Config.BLOCK_SIZE
@@ -84,16 +84,9 @@ function ExplosionService.explode(center: Vector3, power: number, cause: string,
 			end
 		end
 	end
-	-- tell clients that have those chunks
-	local remote = Remotes.get("BlockChanged")
-	local byPlayer: { [Player]: boolean } = {}
+	-- tell clients that have those chunks: batched into one message per player this tick
 	for _, c in changed do
-		local ccx, ccz = c[1] // Config.CHUNK_SIZE, c[3] // Config.CHUNK_SIZE
-		local key = (ccx + 1048576) * 2097152 + (ccz + 1048576)
-		for _, p in ChunkStreamer.playersWithChunk(key) do
-			remote:FireClient(p, c[1], c[2], c[3], 0)
-			byPlayer[p] = true
-		end
+		BlockUpdates.send(c[1], c[2], c[3], 0)
 	end
 
 	-- 2. players
@@ -120,7 +113,6 @@ function ExplosionService.explode(center: Vector3, power: number, cause: string,
 	if damageMobs then
 		(damageMobs :: (Vector3, number) -> ())(center, power)
 	end
-	return byPlayer
 end
 
 return ExplosionService

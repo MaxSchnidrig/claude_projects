@@ -36,7 +36,7 @@ function BoxMerger.merge(padded: buffer, keyOf: (id: number, p: number) -> numbe
 		for z = 0, SS - 1 do
 			for x = 0, SS - 1 do
 				local p = (x + 1) + (z + 1) * P + (y + 1) * P2
-				local id = buffer.readu8(padded, p)
+				local id = buffer.readu16(padded, p * 2)
 				keys[li(x, y, z)] = if id == 0 then 0 else keyOf(id, p)
 			end
 		end

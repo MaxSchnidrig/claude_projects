@@ -94,7 +94,7 @@ function GreedyMesher.classify(padded: buffer): string
 		for z = 1, P - 2 do
 			local row = 1 + z * P + y * P2
 			for x = 0, SS - 1 do
-				local b = buffer.readu8(padded, row + x)
+				local b = buffer.readu16(padded, (row + x) * 2)
 				if b ~= 0 then
 					anyBlock = true
 				end
@@ -113,12 +113,12 @@ function GreedyMesher.classify(padded: buffer): string
 	-- interior fully opaque: check the 6 border faces of the padded volume
 	for a = 1, P - 2 do
 		for c = 1, P - 2 do
-			if not isOpaque[buffer.readu8(padded, 0 + a * P + c * P2) + 1] -- x = 0
-				or not isOpaque[buffer.readu8(padded, (P - 1) + a * P + c * P2) + 1] -- x = 17
-				or not isOpaque[buffer.readu8(padded, a + 0 * P + c * P2) + 1] -- z = 0
-				or not isOpaque[buffer.readu8(padded, a + (P - 1) * P + c * P2) + 1] -- z = 17
-				or not isOpaque[buffer.readu8(padded, a + c * P + 0 * P2) + 1] -- y = 0
-				or not isOpaque[buffer.readu8(padded, a + c * P + (P - 1) * P2) + 1] -- y = 17
+			if not isOpaque[buffer.readu16(padded, (0 + a * P + c * P2) * 2) + 1] -- x = 0
+				or not isOpaque[buffer.readu16(padded, ((P - 1) + a * P + c * P2) * 2) + 1] -- x = 17
+				or not isOpaque[buffer.readu16(padded, (a + 0 * P + c * P2) * 2) + 1] -- z = 0
+				or not isOpaque[buffer.readu16(padded, (a + (P - 1) * P + c * P2) * 2) + 1] -- z = 17
+				or not isOpaque[buffer.readu16(padded, (a + c * P + 0 * P2) * 2) + 1] -- y = 0
+				or not isOpaque[buffer.readu16(padded, (a + c * P + (P - 1) * P2) * 2) + 1] -- y = 17
 			then
 				return "mesh"
 			end
@@ -146,10 +146,10 @@ function GreedyMesher.mesh(padded: buffer, checkpoint: (() -> ())?): MeshResult
 			for j = 0, SS - 1 do
 				local p = sliceBase + j * sV
 				for _ = 0, SS - 1 do
-					local b = buffer.readu8(padded, p)
+					local b = buffer.readu16(padded, p * 2)
 					local m = 0
 					if b ~= 0 and isCube[b + 1] then
-						local n = buffer.readu8(padded, p + nOff)
+						local n = buffer.readu16(padded, (p + nOff) * 2)
 						-- inlined faceVisible(b, n)
 						if n == 0 or (
 							not isOpaque[n + 1]
@@ -265,10 +265,10 @@ function GreedyMesher.meshLit(padded: buffer, light: buffer, merge: { [number]: 
 			for j = 0, SS - 1 do
 				local p = sliceBase + j * sV
 				for i = 0, SS - 1 do
-					local b = buffer.readu8(padded, p)
+					local b = buffer.readu16(padded, p * 2)
 					local m = 0
 					if b ~= 0 and isCube[b + 1] then
-						local n = buffer.readu8(padded, p + nOff)
+						local n = buffer.readu16(padded, (p + nOff) * 2)
 						if n == 0 or (
 							not isOpaque[n + 1]
 							and (n ~= b or not cullSelf[b + 1])
@@ -299,9 +299,9 @@ function GreedyMesher.meshLit(padded: buffer, light: buffer, merge: { [number]: 
 									local o1 = q + CU[c] * sU
 									local o2 = q + CV[c] * sV
 									local oc = o1 + CV[c] * sV
-									local s1 = isOpaque[buffer.readu8(padded, o1) + 1]
-									local s2 = isOpaque[buffer.readu8(padded, o2) + 1]
-									local sc = isOpaque[buffer.readu8(padded, oc) + 1]
+									local s1 = isOpaque[buffer.readu16(padded, o1 * 2) + 1]
+									local s2 = isOpaque[buffer.readu16(padded, o2 * 2) + 1]
+									local sc = isOpaque[buffer.readu16(padded, oc * 2) + 1]
 									local ao
 									if s1 and s2 then
 										ao = 0

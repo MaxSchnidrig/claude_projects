@@ -59,7 +59,7 @@ BlockRegistry.DIR_VECTORS = {
 }
 
 BlockRegistry.AIR = 0
-BlockRegistry.MAX_ID = 255
+BlockRegistry.MAX_ID = 4095 -- ids are stored as u16; 4095 keeps the lookup arrays small
 
 -- Texture registry: texture key <-> numeric index (1-based). Index 0 means "no face".
 local textureKeys: { string } = {}
@@ -78,23 +78,23 @@ end
 BlockRegistry.textureKeys = textureKeys
 BlockRegistry.textureIndex = textureIndex
 
--- Flat lookup arrays, indexed by block id (0..255). Air (0) is non-solid, transparent.
+-- Flat lookup arrays, indexed by block id (0..MAX_ID). Air (0) is non-solid, transparent.
 local byId: { [number]: BlockDef } = {}
 local byKey: { [string]: BlockDef } = {}
-local isSolid = table.create(256, false) :: { boolean }
-local isOpaque = table.create(256, false) :: { boolean }
-local isLiquid = table.create(256, false) :: { boolean }
-local cullSelf = table.create(256, true) :: { boolean }
-local isTransparentGroup = table.create(256, false) :: { boolean }
-local lightEmission = table.create(256, 0) :: { number }
-local lightOpacity = table.create(256, 0) :: { number }
-local isCube = table.create(256, true) :: { boolean }
+local isSolid = table.create(4096, false) :: { boolean }
+local isOpaque = table.create(4096, false) :: { boolean }
+local isLiquid = table.create(4096, false) :: { boolean }
+local cullSelf = table.create(4096, true) :: { boolean }
+local isTransparentGroup = table.create(4096, false) :: { boolean }
+local lightEmission = table.create(4096, 0) :: { number }
+local lightOpacity = table.create(4096, 0) :: { number }
+local isCube = table.create(4096, true) :: { boolean }
 
 -- Sound group when a block doesn't name one: by its preferred tool.
 local SOUND_BY_TOOL = { pickaxe = "stone", axe = "wood", shovel = "gravel", hoe = "grass", shears = "wool" }
 
 for _, d in BlockDefs do
-	assert(d.id > 0 and d.id <= 255, `BlockRegistry: bad id {d.id} for {d.key}`)
+	assert(d.id > 0 and d.id <= BlockRegistry.MAX_ID, `BlockRegistry: bad id {d.id} for {d.key}`)
 	assert(byId[d.id] == nil, `BlockRegistry: duplicate id {d.id} ({d.key})`)
 	assert(byKey[d.key] == nil, `BlockRegistry: duplicate key {d.key}`)
 

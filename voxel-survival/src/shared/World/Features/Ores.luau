@@ -76,8 +76,8 @@ function Ores.generate(gen: any, chunk: any)
 			for _ = 1, v.walk do
 				if x >= 0 and x < CS and z >= 0 and z < CS and y >= 0 and y < Config.WORLD_HEIGHT then
 					local idx = x + z * CS + y * LAYER
-					if buffer.readu8(blocks, idx) == STONE then
-						buffer.writeu8(blocks, idx, v.block)
+					if buffer.readu16(blocks, idx * 2) == STONE then
+						buffer.writeu16(blocks, idx * 2, v.block)
 					end
 				end
 				local dir = rng:nextInt(1, 6)
@@ -106,8 +106,8 @@ function Ores.generate(gen: any, chunk: any)
 		local y = rng:nextInt(-16 + O, 160 + O) -- Java: mountains, y -16 .. 320
 		if buffer.readu8(chunk.biomes, x + z * CS) == MOUNTAINS then
 			local idx = x + z * CS + y * LAYER
-			if buffer.readu8(blocks, idx) == STONE then
-				buffer.writeu8(blocks, idx, EMERALD)
+			if buffer.readu16(blocks, idx * 2) == STONE then
+				buffer.writeu16(blocks, idx * 2, EMERALD)
 			end
 		end
 	end

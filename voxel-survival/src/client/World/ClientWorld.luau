@@ -485,6 +485,7 @@ end
 local URGENT_SECTIONS_PER_FRAME = 8
 local urgentLeft = URGENT_SECTIONS_PER_FRAME
 
+local batchQueue: { { any } } = {}
 local function rebuildNow(touched: { { rec: Rec, section: ChunkRenderer.Section } })
 	local meshLimit = (effectiveRenderDistance() + 0.5) ^ 2
 	for _, t in touched do
@@ -629,17 +630,11 @@ function ClientWorld.init()
 	end)
 	Remotes.get("ChunkDiffs").OnClientEvent:Connect(onDiffs)
 	-- World changes made by game systems (fluids, fire, falling blocks), batched per tick.
+	-- Queued, then applied a few ms per frame (an explosion or flood can change hundreds of
+	-- blocks at once; doing them all in one frame used to drop the frame rate hard).
 	Remotes.get("BlockBatch").OnClientEvent:Connect(function(flat: any)
-		if typeof(flat) ~= "table" then
-			return
-		end
-		for i = 1, #flat - 3, 4 do
-			local x, y, z, id = flat[i], flat[i + 1], flat[i + 2], flat[i + 3]
-			if typeof(x) == "number" and typeof(y) == "number" and typeof(z) == "number" and typeof(id) == "number" then
-				if ClientWorld.getBlock(x, y, z) ~= id then
-					ClientWorld.setBlock(x, y, z, id, true)
-				end
-			end
+		if typeof(flat) == "table" then
+			table.insert(batchQueue, flat)
 		end
 	end)
 	-- Authoritative block changes (other players' edits, and confirmations/corrections of ours).
@@ -665,6 +660,7 @@ function ClientWorld.init()
 			acc = 0
 			refresh()
 		end
+		ClientWorld._drainBatches(if isMobile then 2 else 3)
 		local t1 = os.clock()
 		scheduler:step()
 		local t2 = os.clock()
@@ -704,14 +700,14 @@ end
 -- Local block write (used when the server confirms a change; phase 2).
 -- Block write. `instant` = show the change on this very frame (player edits, server-confirmed
 -- edits); otherwise the scheduler rebuilds the section in the background.
-function ClientWorld.setBlock(wx: number, wy: number, wz: number, id: number, instant: boolean?)
+local function applyBlock(wx: number, wy: number, wz: number, id: number): { { rec: Rec, section: ChunkRenderer.Section } }?
 	if wy < 0 or wy >= H then
-		return
+		return nil
 	end
 	local cx, cz, lx, lz = ChunkData.worldToChunk(wx, wz)
 	local data = dataAt(cx, cz)
 	if not data then
-		return
+		return nil
 	end
 	local old = ChunkData.get(data, lx, wy, lz)
 	ChunkData.set(data, lx, wy, lz, id)
@@ -747,10 +743,62 @@ function ClientWorld.setBlock(wx: number, wy: number, wz: number, id: number, in
 		t.section.version += 1
 		table.insert(touched, t)
 	end
-	if instant then
+	return touched
+end
+
+function ClientWorld.setBlock(wx: number, wy: number, wz: number, id: number, instant: boolean?)
+	local touched = applyBlock(wx, wy, wz, id)
+	if touched and instant then
 		rebuildNow(touched)
 	end
 end
+
+-- Apply queued BlockBatch changes for up to `budgetMs` this frame; each touched section is
+-- rebuilt once per frame, however many of its blocks changed.
+local batchPos = 1
+local function drainBatches(budgetMs: number)
+	if #batchQueue == 0 then
+		return
+	end
+	local t0 = os.clock()
+	local seen: { [any]: boolean } = {}
+	local touchedAll: { { rec: Rec, section: ChunkRenderer.Section } } = {}
+	while #batchQueue > 0 do
+		local flat = batchQueue[1]
+		local n = #flat
+		while batchPos <= n - 3 do
+			local x, y, z, id = flat[batchPos], flat[batchPos + 1], flat[batchPos + 2], flat[batchPos + 3]
+			batchPos += 4
+			if typeof(x) == "number" and typeof(y) == "number" and typeof(z) == "number" and typeof(id) == "number"
+				and ClientWorld.getBlock(x, y, z) ~= id
+			then
+				local touched = applyBlock(x, y, z, id)
+				if touched then
+					for _, t in touched do
+						if not seen[t.section] then
+							seen[t.section] = true
+							table.insert(touchedAll, t)
+						end
+					end
+				end
+			end
+			if (os.clock() - t0) * 1000 >= budgetMs then
+				break
+			end
+		end
+		if batchPos > n - 3 then
+			table.remove(batchQueue, 1)
+			batchPos = 1
+		end
+		if (os.clock() - t0) * 1000 >= budgetMs then
+			break
+		end
+	end
+	if #touchedAll > 0 then
+		rebuildNow(touchedAll)
+	end
+end
+ClientWorld._drainBatches = drainBatches
 
 -- Light levels at a block (sky, block), 0..15; (15, 0) where the chunk isn't lit yet.
 function ClientWorld.lightAt(wx: number, wy: number, wz: number): (number, number)

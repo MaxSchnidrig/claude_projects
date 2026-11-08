@@ -86,7 +86,7 @@ local function spread(self: Engine, q: Queue, sky: boolean, checkpoint: (() -> (
 					local nx, ny, nz = x + DX[d], y + DY[d], z + DZ[d]
 					local nchunk, nidx = locate(self, nx, ny, nz)
 					if nchunk then
-						local id = buffer.readu8(nchunk.blocks, nidx)
+						local id = buffer.readu16(nchunk.blocks, nidx * 2)
 						local op = opacity[id + 1]
 						if op < 15 then
 							local new
@@ -129,7 +129,7 @@ function LightEngine.lightChunk(self: Engine, chunk: any, checkpoint: (() -> ())
 			local full = H
 			for y = H - 1, 0, -1 do
 				local idx = col + y * LAYER
-				local op = opacity[buffer.readu8(blocks, idx) + 1]
+				local op = opacity[buffer.readu16(blocks, idx * 2) + 1]
 				if op >= 15 then
 					break
 				end
@@ -179,7 +179,7 @@ function LightEngine.lightChunk(self: Engine, chunk: any, checkpoint: (() -> ())
 	end
 	-- light sources
 	for i = 0, VOLUME - 1 do
-		local e = emission[buffer.readu8(blocks, i) + 1]
+		local e = emission[buffer.readu16(blocks, i * 2) + 1]
 		if e > 0 then
 			local v = buffer.readu8(light, i)
 			buffer.writeu8(light, i, (v // 16) * 16 + e)
@@ -253,7 +253,7 @@ local function relight(self: Engine, x: number, y: number, z: number, sky: boole
 	-- the changed block's own light: sources glow, open sky from above comes straight down
 	local here, hidx = locate(self, x, y, z)
 	if here then
-		local id = buffer.readu8(here.blocks, hidx)
+		local id = buffer.readu16(here.blocks, hidx * 2)
 		local hv = buffer.readu8(here.light, hidx)
 		if sky then
 			local above = 0

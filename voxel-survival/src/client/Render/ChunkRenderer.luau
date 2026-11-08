@@ -71,9 +71,9 @@ ChunkRenderer.stats = {
 -- Debug (F6): keep edited sections on their live pool mesh instead of baking, to compare.
 ChunkRenderer.keepTemp = false
 
-local paddedRender = buffer.create(SectionSampler.VOLUME)
-local paddedCollision = buffer.create(SectionSampler.VOLUME)
-local paddedUrgent = buffer.create(SectionSampler.VOLUME) -- urgent builds may interrupt a yielded job
+local paddedRender = buffer.create(SectionSampler.BYTES)
+local paddedCollision = buffer.create(SectionSampler.BYTES)
+local paddedUrgent = buffer.create(SectionSampler.BYTES) -- urgent builds may interrupt a yielded job
 local lightRender = buffer.create(SectionSampler.VOLUME)
 local lightUrgent = buffer.create(SectionSampler.VOLUME)
 -- Light for a section's padded volume (ClientWorld's LightEngine); nil until set.

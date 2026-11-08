@@ -53,8 +53,8 @@ local function faceAt(padded: buffer, d: number, k: number, u: number, v: number
 	end
 	local dir = GreedyMesher.DIRS[d]
 	local p = (k + 1) * STRIDE[dir.axis] + (u + 1) * STRIDE[dir.u] + (v + 1) * STRIDE[dir.v]
-	local b = buffer.readu8(padded, p)
-	return b ~= 0 and faceVisible(b, buffer.readu8(padded, p + STRIDE[dir.axis] * dir.sign))
+	local b = buffer.readu16(padded, p * 2)
+	return b ~= 0 and faceVisible(b, buffer.readu16(padded, (p + STRIDE[dir.axis] * dir.sign) * 2))
 end
 
 -- Does the plane continue into another visible face anywhere along this edge?
@@ -114,7 +114,7 @@ function Backend.build(groups: { [number]: { number } }, padded: buffer, originS
 					local pu = if yAxisIsU then topRow + 1 else i
 					local pv = if yAxisIsU then j else topRow + 1
 					local p = (k + 1) * STRIDE[dir.axis] + (pu + 1) * STRIDE[dir.u] + (pv + 1) * STRIDE[dir.v]
-					local above = buffer.readu8(padded, p)
+					local above = buffer.readu16(padded, p * 2)
 					if fluidOfId(above) ~= ft.fluid then
 						size[2] -= drop
 						center[2] -= drop / 2

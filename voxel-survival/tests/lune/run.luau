@@ -171,7 +171,7 @@ print("Meshing")
 local function paddedFrom(setup: (chunk: any) -> ()): buffer
 	local c = ChunkData.new(0, 0)
 	setup(c)
-	local out = buffer.create(SectionSampler.VOLUME)
+	local out = buffer.create(SectionSampler.BYTES)
 	-- neighbours = empty air chunks
 	local air = ChunkData.new(0, 0)
 	SectionSampler.fill(out, c, { east = air, west = air, south = air, north = air }, 1)
@@ -254,7 +254,7 @@ end)
 test("box merger covers every solid cell exactly once on real terrain", function()
 	local c = ChunkData.new(0, 0)
 	TerrainGen.generate(TerrainGen.new(SEED), c)
-	local padded = buffer.create(SectionSampler.VOLUME)
+	local padded = buffer.create(SectionSampler.BYTES)
 	SectionSampler.fill(padded, c, {}, 3)
 	local boxes, n = BoxMerger.merge(padded, function(id)
 		return if BlockRegistry.isSolid[id + 1] then 1 else 0
@@ -281,7 +281,7 @@ test("wildcard merging: covers every visible block once, never air/water", funct
 	local isOpaque, isLiquid = BlockRegistry.isOpaque, BlockRegistry.isLiquid
 	local function partKey(padded: buffer, id: number, p: number): number
 		for i = 1, 6 do
-			local n = buffer.readu8(padded, p + OFFS[i])
+			local n = buffer.readu16(padded, (p + OFFS[i]) * 2)
 			if n == 0 or (not isOpaque[n + 1] and n ~= id and not (isLiquid[id + 1] and isLiquid[n + 1])) then
 				return id
 			end
@@ -290,7 +290,7 @@ test("wildcard merging: covers every visible block once, never air/water", funct
 	end
 	local c = ChunkData.new(0, 0)
 	TerrainGen.generate(TerrainGen.new(SEED), c)
-	local padded = buffer.create(SectionSampler.VOLUME)
+	local padded = buffer.create(SectionSampler.BYTES)
 	for sy = 2, 5 do
 		SectionSampler.fill(padded, c, {}, sy)
 		local boxes, n = BoxMerger.merge(padded, function(id, p)
@@ -313,7 +313,7 @@ test("wildcard merging: covers every visible block once, never air/water", funct
 			for z = 0, 15 do
 				for x = 0, 15 do
 					local p = (x + 1) + (z + 1) * 18 + (y + 1) * 324
-					local id = buffer.readu8(padded, p)
+					local id = buffer.readu16(padded, p * 2)
 					local key = if id == 0 then 0 else partKey(padded, id, p)
 					local k = x + z * 16 + y * 256
 					if key > 0 then
@@ -776,7 +776,7 @@ test("base64 round trip (all byte values, every padding)", function()
 end)
 test("save format: regions round trip diffs and containers", function()
 	local key = ChunkData.key(-3, 5)
-	local diffs = { [0] = 1, [123] = 0, [32767] = 200 }
+	local diffs = { [0] = 1, [123] = 0, [32767] = 200, [40000] = 3000 }
 	local region = {
 		chunks = { [key] = diffs, [ChunkData.key(-4, 4)] = {} },
 		entities = {
@@ -785,8 +785,14 @@ test("save format: regions round trip diffs and containers", function()
 		},
 	}
 	local encoded = SaveFormat.encodeRegion(region)
-	eq(encoded.v, 2)
+	eq(encoded.v, 3)
 	local back = SaveFormat.decodeRegion(encoded)
+	eq(back.chunks[key][40000], 3000) -- u16 ids
+	-- a version-2 save (1-byte ids) still loads
+	local v2 = { v = 2, chunks = { ["-3,5"] = Base64.encode(string.pack("<I3B", 77, 13) .. string.pack("<I3B", 99, 200)) }, entities = {} }
+	local old = SaveFormat.decodeRegion(v2)
+	eq(old.chunks[key][77], 13)
+	eq(old.chunks[key][99], 200)
 	eq(back.chunks[key][0], 1)
 	eq(back.chunks[key][123], 0)
 	eq(back.chunks[key][32767], 200)
@@ -960,12 +966,12 @@ test("textures and icons: every block texture and item icon is generated", funct
 	end
 end)
 test("lit mesher: one quad per face, AO darkens corners, specials merge", function()
-	local padded = buffer.create(SectionSampler.VOLUME)
+	local padded = buffer.create(SectionSampler.BYTES)
 	local light = buffer.create(SectionSampler.VOLUME)
 	buffer.fill(light, 0, 15)
 	local P = SectionSampler.SIZE
 	local function at(x, y, z, id)
-		buffer.writeu8(padded, (x + 1) + (z + 1) * P + (y + 1) * P * P, id)
+		buffer.writeu16(padded, ((x + 1) + (z + 1) * P + (y + 1) * P * P) * 2, id)
 	end
 	local STONE = BlockRegistry.id("stone")
 	-- a 3x1x3 floor and one block on top of its centre

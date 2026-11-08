@@ -28,7 +28,7 @@ for _, c in world do
 end
 print(string.format("light chunk        %.2f ms avg (%d chunks, interpreter)", (os.clock() - t) * 1000 / n, n))
 
-local padded = buffer.create(SectionSampler.VOLUME)
+local padded = buffer.create(SectionSampler.BYTES)
 local light = buffer.create(SectionSampler.VOLUME)
 local tm, tl, ql, qm, sections = 0, 0, 0, 0, 0
 for cz = -1, 1 do

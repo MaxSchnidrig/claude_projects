@@ -119,7 +119,7 @@ local function bench(label: string)
 	local genMs = (os.clock() - t0) * 1000 / (AREA * AREA)
 
 	-- Mesh the inner (AREA-2)^2 chunks (they have all 4 neighbours).
-	local padded = buffer.create(M.SectionSampler.VOLUME)
+	local padded = buffer.create(M.SectionSampler.BYTES)
 	local isSolid, isOpaque = M.BlockRegistry.isSolid, M.BlockRegistry.isOpaque
 	local offs = M.BoxMerger.NEIGHBOR_OFFSETS
 	local sections, nonEmpty = 0, 0
@@ -145,8 +145,8 @@ local function bench(label: string)
 				south = chunks[cx .. "," .. (cz + 1)],
 				north = chunks[cx .. "," .. (cz - 1)],
 			}
-			for i = 0, buffer.len(c.blocks) - 1 do
-				if buffer.readu8(c.blocks, i) ~= 0 then
+			for i = 0, buffer.len(c.blocks) // 2 - 1 do
+				if buffer.readu16(c.blocks, i * 2) ~= 0 then
 					totalBlocks += 1
 				end
 			end
@@ -166,7 +166,7 @@ local function bench(label: string)
 				-- Parts backend: exposed blocks only, merged per block id
 				local _, nParts = M.BoxMerger.merge(padded, function(id, p)
 					for i = 1, 6 do
-						if not isOpaque[buffer.readu8(padded, p + offs[i]) + 1] then
+						if not isOpaque[buffer.readu16(padded, (p + offs[i]) * 2) + 1] then
 							blocksExposed += 1
 							return id
 						end
@@ -176,7 +176,7 @@ local function bench(label: string)
 				-- ...and with buried opaque blocks as wildcards (current Parts backend)
 				local _, nWild = M.BoxMerger.merge(padded, function(id, p)
 					for i = 1, 6 do
-						if not isOpaque[buffer.readu8(padded, p + offs[i]) + 1] then
+						if not isOpaque[buffer.readu16(padded, (p + offs[i]) * 2) + 1] then
 							return id
 						end
 					end

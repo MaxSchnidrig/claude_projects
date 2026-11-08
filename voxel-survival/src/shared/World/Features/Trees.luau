@@ -109,8 +109,8 @@ local function place(gen: any, chunk: any, tree: Tree)
 
 	local function leaf(wx: number, y: number, wz: number)
 		local idx = inChunk(wx, y, wz)
-		if idx and buffer.readu8(blocks, idx) == AIR then
-			buffer.writeu8(blocks, idx, kind.leaves)
+		if idx and buffer.readu16(blocks, idx * 2) == AIR then
+			buffer.writeu16(blocks, idx * 2, kind.leaves)
 		end
 	end
 
@@ -153,17 +153,17 @@ local function place(gen: any, chunk: any, tree: Tree)
 	for y = tree.y + 1, top do
 		local idx = inChunk(tree.x, y, tree.z)
 		if idx then
-			local cur = buffer.readu8(blocks, idx)
+			local cur = buffer.readu16(blocks, idx * 2)
 			if cur == AIR or LEAVES[cur] then
-				buffer.writeu8(blocks, idx, kind.log)
+				buffer.writeu16(blocks, idx * 2, kind.log)
 			end
 		end
 	end
 	local base = inChunk(tree.x, tree.y, tree.z)
 	if base then
-		local cur = buffer.readu8(blocks, base)
+		local cur = buffer.readu16(blocks, base * 2)
 		if cur == GRASS or cur == SNOWY_GRASS then
-			buffer.writeu8(blocks, base, DIRT)
+			buffer.writeu16(blocks, base * 2, DIRT)
 		end
 	end
 end

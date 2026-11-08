@@ -67,7 +67,7 @@ local function generateNow(key: number): ChunkData.Chunk
 	local d = diffs[key]
 	if d then
 		for idx, id in d do
-			buffer.writeu8(chunk.blocks, idx, id)
+			buffer.writeu16(chunk.blocks, idx * 2, id)
 		end
 		chunk.diffs = d
 	end
@@ -236,7 +236,7 @@ function WorldService.installDiffs(key: number, d: { [number]: number })
 	local chunk = chunks[key]
 	if chunk then
 		for idx, id in mine do
-			buffer.writeu8(chunk.blocks, idx, id)
+			buffer.writeu16(chunk.blocks, idx * 2, id)
 		end
 		chunk.diffs = mine
 	end

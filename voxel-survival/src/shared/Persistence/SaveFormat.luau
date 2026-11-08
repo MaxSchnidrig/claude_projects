@@ -19,8 +19,9 @@ local Config = require(script.Parent.Parent.Config)
 local SaveFormat = {}
 
 -- 1: world height 0..127 (2-byte diff indices); 2: Java height, internal y 0..383 (3-byte
--- indices). Version-1 saves are converted on load: everything moves up by Config.Y_OFFSET.
-SaveFormat.VERSION = 2
+-- indices); 3: block ids are u16 (Phase 8b, more than 255 block states). Older saves are converted
+-- on load: version 1 moves everything up by Config.Y_OFFSET, versions 1-2 read 1-byte ids.
+SaveFormat.VERSION = 3
 local LAYER = Config.CHUNK_SIZE * Config.CHUNK_SIZE
 local SHIFT = Config.Y_OFFSET
 
@@ -31,6 +32,17 @@ local function unpackV1(data: string): { [number]: number }
 	while pos + 2 <= #data do
 		local idx, id, nextPos = string.unpack("<I2B", data, pos)
 		out[idx + SHIFT * LAYER] = id
+		pos = nextPos
+	end
+	return out
+end
+-- Version-2 diffs: 3-byte index + 1-byte id.
+local function unpackV2(data: string): { [number]: number }
+	local out = {}
+	local pos = 1
+	while pos + 3 <= #data do
+		local idx, id, nextPos = string.unpack("<I3B", data, pos)
+		out[idx] = id
 		pos = nextPos
 	end
 	return out
@@ -158,7 +170,7 @@ function SaveFormat.decodeRegion(record: any): Region
 			local raw = if typeof(text) == "string" then Base64.decode(text) else nil
 			if cx and cz and raw then
 				out.chunks[ChunkData.key(tonumber(cx) :: number, tonumber(cz) :: number)] =
-					if legacy then unpackV1(raw) else ChunkData.unpackDiffs(raw)
+					if legacy then unpackV1(raw) elseif record.v == 2 then unpackV2(raw) else ChunkData.unpackDiffs(raw)
 			end
 		end
 	end

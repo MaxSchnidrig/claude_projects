@@ -325,7 +325,7 @@ function TerrainGen.generate(gen: Generator, chunk: ChunkData.Chunk, checkpoint:
 			end
 
 			local col = lx + lz * CS
-			buffer.writeu8(blocks, col, B.BEDROCK)
+			buffer.writeu16(blocks, col * 2, B.BEDROCK)
 			for y = 1, h do
 				local id: number
 				if y <= 4 and Hash.hash3f(seed, wx, y, wz) < (5 - y) / 5 then
@@ -339,12 +339,12 @@ function TerrainGen.generate(gen: Generator, chunk: ChunkData.Chunk, checkpoint:
 				else
 					id = B.STONE
 				end
-				buffer.writeu8(blocks, col + y * LAYER, id)
+				buffer.writeu16(blocks, (col + y * LAYER) * 2, id)
 			end
 			if h < SEA then
 				local frozen = Biomes.byId[biome].frozen
 				for y = h + 1, SEA do
-					buffer.writeu8(blocks, col + y * LAYER, if frozen and y == SEA then B.ICE else B.WATER)
+					buffer.writeu16(blocks, (col + y * LAYER) * 2, if frozen and y == SEA then B.ICE else B.WATER)
 				end
 			end
 		end
@@ -393,7 +393,7 @@ function TerrainGen.generate(gen: Generator, chunk: ChunkData.Chunk, checkpoint:
 					local lo = levels[iy + 1]
 					local d = lo + (levels[iy + 2] - lo) * fy
 					if d < 0 then
-						buffer.writeu8(blocks, col + y * LAYER, if y <= LAVA_LEVEL then B.LAVA else B.AIR)
+						buffer.writeu16(blocks, (col + y * LAYER) * 2, if y <= LAVA_LEVEL then B.LAVA else B.AIR)
 					end
 				end
 			end
