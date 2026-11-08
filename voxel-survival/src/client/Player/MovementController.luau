@@ -44,6 +44,7 @@ MovementController.inLiquid = false
 MovementController.sneaking = false -- crouched (Shift held, or no room to stand)
 MovementController.usingItem = false -- set by BlockInteraction while eating
 MovementController.eyeHeight = Config.EYE_HEIGHT -- studs above the root, eases when sneaking
+MovementController.spectating = false -- Studio test tool (Java spectator mode comes in phase 21)
 
 local sprintLatch = false
 local sprintTriggerUntil = -math.huge
@@ -224,6 +225,64 @@ function MovementController.init()
 		if input.KeyCode == Enum.KeyCode.W then
 			sprintLatch = false
 		end
+	end)
+
+	-- Spectator mode (Studio only, key N): fly through blocks, no collision, no interaction.
+	-- The body is anchored and moved directly; leaving puts it back into normal physics.
+	local function setSpectating(on: boolean)
+		local character = Players.LocalPlayer.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		if not root then
+			return
+		end
+		MovementController.spectating = on
+		Players.LocalPlayer:SetAttribute("Spectating", on)
+		sim.active = false
+		sprintLatch = false
+		if on then
+			root.Anchored = true
+		else
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.Anchored = false
+			peakFeetY = nil
+		end
+		print(`[Spectator] {if on then "on (N to leave)" else "off"}`)
+	end
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if processed or not RunService:IsStudio() then
+			return
+		end
+		if input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_SPECTATOR] then
+			setSpectating(not MovementController.spectating)
+		end
+	end)
+	RunService:BindToRenderStep("RocraftSpectator", Enum.RenderPriority.Input.Value + 3, function(dt)
+		if not MovementController.spectating then
+			return
+		end
+		local character = Players.LocalPlayer.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		local cam = workspace.CurrentCamera
+		if not humanoid or not root or not cam then
+			return
+		end
+		root.Anchored = true
+		local move = inputDir
+		local up = 0
+		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+			up += 1
+		end
+		if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+			up -= 1
+		end
+		local fast = UserInputService:IsKeyDown((Enum.KeyCode :: any)[Config.KEY_SPRINT])
+		local speed = Config.SPECTATOR_SPEED * BS * (if fast then 2 else 1)
+		local v = Vector3.new(move.X, 0, move.Z) * speed + Vector3.new(0, up * speed, 0)
+		local look = cam.CFrame.LookVector
+		local yaw = math.atan2(-look.X, -look.Z)
+		root.CFrame = CFrame.new(root.Position + v * dt) * CFrame.Angles(0, yaw, 0)
+		humanoid:Move(Vector3.zero, false)
 	end)
 
 	-- Sneaking at the edge of a drop: after the control script has set this frame's move
@@ -410,7 +469,7 @@ function MovementController.init()
 		-- Sneaking: Shift held (not in a window), or forced while there's no room to stand.
 		local keySneak = (Enum.KeyCode :: any)[Config.KEY_SNEAK]
 		local wantSneak = (UserInputService:IsKeyDown(keySneak) or touchSneak) and not InventoryClient.uiOpen
-			and not root.Anchored and humanoid.Health > 0
+			and not root.Anchored and humanoid.Health > 0 and not MovementController.spectating
 		local pb = root.Position / BS
 		local feetB = (root.Position.Y - FEET_BELOW_ROOT) / BS
 		local crouch = wantSneak or (MovementController.sneaking and not roomToStand(pb.X, feetB, pb.Z))

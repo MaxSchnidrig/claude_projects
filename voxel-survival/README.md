@@ -119,13 +119,14 @@ In Studio you spawn with a test kit (pickaxes of each tier, blocks) from `Config
 ### Debug keys
 | Key | Action |
 |---|---|
-| F3 | Toggle the performance overlay (FPS, chunk queues, gen/mesh ms, MeshParts, triangles, errors) |
+| F3 | Toggle the debug overlay (shown by default in Studio, hidden in published games; on phones the world owner gets a small "Debug" button) (FPS, chunk queues, gen/mesh ms, MeshParts, triangles, errors) |
 | F4 | Switch render backend: EditableMesh ↔ greedy Parts. Rebuilds everything so you can compare. |
 | F6 | Keep edited sections on their live mesh (compare with baked terrain) |
 | J | Studio only: skip 6 game hours |
 | K | Studio only: take 3 damage |
 | L | Studio only: spawn the next mob type 4 blocks in front of you |
 | G | Studio only: get 64 torches and 16 coal |
+| N | Studio only: spectator mode: fly through blocks (Space up, Shift down, Ctrl faster), no interaction |
 | F7 | Studio only: switch the sky between "atmosphere" and "fog" mode (compare; default in `Config.SKY_MODE`) |
 
 Set render distance for testing: select your Player in Explorer during Play and add a number attribute `RenderDistance` (2–12).

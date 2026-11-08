@@ -62,7 +62,7 @@ Backend.stats = { parts = 0, sections = 0 }
 -- Is this texture rendered by this backend (instead of the opaque mesh)?
 function Backend.isSpecial(tex: number): boolean
 	local style = RenderStyle.forTexture(tex)
-	return style.transparency > 0 or style.material ~= Enum.Material.SmoothPlastic
+	return style.transparency > 0 or style.material ~= RenderStyle.baseMaterial
 end
 
 -- `groups`: texture -> quad list (GreedyMesher format), special textures only.

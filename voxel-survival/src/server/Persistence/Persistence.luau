@@ -437,6 +437,7 @@ end
 
 -- Start player saving, autosave and shutdown saving (after all services are initialised).
 function Persistence.startWorld(services: { [string]: any })
+	ReplicatedStorage:SetAttribute("WorldOwner", Persistence.ownerId) -- e.g. the owner's debug button
 	InventoryService = services.InventoryService
 	SurvivalService = services.SurvivalService
 	SpawnService = services.SpawnService

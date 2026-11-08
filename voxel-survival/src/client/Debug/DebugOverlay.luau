@@ -112,7 +112,51 @@ function DebugOverlay.init()
 	pad.PaddingBottom = UDim.new(0, 4)
 	pad.Parent = label
 	label.Parent = gui
+	-- Hidden by default in published games (shown in Studio); text shrinks on small screens.
+	gui.Enabled = RunService:IsStudio()
+	local function fit()
+		local cam = workspace.CurrentCamera
+		local w = if cam then cam.ViewportSize.X else 1200
+		label.TextSize = math.clamp(math.floor(w / 95), 8, 14)
+		label.Position = UDim2.fromOffset(8, if w < 900 then 40 else 48)
+	end
+	fit()
+	if workspace.CurrentCamera then
+		workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fit)
+	end
 	gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+
+	-- Touch devices: a small "Debug" button toggles the overlay, only for the world's owner.
+	if UserInputService.TouchEnabled then
+		local btnGui = Instance.new("ScreenGui")
+		btnGui.Name = "DebugButton"
+		btnGui.ResetOnSpawn = false
+		btnGui.DisplayOrder = 101
+		local b = Instance.new("TextButton")
+		b.Size = UDim2.fromOffset(64, 26)
+		b.AnchorPoint = Vector2.new(1, 0)
+		b.Position = UDim2.new(1, -8, 0, 8)
+		b.BackgroundColor3 = Color3.fromRGB(20, 22, 28)
+		b.BackgroundTransparency = 0.4
+		b.TextColor3 = Color3.fromRGB(220, 230, 255)
+		b.Font = Enum.Font.GothamBold
+		b.TextSize = 13
+		b.Text = "Debug"
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 6)
+		corner.Parent = b
+		b.Activated:Connect(function()
+			gui.Enabled = not gui.Enabled
+		end)
+		b.Parent = btnGui
+		local ReplicatedStorage = game:GetService("ReplicatedStorage")
+		local function updateOwner()
+			btnGui.Enabled = RunService:IsStudio() or ReplicatedStorage:GetAttribute("WorldOwner") == Players.LocalPlayer.UserId
+		end
+		updateOwner()
+		ReplicatedStorage:GetAttributeChangedSignal("WorldOwner"):Connect(updateOwner)
+		btnGui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+	end
 
 	UserInputService.InputBegan:Connect(function(input, processed)
 		if processed then

@@ -545,8 +545,8 @@ end
 local function safetyAnchor()
 	local character = Players.LocalPlayer.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if not root then
-		return
+	if not root or Players.LocalPlayer:GetAttribute("Spectating") then
+		return -- spectator mode anchors and moves the body itself
 	end
 	local p = root.Position / BS
 	local bx, by, bz = math.floor(p.X), math.floor(p.Y), math.floor(p.Z)

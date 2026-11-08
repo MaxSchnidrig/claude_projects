@@ -267,6 +267,17 @@ end
 
 local function update(dt: number)
 	local now = os.clock()
+	if Players.LocalPlayer:GetAttribute("Spectating") then
+		-- spectators can't break, place, eat or attack
+		breakHeld, placeHeld, useHeld = false, false, false
+		if mining then
+			cancelMining()
+		end
+		BlockInteraction.target = nil
+		BlockInteraction.mobTarget = nil
+		selection.Visible = false
+		return
+	end
 	if InventoryClient.uiOpen or SurvivalClient.dead then
 		useHeld = false
 		stopEating()

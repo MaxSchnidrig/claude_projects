@@ -31,18 +31,20 @@ DayNightClient.timeOfDay = 0
 
 local BS = Config.BLOCK_SIZE
 
+-- Day: a weaker sun and stronger ambient light make blocks brighter overall and keep shine low
+-- (most light is flat ambient, as in the classic games).
 local DAY = {
-	brightness = 2.0,
-	outdoor = Color3.fromRGB(150, 150, 156),
-	ambient = Color3.fromRGB(120, 120, 126),
+	brightness = 1.3,
+	outdoor = Color3.fromRGB(196, 196, 202),
+	ambient = Color3.fromRGB(160, 160, 166),
 	sky = Color3.fromRGB(122, 168, 255),
 	fog = Color3.fromRGB(190, 214, 255),
 }
 -- Night: dark, but surfaces stay readable (moonlight).
 local NIGHT = {
-	brightness = 0.75,
-	outdoor = Color3.fromRGB(66, 70, 98),
-	ambient = Color3.fromRGB(46, 48, 64),
+	brightness = 0.5,
+	outdoor = Color3.fromRGB(80, 84, 114),
+	ambient = Color3.fromRGB(56, 58, 76),
 	sky = Color3.fromRGB(4, 6, 16),
 	fog = Color3.fromRGB(10, 12, 26),
 }

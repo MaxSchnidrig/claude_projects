@@ -8,6 +8,9 @@ local Config = require(Shared.Config)
 local BlockRegistry = require(Shared.Blocks.BlockRegistry)
 
 local RenderStyle = {}
+-- Material of ordinary (opaque) terrain. Plastic is rougher than SmoothPlastic, so blocks look
+-- matte like the classic games instead of shiny.
+RenderStyle.baseMaterial = (Enum.Material :: any)[Config.TERRAIN_MATERIAL] or Enum.Material.Plastic
 
 export type Style = { color: Color3, transparency: number, material: Enum.Material }
 
@@ -24,7 +27,7 @@ function RenderStyle.forTexture(tex: number): Style
 	s = {
 		color = Color3.fromRGB(rgb[1], rgb[2], rgb[3]),
 		transparency = o.transparency or 0,
-		material = if o.neon then Enum.Material.Neon else Enum.Material.SmoothPlastic,
+		material = if o.neon then Enum.Material.Neon else RenderStyle.baseMaterial,
 	}
 	cache[tex] = s
 	return s
