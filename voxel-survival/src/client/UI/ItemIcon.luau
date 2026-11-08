@@ -28,7 +28,7 @@ end
 local function drawArt(icon: Frame, def: ItemRegistry.ItemDef): boolean
 	local content: Content? = nil
 	local offset: Vector2?, size: Vector2? = nil, nil
-	if def.block then
+	if def.block and not def.icon then
 		local b = BlockRegistry.byId[def.block]
 		content = TextureAtlas.content
 		if b then

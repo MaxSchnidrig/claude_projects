@@ -16,6 +16,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Remotes = require(Shared.Net.Remotes)
 local BlockRegistry = require(Shared.Blocks.BlockRegistry)
+local Shapes = require(Shared.Blocks.Shapes)
 local MobPhysics = require(Shared.Mobs.MobPhysics)
 local WorldService = require(script.Parent.Parent.World.WorldService)
 local BlockUpdates = require(script.Parent.Parent.World.BlockUpdates)
@@ -39,6 +40,8 @@ local function solid(x: number, y: number, z: number): boolean
 	local id = WorldService.getBlockIfLoaded(x, y, z)
 	return id == nil or isSolid[id + 1]
 end
+
+local shapeSolid = Shapes.physicsFn(WorldService.getBlockIfLoaded)
 
 -- Room to fall into (Java FallingBlock.isFree): air, fire or fluid.
 local function free(id: number?): boolean
@@ -82,7 +85,7 @@ end
 local function step(e: Entity)
 	-- Java entity tick: gravity, move with collisions, drag
 	e.vy -= 0.04
-	local nx, ny, nz, rvx, rvy, rvz, onGround = MobPhysics.move(solid, e.x, e.y, e.z, e.vx * 20, e.vy * 20, e.vz * 20, 0.98, 0.98, 0.05)
+	local nx, ny, nz, rvx, rvy, rvz, onGround = MobPhysics.move(shapeSolid, e.x, e.y, e.z, e.vx * 20, e.vy * 20, e.vz * 20, 0.98, 0.98, 0.05)
 	e.x, e.y, e.z = nx, ny, nz
 	e.vx, e.vy, e.vz = rvx / 20 * 0.98, rvy / 20 * 0.98, rvz / 20 * 0.98
 	if e.y < -64 then

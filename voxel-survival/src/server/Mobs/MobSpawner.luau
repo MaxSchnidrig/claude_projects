@@ -34,6 +34,8 @@ local WorldService = require(script.Parent.Parent.World.WorldService)
 local H = Config.WORLD_HEIGHT
 local CS = Config.CHUNK_SIZE
 local isSolid = BlockRegistry.isSolid
+local Shapes = require(Shared.Blocks.Shapes)
+local ICE = BlockRegistry.id("ice")
 local isLiquid = BlockRegistry.isLiquid
 local GRASS = { [BlockRegistry.id("grass_block")] = true, [BlockRegistry.id("snowy_grass_block")] = true }
 local HOSTILE_ATTEMPTS_PER_TICK = 2 -- per player (Java tries once per loaded chunk; caps limit both)
@@ -82,6 +84,10 @@ end
 local function placementOk(def: MobDefs.MobDef, x: number, y: number, z: number): boolean
 	local floor = S.blockAt(x, y - 1, z)
 	if not floor or not isSolid[floor + 1] then
+		return false
+	end
+	-- Java: only on a full top face (not on bottom slabs, stairs' steps, fences, doors...)
+	if not Shapes.coversFace(floor, 3) and floor ~= ICE then
 		return false
 	end
 	local h = math.ceil(def.height - 0.05)

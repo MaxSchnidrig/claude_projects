@@ -25,6 +25,7 @@ local UserInputService = game:GetService("UserInputService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local BlockRegistry = require(Shared.Blocks.BlockRegistry)
+local Shapes = require(Shared.Blocks.Shapes)
 local SurvivalClient = require(script.Parent.Parent.Survival.SurvivalClient)
 local ClientWorld = require(script.Parent.Parent.World.ClientWorld)
 local InventoryClient = require(script.Parent.Parent.Player.InventoryClient)
@@ -42,6 +43,7 @@ local SWIM_SPEED_FACTOR = 0.6 -- walking speed multiplier in liquid
 local MovementController = {}
 MovementController.sprinting = false
 MovementController.inLiquid = false
+MovementController.onLadder = false
 MovementController.sneaking = false -- crouched (Shift held, or no room to stand)
 MovementController.usingItem = false -- set by BlockInteraction while eating
 MovementController.eyeHeight = Config.EYE_HEIGHT -- studs above the root, eases when sneaking
@@ -162,19 +164,36 @@ local function canStartSprint(humanoid: Humanoid): boolean
 		and not MovementController.usingItem
 end
 
--- Any block with collision inside this box (block units)? Unloaded counts as solid.
+-- Any block collision box inside this box (block units)? Unloaded counts as solid. Uses real
+-- block shapes (slabs, stairs, fences), including fences reaching up from the cell below.
+local physicsAt = Shapes.physicsFn(function(x: number, y: number, z: number): number?
+	return ClientWorld.getBlock(x, y, z)
+end)
 local function solidIn(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): boolean
 	for x = math.floor(x0), math.ceil(x1) - 1 do
-		for y = math.floor(y0), math.ceil(y1) - 1 do
+		for y = math.floor(y0) - 1, math.ceil(y1) - 1 do
 			for z = math.floor(z0), math.ceil(z1) - 1 do
-				local id = ClientWorld.getBlock(x, y, z)
-				if id == nil or isSolid[id + 1] then
-					return true
+				local s = physicsAt(x, y, z)
+				if s == true then
+					if y >= math.floor(y0) then
+						return true
+					end
+				elseif s then
+					for _, b in s do
+						if x + b[4] > x0 and x + b[1] < x1 and y + b[5] > y0 and y + b[2] < y1 and z + b[6] > z0 and z + b[3] < z1 then
+							return true
+						end
+					end
 				end
 			end
 		end
 	end
 	return false
+end
+
+local function isLadder(id: number?): boolean
+	local d = id and BlockRegistry.byId[id]
+	return d ~= nil and d.shape == "ladder"
 end
 
 local HALF = 0.3 -- Java player half width (blocks)
@@ -553,6 +572,60 @@ function MovementController.init()
 			root.AssemblyLinearVelocity = Vector3.new(v.X, vy, v.Z)
 		end
 		humanoid.WalkSpeed = speed
+
+		-- Ladders (Java LivingEntity.handleOnClimbable): falling is capped at 0.15 blocks/tick;
+		-- pushing into the ladder or holding jump climbs (0.2/tick, about 2.35 blocks/s after
+		-- gravity and drag); sneaking holds you in place.
+		local onLadder = isLadder(bodyId) or isLadder(feetId)
+		MovementController.onLadder = onLadder
+		if onLadder and not root.Anchored and not inLiquid and humanoid.Health > 0 and not MovementController.spectating then
+			local v = root.AssemblyLinearVelocity
+			local pbl = root.Position / BS
+			local feetL = (root.Position.Y - FEET_BELOW_ROOT) / BS
+			local pushing = inputDir.Magnitude > 0.1
+				and bodyBlocked(pbl.X, feetL, pbl.Z, inputDir.X * 0.08, inputDir.Z * 0.08, 1.7)
+			local up = humanoid.Jump or UserInputService:IsKeyDown(Enum.KeyCode.Space)
+			local vy
+			if pushing or up then
+				vy = 0.1176 * 20 * BS
+			elseif crouch then
+				vy = 0
+			else
+				vy = math.max(v.Y, -0.15 * 20 * BS)
+			end
+			local maxH = 0.15 * 20 * BS
+			local hx, hz = math.clamp(v.X, -maxH, maxH), math.clamp(v.Z, -maxH, maxH)
+			root.AssemblyLinearVelocity = Vector3.new(hx, vy, hz)
+			peakFeetY = nil -- Java: climbing resets the fall distance
+		end
+
+		-- Step up (Java step height 0.6): walking into a slab, a stair step or anything up to 0.6
+		-- blocks high lifts you onto it instead of stopping you.
+		if not root.Anchored and humanoid.Health > 0 and not inLiquid and humanoid.FloorMaterial ~= Enum.Material.Air
+			and not MovementController.spectating
+		then
+			local hv = Vector3.new(root.AssemblyLinearVelocity.X, 0, root.AssemblyLinearVelocity.Z)
+			local dirv = if inputDir.Magnitude > 0.1 then Vector3.new(inputDir.X, 0, inputDir.Z) else hv
+			if dirv.Magnitude > 0.05 then
+				dirv = dirv.Unit
+				local px0, pz0 = root.Position.X / BS + dirv.X * 0.12, root.Position.Z / BS + dirv.Z * 0.12
+				local feet0 = (root.Position.Y - FEET_BELOW_ROOT) / BS
+				local function blockedAt(h: number): boolean
+					return solidIn(px0 - HALF, feet0 + h + 0.01, pz0 - HALF, px0 + HALF, feet0 + h + 1.75, pz0 + HALF)
+				end
+				if blockedAt(0) then
+					for i = 1, 10 do
+						local h = i * 0.0625
+						if not blockedAt(h) then
+							if roomToStand(root.Position.X / BS, feet0 + h, root.Position.Z / BS) then
+								root.CFrame += Vector3.new(0, h * BS + 0.02, 0)
+							end
+							break
+						end
+					end
+				end
+			end
+		end
 
 		-- Sneak edge guard (after physics, whatever moved us: walking, the movement simulation,
 		-- knockback): while sneaking on the ground you can't leave the support of the block you

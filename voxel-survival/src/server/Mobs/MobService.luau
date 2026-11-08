@@ -21,6 +21,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Remotes = require(Shared.Net.Remotes)
 local BlockRegistry = require(Shared.Blocks.BlockRegistry)
+local Shapes = require(Shared.Blocks.Shapes)
 local MobDefs = require(Shared.Mobs.MobDefs)
 local MobPhysics = require(Shared.Mobs.MobPhysics)
 local Combat = require(Shared.Gameplay.Combat)
@@ -111,6 +112,8 @@ local function solid(x: number, y: number, z: number): boolean
 	return id == nil or isSolid[id + 1]
 end
 MobService.solid = solid
+-- Movement collision with real block shapes (slabs, stairs, fences, doors).
+local shapeSolid = Shapes.physicsFn(WorldService.getBlockIfLoaded)
 
 function MobService.blockAt(x: number, y: number, z: number): number?
 	return WorldService.getBlockIfLoaded(x, y, z)
@@ -393,7 +396,7 @@ local function physicsTick(m: Mob)
 
 	local wasGround = m.onGround
 	local nx, ny, nz, rvx, rvy, rvz, onGround, hitWall =
-		MobPhysics.move(solid, m.x, m.y, m.z, vx * 20, vy * 20, vz * 20, def.width, def.height, TICK)
+		MobPhysics.move(shapeSolid, m.x, m.y, m.z, vx * 20, vy * 20, vz * 20, def.width, def.height, TICK, 0.6)
 	m.x, m.y, m.z, m.onGround, m.hitWall = nx, ny, nz, onGround, hitWall
 	vx, vy, vz = rvx / 20, rvy / 20, rvz / 20
 

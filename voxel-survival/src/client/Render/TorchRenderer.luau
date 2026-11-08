@@ -106,8 +106,95 @@ local function buildCampfire(x: number, y: number, z: number, lit: boolean): Tor
 	return { model = model, light = light, pos = base + Vector3.new(0, BS * 0.5, 0), cx = x // CS, cz = z // CS, kind = "campfire", flames = flames, lit = lit }
 end
 
+-- Sign text comes from DecorClient (set there, avoids a require cycle).
+TorchRenderer.signText = function(_x: number, _y: number, _z: number): { front: { string }, back: { string } }?
+	return nil
+end
+local TextureAtlas = require(script.Parent.TextureAtlas)
+
+local function textFace(board: BasePart, face: Enum.NormalId, lines: { string })
+	local gui = Instance.new("SurfaceGui")
+	gui.Face = face
+	gui.CanvasSize = Vector2.new(240, 120)
+	gui.LightInfluence = 1
+	gui.Adornee = board
+	gui.ZOffset = 1 -- above the wood texture on the same face
+	for i = 1, 4 do
+		local l = Instance.new("TextLabel")
+		l.BackgroundTransparency = 1
+		l.Size = UDim2.new(1, -8, 0.25, 0)
+		l.Position = UDim2.new(0, 4, (i - 1) * 0.25, 0)
+		l.Font = Enum.Font.Arcade
+		l.TextScaled = true
+		l.TextColor3 = Color3.fromRGB(16, 12, 8)
+		l.Text = lines[i] or ""
+		l.Parent = gui
+	end
+	gui.Parent = board
+end
+
+local function woodFaces(p: BasePart, def: any)
+	if not TextureAtlas.content then
+		return
+	end
+	local offset, size = TextureAtlas.pixelRect(def.faceTexture[BlockRegistry.Dir.EAST])
+	for _, face in Enum.NormalId:GetEnumItems() do
+		local gui = Instance.new("SurfaceGui")
+		gui.Face = face
+		gui.CanvasSize = Vector2.new(64, 64)
+		gui.LightInfluence = 1
+		local img = Instance.new("ImageLabel")
+		img.Size = UDim2.fromScale(1, 1)
+		img.BackgroundTransparency = 1
+		img.ResampleMode = Enum.ResamplerMode.Pixelated
+		img.ImageRectOffset = offset
+		img.ImageRectSize = size
+		img.ZIndex = 0
+		pcall(function()
+			(img :: any).ImageContent = TextureAtlas.content
+		end)
+		img.Parent = gui
+		gui.Parent = p
+	end
+end
+
+-- Signs: a board (and a post for standing signs) with the 4 lines on each side.
+local function buildSign(x: number, y: number, z: number, def: any): Torch
+	local model = Instance.new("Model")
+	model.Name = "Sign"
+	local cellCentre = (Vector3.new(x, y, z) + Vector3.one * 0.5) * BS
+	local n: Vector3
+	local boardCentre: Vector3
+	local wall = def.shape == "wall_sign"
+	if wall then
+		local v = ({ north = { 0, -1 }, east = { 1, 0 }, south = { 0, 1 }, west = { -1, 0 } } :: any)[def.state.facing]
+		n = Vector3.new(v[1], 0, v[2])
+		boardCentre = cellCentre - n * (0.5 - 1 / 16) * BS
+	else
+		local t = math.rad((def.state.rotation or 0) * 22.5)
+		n = Vector3.new(-math.sin(t), 0, math.cos(t))
+		boardCentre = cellCentre + Vector3.new(0, 0.25 * BS, 0)
+		local post = plain(Vector3.new(BS / 12, BS * 0.6, BS / 12), Color3.fromRGB(110, 80, 48))
+		post.CFrame = CFrame.new(cellCentre + Vector3.new(0, -0.2 * BS, 0))
+		woodFaces(post, def)
+		post.Parent = model
+	end
+	local board = plain(Vector3.new(BS, BS * 0.5, BS / 12), Color3.fromRGB(176, 140, 86))
+	board.CFrame = CFrame.lookAt(boardCentre, boardCentre + n)
+	woodFaces(board, def)
+	local text = TorchRenderer.signText(x, y, z)
+	textFace(board, Enum.NormalId.Front, if text then text.front else {})
+	textFace(board, Enum.NormalId.Back, if text then text.back else {})
+	board.Parent = model
+	model.Parent = folder
+	return { model = model, light = nil, pos = boardCentre, cx = x // CS, cz = z // CS, kind = "sign", flames = {}, lit = false }
+end
+
 local function build(x: number, y: number, z: number, id: number): Torch
 	local def = BlockRegistry.byId[id]
+	if def and (def.shape == "sign" or def.shape == "wall_sign") then
+		return buildSign(x, y, z, def)
+	end
 	if def and def.shape == "fire" then
 		return buildFire(x, y, z)
 	elseif def and def.shape == "campfire" then
@@ -160,7 +247,7 @@ end
 -- Does this block id get a model here (anything that isn't a plain cube)?
 function TorchRenderer.hasModel(id: number?): boolean
 	local def = id and BlockRegistry.byId[id]
-	return def ~= nil and def.shape ~= "cube"
+	return def ~= nil and def.shape ~= "cube" and not BlockRegistry.isBoxShape[def.id + 1]
 end
 
 -- Items cooking on a campfire (CampfireState): small cubes in the item's colour on top.
@@ -208,6 +295,14 @@ function TorchRenderer.set(x: number, y: number, z: number, id: number)
 		torches[k] = build(x, y, z, id)
 		TorchRenderer.count += 1
 		refreshLights() -- light the new torch now, not at the next periodic check
+	end
+end
+
+-- A sign's text changed: rebuild its model.
+function TorchRenderer.refreshSign(x: number, y: number, z: number, id: number?)
+	local t = torches[key(x, y, z)]
+	if t and t.kind == "sign" and id then
+		TorchRenderer.set(x, y, z, id)
 	end
 end
 

@@ -93,7 +93,7 @@ local function buildHeld(key: string?): Model?
 		local tip = part(Vector3.new(0.14, 0.16, 0.14), Color3.fromRGB(255, 200, 90), Enum.Material.Neon)
 		tip.Name = "Tip"
 		tip.Parent = m
-	elseif def.block then
+	elseif def.block and not def.icon then
 		local b = BlockRegistry.byId[def.block]
 		local cube = part(Vector3.one * 0.62, Color3.new(1, 1, 1))
 		cube.Name = "Main"

@@ -661,6 +661,99 @@ recipes.campfire_top = function(seed)
 	return img
 end
 
+-- Doors (our own designs): a framed wooden door of vertical boards with a diagonal brace on the
+-- lower half and a four-pane window on the upper half; the iron door is riveted plate.
+local function woodDoor(seed: number, wood: RGB, upper: boolean): Img
+	local img = new()
+	local frame = shade(wood, 0.7)
+	for y = 0, N - 1 do
+		for x = 0, N - 1 do
+			local edge = x <= 1 or x >= N - 2 or (upper and y <= 1) or (not upper and y >= N - 2)
+			local c
+			if edge then
+				c = shade(frame, 0.92 + rnd(seed, x, y) * 0.12)
+			else
+				-- vertical boards, 3 px wide with dark seams
+				local seam = (x - 2) % 4 == 3
+				c = shade(wood, (if seam then 0.72 else 0.95) + (rnd(seed, x, y) - 0.5) * 0.1)
+			end
+			put(img, x, y, c)
+		end
+	end
+	if upper then
+		-- window: 2 x 2 panes of pale glass in a cross-shaped frame
+		for y = 3, 10 do
+			for x = 3, 12 do
+				local bar = x == 7 or x == 8 or y == 6 or y == 7
+				if not bar then
+					put(img, x, y, shade({ 168, 196, 206 }, 0.9 + rnd(seed, x, y, 4) * 0.15))
+				else
+					put(img, x, y, frame)
+				end
+			end
+		end
+	else
+		-- diagonal brace and a dark handle
+		for i = 0, 10 do
+			local x, y = 3 + i, 12 - i
+			if y >= 2 then
+				put(img, x, y, shade(frame, 1.05))
+				put(img, x, y + 1, shade(frame, 0.9))
+			end
+		end
+		put(img, 12, 1, { 52, 48, 46 })
+		put(img, 12, 2, { 40, 36, 34 })
+	end
+	return img
+end
+
+local function ironDoor(seed: number, upper: boolean): Img
+	local img = new()
+	local metal = { 200, 200, 206 }
+	for y = 0, N - 1 do
+		for x = 0, N - 1 do
+			local edge = x == 0 or x == N - 1 or (upper and y == 0) or (not upper and y == N - 1)
+			local panel = (y % 8 == 0)
+			local f = if edge then 0.7 elseif panel then 0.82 else 0.95 + (rnd(seed, x, y) - 0.5) * 0.08
+			put(img, x, y, shade(metal, f))
+		end
+	end
+	for _, r in { { 2, 2 }, { 13, 2 }, { 2, 13 }, { 13, 13 }, { 2, 7 }, { 13, 7 } } do
+		put(img, r[1], r[2], { 120, 120, 128 })
+	end
+	if upper then
+		for y = 3, 5 do
+			for x = 4, 11 do
+				put(img, x, y, { 60, 62, 70 }) -- a narrow viewing slot
+			end
+		end
+	else
+		put(img, 12, 2, { 90, 90, 96 })
+	end
+	return img
+end
+
+recipes.oak_door_lower = function(seed) return woodDoor(seed, P.oakWood, false) end
+recipes.oak_door_upper = function(seed) return woodDoor(seed, P.oakWood, true) end
+recipes.spruce_door_lower = function(seed) return woodDoor(seed, P.spruceWood, false) end
+recipes.spruce_door_upper = function(seed) return woodDoor(seed, P.spruceWood, true) end
+recipes.birch_door_lower = function(seed) return woodDoor(seed, P.birchWood, false) end
+recipes.birch_door_upper = function(seed) return woodDoor(seed, P.birchWood, true) end
+recipes.iron_door_lower = function(seed) return ironDoor(seed, false) end
+recipes.iron_door_upper = function(seed) return ironDoor(seed, true) end
+
+-- Ladder: the rails and rungs are real geometry; this is their wood, with a lengthwise grain.
+recipes.ladder = function(seed)
+	local img = new()
+	for y = 0, N - 1 do
+		for x = 0, N - 1 do
+			local f = 0.92 + (rnd(seed, x, y // 3) - 0.5) * 0.16
+			put(img, x, y, shade({ 156, 120, 70 }, f))
+		end
+	end
+	return img
+end
+
 -- Public -------------------------------------------------------------------------------------
 
 -- Fallback for texture keys without a recipe: noisy fill of the average colour.

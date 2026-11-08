@@ -31,7 +31,9 @@ local SurvivalRules = require(Shared.Gameplay.SurvivalRules)
 local Combat = require(Shared.Gameplay.Combat)
 local MobClient = require(script.Parent.Parent.Mobs.MobClient)
 local MovementController = require(script.Parent.Parent.Player.MovementController)
-local TorchRules = require(Shared.Blocks.TorchRules)
+local Shapes = require(Shared.Blocks.Shapes)
+local Placement = require(Shared.Blocks.Placement)
+local DecorClient = require(script.Parent.Parent.World.DecorClient)
 
 local EAT_SECONDS = 1.6
 
@@ -61,6 +63,7 @@ BlockInteraction.swing = Instance.new("BindableEvent")
 BlockInteraction.used = Instance.new("BindableEvent") -- (held item key, target block id) on a right-click use
 BlockInteraction.target = nil :: VoxelRaycast.Hit?
 BlockInteraction.mobTarget = nil :: number? -- mob under the crosshair within melee reach
+BlockInteraction.frameTarget = nil :: string? -- item frame under the crosshair
 
 type MiningState = { x: number, y: number, z: number, item: string?, progress: number, started: boolean }
 
@@ -102,6 +105,7 @@ end
 local function blockAt(x: number, y: number, z: number): number?
 	return ClientWorld.getBlock(x, y, z)
 end
+local rayShape = Shapes.rayShapeFn(blockAt)
 
 -- Attack a mob. The client knows its own physics, so it decides whether this is a critical hit
 -- (Java: charge > 0.9, falling, airborne, not sprinting, not in liquid); the server re-checks.
@@ -147,6 +151,53 @@ local USE_ITEMS = { bucket = true, water_bucket = true, lava_bucket = true, flin
 
 -- Right-click "use": buckets, flint and steel, shovel / raw food on campfires. Returns true if the
 -- click was used up here (no placing / eating).
+-- Right-click on something that reacts: item frames, wooden doors, signs; placing an item frame.
+-- Returns true if the click was used. Sneaking skips doors and signs (place against them).
+local function tryInteract(shift: boolean): boolean
+	local fk = BlockInteraction.frameTarget
+	if fk then
+		DecorClient.useFrame(fk)
+		BlockInteraction.swing:Fire()
+		return true
+	end
+	local hit = BlockInteraction.target
+	if not hit then
+		return false
+	end
+	local def = BlockRegistry.byId[hit.id]
+	if not shift and def and def.shape == "door" and def.family ~= "iron_door" then
+		local ly = if def.state.upper then hit.y - 1 else hit.y
+		local lower = ClientWorld.getBlock(hit.x, ly, hit.z)
+		local toggled = lower and Placement.toggledDoor(lower)
+		if toggled then
+			ClientWorld.setBlock(hit.x, ly, hit.z, toggled, true) -- prediction; the server confirms
+			if ClientWorld.getBlock(hit.x, ly + 1, hit.z) then
+				ClientWorld.setBlock(hit.x, ly + 1, hit.z, ClientWorld.getBlock(hit.x, ly + 1, hit.z) :: number, true) -- redraw the top half
+			end
+			local opened = BlockRegistry.byId[toggled].state.open
+			BlockInteraction.used:Fire(if opened then "door_open" else "door_close", hit.id)
+		end
+		send("interact", hit.x, hit.y, hit.z)
+		BlockInteraction.swing:Fire()
+		return true
+	end
+	if not shift and def and (def.shape == "sign" or def.shape == "wall_sign") then
+		local eye = CameraController.getEyeAndLook()
+		if eye then
+			DecorClient.editSign(hit.x, hit.y, hit.z, hit.id, eye)
+		end
+		return true
+	end
+	if InventoryClient.heldItem() == "item_frame" then
+		if hit.nx ~= 0 or hit.ny ~= 0 or hit.nz ~= 0 then
+			DecorClient.placeFrame(hit.x, hit.y, hit.z, hit.nx, hit.ny, hit.nz)
+			BlockInteraction.swing:Fire()
+		end
+		return true
+	end
+	return false
+end
+
 local function tryUse(): boolean
 	local held = InventoryClient.heldItem()
 	local def = ItemRegistry.get(held)
@@ -182,8 +233,8 @@ local function tryUse(): boolean
 	return false
 end
 
-local function send(action: string, x: number, y: number, z: number, nx: number?, ny: number?, nz: number?)
-	Remotes.get("BlockAction"):FireServer(action, x, y, z, nx, ny, nz)
+local function send(action: string, x: number, y: number, z: number, nx: number?, ny: number?, nz: number?, extra: { number }?)
+	Remotes.get("BlockAction"):FireServer(action, x, y, z, nx, ny, nz, extra)
 end
 
 local function makeVisuals()
@@ -344,7 +395,7 @@ local function update(dt: number)
 	local hit: VoxelRaycast.Hit? = nil
 	if eye then
 		local o = eye / BS
-		hit = VoxelRaycast.cast(blockAt, o.X, o.Y, o.Z, look.X, look.Y, look.Z, Config.REACH, stopsRay)
+		hit = VoxelRaycast.cast(blockAt, o.X, o.Y, o.Z, look.X, look.Y, look.Z, Config.REACH, stopsRay, rayShape)
 	end
 	BlockInteraction.target = hit
 
@@ -358,10 +409,26 @@ local function update(dt: number)
 			BlockInteraction.target = nil
 		end
 	end
+	-- an item frame in front of the block takes the clicks too
+	BlockInteraction.frameTarget = nil
+	if eye and not BlockInteraction.mobTarget then
+		local fk, fd = DecorClient.raycast(eye, look, Config.REACH * BS)
+		if fk and (not hit or fd < hit.distance * BS) then
+			BlockInteraction.frameTarget = fk
+			hit = nil
+			BlockInteraction.target = nil
+		end
+	end
 
 	-- Highlight
 	if hit then
-		highlightPart.CFrame = blockCFrame(hit.x, hit.y, hit.z)
+		-- outline the block's shape (a slab's half, a door's panel...)
+		local lo, hi = Vector3.zero, Vector3.one
+		if BlockRegistry.isBoxShape[hit.id + 1] then
+			lo, hi = Shapes.bounds(Shapes.at(blockAt, hit.x, hit.y, hit.z, false))
+		end
+		highlightPart.Size = (hi - lo) * BS + Vector3.one * 0.02
+		highlightPart.CFrame = CFrame.new((Vector3.new(hit.x, hit.y, hit.z) + (lo + hi) / 2) * BS)
 		selection.Visible = true
 	else
 		selection.Visible = false
@@ -413,18 +480,29 @@ local function update(dt: number)
 		local item = ItemRegistry.get(InventoryClient.heldItem())
 		if item and item.block then
 			local x, y, z = hit.x + hit.nx, hit.y + hit.ny, hit.z + hit.nz
-			local current = ClientWorld.getBlock(x, y, z)
-			local solid = BlockRegistry.isSolid[item.block + 1]
-			if current ~= nil and (current == AIR or isLiquid[current + 1]) and not (solid and overlapsSelf(x, y, z)) then
-				local placeId = TorchRules.placement(item.block, x, y, z, hit.nx, hit.ny, hit.nz, ClientWorld.getBlock)
-				if placeId then
-					send("place", x, y, z, hit.nx, hit.ny, hit.nz)
-					ClientWorld.setBlock(x, y, z, placeId, true) -- instant prediction
-					BlockInteraction.placed:Fire(x, y, z, placeId)
-					BlockInteraction.swing:Fire()
+			local _, look = CameraController.getEyeAndLook()
+			local lx, lz = if look then look.X else 0, if look then look.Z else -1
+			local changes = Placement.resolve(item.block, {
+				hx = hit.x, hy = hit.y, hz = hit.z, nx = hit.nx, ny = hit.ny, nz = hit.nz,
+				px = hit.px, py = hit.py, pz = hit.pz, lx = lx, lz = lz,
+			}, ClientWorld.getBlock)
+			local blocked = false
+			if changes then
+				for _, c in changes do
+					if BlockRegistry.isSolid[c.id + 1] and overlapsSelf(c.x, c.y, c.z) then
+						blocked = true
+					end
 				end
-				nextPlaceAt = now + Config.PLACE_REPEAT
 			end
+			if changes and not blocked then
+				send("place", x, y, z, hit.nx, hit.ny, hit.nz, { hit.px, hit.py, hit.pz, lx, lz })
+				for _, c in changes do
+					ClientWorld.setBlock(c.x, c.y, c.z, c.id, true) -- instant prediction
+				end
+				BlockInteraction.placed:Fire(changes[1].x, changes[1].y, changes[1].z, changes[1].id)
+				BlockInteraction.swing:Fire()
+			end
+			nextPlaceAt = now + Config.PLACE_REPEAT
 		end
 	end
 end
@@ -454,6 +532,10 @@ local function makeTouchButtons()
 		b.Parent = gui
 	end
 	button("Mine", UDim2.new(1, -24, 1, -200), function()
+		if BlockInteraction.frameTarget then
+			DecorClient.hitFrame(BlockInteraction.frameTarget :: string)
+			return
+		end
 		if BlockInteraction.mobTarget then
 			attackMob(BlockInteraction.mobTarget :: number)
 			return
@@ -466,6 +548,9 @@ local function makeTouchButtons()
 		local hit = BlockInteraction.target
 		if hit and INTERACTABLE[hit.id] and not MovementController.sneaking then
 			InventoryClient.openBlock(hit.x, hit.y, hit.z)
+			return
+		end
+		if tryInteract(MovementController.sneaking) then
 			return
 		end
 		if tryUse() then
@@ -500,6 +585,9 @@ function BlockInteraction.init()
 		if (t == Enum.UserInputType.MouseButton1 or input.KeyCode == Enum.KeyCode.ButtonR2) and BlockInteraction.mobTarget then
 			-- attack: one hit per click (damage scales with how long since the last swing)
 			attackMob(BlockInteraction.mobTarget :: number)
+		elseif (t == Enum.UserInputType.MouseButton1 or input.KeyCode == Enum.KeyCode.ButtonR2) and BlockInteraction.frameTarget then
+			DecorClient.hitFrame(BlockInteraction.frameTarget :: string)
+			BlockInteraction.swing:Fire()
 		elseif t == Enum.UserInputType.MouseButton1 or input.KeyCode == Enum.KeyCode.ButtonR2 then
 			breakHeld = true
 		elseif t == Enum.UserInputType.MouseButton2 or input.KeyCode == Enum.KeyCode.ButtonL2 then
@@ -509,6 +597,8 @@ function BlockInteraction.init()
 			local held = ItemRegistry.get(InventoryClient.heldItem())
 			if hit and INTERACTABLE[hit.id] and not shift then
 				InventoryClient.openBlock(hit.x, hit.y, hit.z) -- server opens the window; the UI follows
+			elseif tryInteract(shift) then
+				-- door / sign / item frame handled
 			elseif tryUse() then
 				-- bucket / flint and steel / campfire handled
 			elseif held and held.food then

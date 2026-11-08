@@ -18,6 +18,8 @@ export type Entity = {
 	z: number,
 	slots: { [number]: Stack? },
 	furnace: FurnaceLogic.State?, -- furnaces: slots are furnace.slots
+	data: { [string]: any }?, -- signs: { front, back } lines; item frames: { facing, rot }
+	key: string?, -- storage key when it isn't the block position (item frames)
 }
 
 local KINDS = {
@@ -26,6 +28,11 @@ local KINDS = {
 	[BlockRegistry.id("campfire")] = "campfire",
 	[BlockRegistry.id("campfire_unlit")] = "campfire",
 }
+for id, def in BlockRegistry.byId do
+	if def.shape == "sign" or def.shape == "wall_sign" then
+		KINDS[id] = "sign"
+	end
+end
 local CHEST_SLOTS = 27
 
 local BlockEntityService = {}
@@ -81,9 +88,49 @@ function BlockEntityService.inArea(x0: number, z0: number, x1: number, z1: numbe
 	return out
 end
 
+-- Listeners for restored entities (signs and item frames tell clients).
+local restoreListeners: { (Entity) -> () } = {}
+function BlockEntityService.onRestore(fn: (Entity) -> ())
+	table.insert(restoreListeners, fn)
+end
+
+-- Item frames: keyed by cell and facing (several can share a cell).
+function BlockEntityService.frameKey(x: number, y: number, z: number, facing: string): string
+	return `f{x},{y},{z},{facing}`
+end
+function BlockEntityService.getKeyed(k: string): Entity?
+	return entities[k]
+end
+function BlockEntityService.putKeyed(k: string, e: Entity)
+	e.key = k
+	entities[k] = e
+	BlockEntityService.markDirty(e.x, e.z)
+end
+function BlockEntityService.removeKeyed(k: string): Entity?
+	local e = entities[k]
+	entities[k] = nil
+	if e then
+		BlockEntityService.markDirty(e.x, e.z)
+	end
+	return e
+end
+
 -- Recreate a saved entity (Persistence, when its region loads).
-function BlockEntityService.restore(kind: string, x: number, y: number, z: number, slots: { [number]: Stack }, burn: number, burnMax: number, progress: number)
+function BlockEntityService.restore(kind: string, x: number, y: number, z: number, slots: { [number]: Stack }, burn: number, burnMax: number, progress: number, data: { [string]: any }?)
+	if kind == "item_frame" then
+		local d = data or {}
+		local k = BlockEntityService.frameKey(x, y, z, d.facing or "up")
+		local e: Entity = { kind = kind, x = x, y = y, z = z, slots = { [1] = slots[1] }, data = d, key = k }
+		entities[k] = e
+		for _, fn in restoreListeners do
+			fn(e)
+		end
+		return
+	end
 	local e = BlockEntityService.ensure(x, y, z, kind)
+	if data then
+		e.data = data
+	end
 	if e.furnace then
 		local f = e.furnace :: FurnaceLogic.State
 		for i = 1, 3 do
@@ -94,6 +141,9 @@ function BlockEntityService.restore(kind: string, x: number, y: number, z: numbe
 		for i, st in slots do
 			e.slots[i] = st
 		end
+	end
+	for _, fn in restoreListeners do
+		fn(e)
 	end
 end
 

@@ -119,6 +119,10 @@ function AudioClient.init(deps: { [string]: any })
 			AudioClient.play("bucket.empty_lava")
 		elseif held == "flint_and_steel" then
 			AudioClient.play("fire.ignite")
+		elseif held == "door_open" then
+			AudioClient.play("door.open")
+		elseif held == "door_close" then
+			AudioClient.play("door.close")
 		end
 	end)
 	if deps.EntityClient then

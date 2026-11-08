@@ -4,6 +4,8 @@
 -- Materials and food: a shape per item family (bar, lump, gem, dust, stick, round fruit, meat...).
 -- Output: 16 x 16 RGBA buffer, transparent background. Blocks use their face texture instead.
 
+local TextureGen = require(script.Parent.Parent.Blocks.TextureGen)
+
 local ItemIconGen = {}
 
 local N = 16
@@ -310,8 +312,103 @@ local SHAPE_OF: { [string]: string } = {
 	bucket = "bucket", water_bucket = "water_bucket", lava_bucket = "lava_bucket",
 }
 
--- `def` is an ItemRegistry definition (fields used: key, tool, color).
+local function texel(tex: buffer, x: number, y: number, f: number?): { number }
+	local o = ((y % N) * N + (x % N)) * 4
+	local k = f or 1
+	return { buffer.readu8(tex, o) * k, buffer.readu8(tex, o + 1) * k, buffer.readu8(tex, o + 2) * k }
+end
+
+-- Block items whose block isn't a cube: a flat silhouette painted with the block's texture.
+local BLOCK_ICONS: { [string]: (img: buffer, tex: buffer, def: any) -> () } = {
+	slab = function(img, tex)
+		for y = 8, 15 do
+			for x = 0, 15 do
+				put(img, x, y, texel(tex, x, y, if y == 8 then 1.15 else 1))
+			end
+		end
+	end,
+	stairs = function(img, tex)
+		for y = 0, 15 do
+			for x = 0, 15 do
+				if y >= 8 or x < 8 then
+					put(img, x, y, texel(tex, x, y, if y == 0 or (y == 8 and x >= 8) then 1.15 else 1))
+				end
+			end
+		end
+	end,
+	fence = function(img, tex)
+		for y = 1, 15 do
+			for _, x in { 2, 3, 4, 11, 12, 13 } do
+				put(img, x, y, texel(tex, x, y, if x == 2 or x == 11 then 1.1 else 1))
+			end
+		end
+		for x = 5, 10 do
+			for _, y in { 4, 5, 10, 11 } do
+				put(img, x, y, texel(tex, x, y, 0.9))
+			end
+		end
+	end,
+	door = function(img, tex, def)
+		local upper = TextureGen.generate(string.gsub(def.iconTexture, "_lower$", "_upper"))
+		for y = 0, 15 do
+			for x = 4, 11 do
+				local sx = (x - 4) * 2
+				local src = if y < 8 then upper else tex
+				put(img, x, y, texel(src, sx, (y % 8) * 2))
+			end
+		end
+	end,
+	ladder = function(img, tex)
+		for y = 0, 15 do
+			for _, x in { 3, 4, 11, 12 } do
+				put(img, x, y, texel(tex, x, y, if x == 3 or x == 11 then 1.1 else 0.9))
+			end
+			if y % 4 == 2 then
+				for x = 5, 10 do
+					put(img, x, y, texel(tex, x, y))
+				end
+			end
+		end
+	end,
+	sign = function(img, tex)
+		for y = 2, 9 do
+			for x = 1, 14 do
+				put(img, x, y, texel(tex, x, y, if y == 2 then 1.12 else 1))
+			end
+		end
+		for y = 10, 15 do
+			put(img, 7, y, texel(tex, 7, y, 0.7))
+			put(img, 8, y, texel(tex, 8, y, 0.6))
+		end
+		for x = 3, 12 do
+			if x % 3 ~= 0 then
+				put(img, x, 5, { 70, 54, 36 }) -- a hint of writing
+				put(img, x, 7, { 70, 54, 36 })
+			end
+		end
+	end,
+}
+
+-- `def` is an ItemRegistry definition (fields used: key, tool, color, icon, iconTexture).
 function ItemIconGen.generate(def: any): buffer
+	if def.icon and BLOCK_ICONS[def.icon] and def.iconTexture then
+		local img = new()
+		BLOCK_ICONS[def.icon](img, TextureGen.generate(def.iconTexture), def)
+		outline(img, { 30, 26, 24 })
+		return img
+	end
+	if def.key == "item_frame" then
+		-- a wooden frame around a leather backing (our own design)
+		local img = new()
+		for y = 1, 14 do
+			for x = 1, 14 do
+				local border = x <= 2 or x >= 13 or y <= 2 or y >= 13
+				put(img, x, y, if border then shade({ 150, 108, 64 }, 0.9 + ((x * 7 + y * 3) % 5) * 0.04) else { 132, 82, 48 })
+			end
+		end
+		outline(img, { 30, 26, 24 })
+		return img
+	end
 	local img = new()
 	local color = def.color or { 200, 200, 200 }
 	local tool = def.tool

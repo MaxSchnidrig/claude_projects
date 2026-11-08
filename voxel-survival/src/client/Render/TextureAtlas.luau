@@ -101,7 +101,7 @@ function TextureAtlas.init()
 	-- item icons
 	local items = {}
 	for _, def in ItemRegistry.list() do
-		if not def.block then
+		if not def.block or def.icon then
 			table.insert(items, def)
 		end
 	end

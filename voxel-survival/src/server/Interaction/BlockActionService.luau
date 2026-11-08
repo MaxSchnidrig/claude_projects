@@ -13,6 +13,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local SneakPose = require(Shared.Gameplay.SneakPose)
 local TorchRules = require(Shared.Blocks.TorchRules)
+local Placement = require(Shared.Blocks.Placement)
 local Config = require(Shared.Config)
 local Remotes = require(Shared.Net.Remotes)
 local BlockRegistry = require(Shared.Blocks.BlockRegistry)
@@ -35,6 +36,11 @@ local BlockActionService = {}
 -- Listeners called after a player breaks a block (survival exhaustion, voidling anger, ...).
 -- Registered by those services to avoid require cycles.
 local blockBrokenListeners: { (Player, number, number, number) -> () } = {}
+local placedListeners: { (Player, number, number, number, number) -> () } = {}
+-- Called after a player places a block (signs open their editor).
+function BlockActionService.onPlaced(fn: (Player, number, number, number, number) -> ())
+	table.insert(placedListeners, fn)
+end
 function BlockActionService.onBlockBroken(fn: (Player, number, number, number) -> ())
 	table.insert(blockBrokenListeners, fn)
 end
@@ -171,7 +177,7 @@ end
 -- They are re-checked every frame for a short while, so the server's view of the jump can
 -- catch up with the client's, instead of rejecting the block at once.
 local DEFER_SECONDS = 0.6
-type Deferred = { player: Player, x: number, y: number, z: number, untilT: number, face: { number } }
+type Deferred = { player: Player, x: number, y: number, z: number, untilT: number, face: { number }, extra: { number }? }
 local deferred: { Deferred } = {}
 
 local function broadcast(key: number, x: number, y: number, z: number, id: number, requester: Player)
@@ -275,7 +281,7 @@ local function finishBreak(player: Player, st: PState, x: number, y: number, z: 
 	end
 end
 
-local function place(player: Player, x: number, y: number, z: number, retry: boolean?, face: { number }?): boolean
+local function place(player: Player, x: number, y: number, z: number, retry: boolean?, face: { number }?, extra: { number }?): boolean
 	local f = face or { 0, 1, 0 }
 	local eye = eyeOf(player)
 	if not eye then
@@ -288,21 +294,10 @@ local function place(player: Player, x: number, y: number, z: number, retry: boo
 		correct(player, x, y, z, "not holding a block")
 		return true
 	end
-	local current = WorldService.getBlock(x, y, z)
-	if current ~= AIR and not isLiquid[current + 1] then
-		correct(player, x, y, z, "cell occupied")
-		return true
-	end
-	-- must be placed against an existing block
-	local supported = false
-	for _, d in BlockRegistry.DIR_VECTORS do
-		local n = WorldService.getBlock(x + d[1], y + d[2], z + d[3])
-		if n ~= AIR and not isLiquid[n + 1] then
-			supported = true
-			break
-		end
-	end
-	if not supported then
+	-- must be placed against an existing block (the clicked one)
+	local hx, hy, hz = x - f[1], y - f[2], z - f[3]
+	local clicked = WorldService.getBlock(hx, hy, hz)
+	if clicked == AIR or isLiquid[clicked + 1] then
 		correct(player, x, y, z, "nothing to place against")
 		return true
 	end
@@ -311,45 +306,96 @@ local function place(player: Player, x: number, y: number, z: number, retry: boo
 		correct(player, x, y, z, why)
 		return true
 	end
-	if BlockRegistry.isSolid[item.block + 1] then
-		local overlap, byOther = overlapsCharacter(x, y, z, player)
-		if overlap then
-			if not byOther and not retry then
-				if #deferred < 64 then
-					table.insert(deferred, { player = player, x = x, y = y, z = z, untilT = os.clock() + DEFER_SECONDS, face = f })
-				else
-					correct(player, x, y, z, "too many pending placements")
-				end
-				return true
-			elseif not byOther and retry then
-				return false -- still waiting (the caller times out)
-			end
-			correct(player, x, y, z, "would overlap a player")
+	-- the exact click point and look direction (slab halves, stair / door facing, door hinge)
+	local e = extra or {}
+	local px = math.clamp(e[1] or (hx + 0.5), hx - 0.01, hx + 1.01)
+	local py = math.clamp(e[2] or (hy + 0.5), hy - 0.01, hy + 1.01)
+	local pz = math.clamp(e[3] or (hz + 0.5), hz - 0.01, hz + 1.01)
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local look = if root then root.CFrame.LookVector else Vector3.new(0, 0, -1)
+	local lx, lz = e[4] or look.X, e[5] or look.Z
+	local changes, reason = Placement.resolve(item.block, {
+		hx = hx, hy = hy, hz = hz, nx = f[1], ny = f[2], nz = f[3], px = px, py = py, pz = pz, lx = lx, lz = lz,
+	}, WorldService.getBlock)
+	if not changes then
+		correct(player, x, y, z, reason or "can't place here")
+		return true
+	end
+	for _, c in changes do
+		if c.y < 0 or c.y >= H then
+			correct(player, x, y, z, "out of the world")
 			return true
 		end
-	end
-	-- torches pick their standing / wall form from the clicked face (TorchRules)
-	local placeId = TorchRules.placement(item.block, x, y, z, f[1], f[2], f[3], WorldService.getBlock)
-	if not placeId then
-		correct(player, x, y, z, "a torch can't go here")
-		return true
+		if BlockRegistry.isSolid[c.id + 1] then
+			local overlap, byOther = overlapsCharacter(c.x, c.y, c.z, player)
+			if overlap then
+				if not byOther and not retry then
+					if #deferred < 64 then
+						table.insert(deferred, { player = player, x = x, y = y, z = z, untilT = os.clock() + DEFER_SECONDS, face = f, extra = extra })
+					else
+						correct(player, x, y, z, "too many pending placements")
+					end
+					return true
+				elseif not byOther and retry then
+					return false -- still waiting (the caller times out)
+				end
+				correct(player, x, y, z, "would overlap a player")
+				return true
+			end
+		end
 	end
 	if not InventoryService.consumeSelected(player, 1) then
 		correct(player, x, y, z, "no item")
 		return true
 	end
-	local key = WorldService.setBlock(x, y, z, placeId)
-	local kind = BlockEntityService.kindOf(placeId)
-	if kind then
-		BlockEntityService.ensure(x, y, z, kind)
+	for _, c in changes do
+		local key = WorldService.setBlock(c.x, c.y, c.z, c.id)
+		local kind = BlockEntityService.kindOf(c.id)
+		if kind then
+			BlockEntityService.ensure(c.x, c.y, c.z, kind)
+		end
+		broadcast(key, c.x, c.y, c.z, c.id, player)
+	end
+	if changes[1].x ~= x or changes[1].y ~= y or changes[1].z ~= z then
+		-- the client predicted another cell (a slab merged into the clicked one): send the truth
+		Remotes.get("BlockChanged"):FireClient(player, x, y, z, WorldService.getBlock(x, y, z))
 	end
 	BlockActionService.stats.accepted += 1
-	broadcast(key, x, y, z, placeId, player)
+	for _, fn in placedListeners do
+		fn(player, changes[1].x, changes[1].y, changes[1].z, changes[1].id)
+	end
 	return true
 end
 
+-- Right-click on a block that reacts (wooden doors).
+local function interact(player: Player, x: number, y: number, z: number)
+	local eye = eyeOf(player)
+	if not eye then
+		return
+	end
+	local id = WorldService.getBlock(x, y, z)
+	local def = BlockRegistry.byId[id]
+	if not def or def.shape ~= "door" or def.family == "iron_door" then
+		return correct(player, x, y, z, "nothing to use")
+	end
+	local ok, why = canReach(eye, x, y, z, false)
+	if not ok then
+		return correct(player, x, y, z, why)
+	end
+	-- the state lives in the lower half
+	local ly = if def.state.upper then y - 1 else y
+	local lower = WorldService.getBlock(x, ly, z)
+	local toggled = Placement.toggledDoor(lower)
+	if not toggled then
+		return correct(player, x, y, z, "broken door")
+	end
+	local key = WorldService.setBlock(x, ly, z, toggled)
+	broadcast(key, x, ly, z, toggled, player)
+	BlockActionService.stats.accepted += 1
+end
+
 function BlockActionService.init()
-	Remotes.get("BlockAction").OnServerEvent:Connect(function(player: Player, action: any, x: any, y: any, z: any, nx: any, ny: any, nz: any)
+	Remotes.get("BlockAction").OnServerEvent:Connect(function(player: Player, action: any, x: any, y: any, z: any, nx: any, ny: any, nz: any, extra: any)
 		if typeof(action) ~= "string" or not isInt(x) or not isInt(y) or not isInt(z) then
 			return
 		end
@@ -370,7 +416,18 @@ function BlockActionService.init()
 			local face = if isInt(nx) and isInt(ny) and isInt(nz) and math.abs(nx) + math.abs(ny) + math.abs(nz) == 1
 				then { nx, ny, nz }
 				else nil
-			place(player, x, y, z, nil, face)
+			local ex: { number }? = nil
+			if typeof(extra) == "table" then
+				local list = {}
+				for i = 1, 5 do
+					local v = extra[i]
+					list[i] = if typeof(v) == "number" and v == v and math.abs(v) < 2 ^ 24 then v else nil
+				end
+				ex = list
+			end
+			place(player, x, y, z, nil, face, ex)
+		elseif action == "interact" then
+			interact(player, x, y, z)
 		end
 	end)
 	Players.PlayerRemoving:Connect(function(p)
@@ -395,7 +452,7 @@ function BlockActionService.init()
 			local d = deferred[i]
 			if not d.player.Parent then
 				table.remove(deferred, i)
-			elseif place(d.player, d.x, d.y, d.z, true, d.face) then
+			elseif place(d.player, d.x, d.y, d.z, true, d.face, d.extra) then
 				table.remove(deferred, i)
 			elseif now > d.untilT then
 				table.remove(deferred, i)

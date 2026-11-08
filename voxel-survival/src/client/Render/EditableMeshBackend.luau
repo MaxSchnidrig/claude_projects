@@ -178,6 +178,16 @@ local function appendQuads(
 		end
 		return id
 	end
+	local function fracUV(u: number, v: number): number
+		u, v = math.clamp(u, 0, 1), math.clamp(v, 0, 1)
+		local keyed = `f{tex}:{math.round(u * 64)}:{math.round(v * 64)}`
+		local id = uvIds[keyed]
+		if not id then
+			id = em:AddUV(Vector2.new(u0 + (u1 - u0) * u, v0 + (v1 - v0) * v))
+			uvIds[keyed] = id
+		end
+		return id
+	end
 	local function color(d: number, b: number): number
 		local key = d * 256 + b
 		local id = colors[key]
@@ -201,13 +211,23 @@ local function appendQuads(
 		local bx = math.min(c[1], c[4], c[7], c[10])
 		local by = math.min(c[2], c[5], c[8], c[11])
 		local bz = math.min(c[3], c[6], c[9], c[12])
+		-- box-shaped blocks (slabs, stairs...): fractional faces take the part of the texture at
+		-- their position inside the block
+		local frac = quads[q + 2] % 1 ~= 0 or quads[q + 3] % 1 ~= 0 or quads[q + 4] % 1 ~= 0
+			or quads[q + 5] % 1 ~= 0 or quads[q + 1] % 1 ~= 0
+		if frac then
+			bx, by, bz = math.floor(bx + 1e-6), math.floor(by + 1e-6), math.floor(bz + 1e-6)
+		end
 		local vIds = table.create(4, 0)
 		local uvs = table.create(4, 0)
 		local cols = table.create(4, 0)
 		for k = 0, 3 do
 			local x, y, z = c[k * 3 + 1], c[k * 3 + 2], c[k * 3 + 3]
 			vIds[k + 1] = em:AddVertex(Vector3.new((x - cx) * BS, (y - cy) * BS, (z - cz) * BS))
-			if textured then
+			if textured and frac then
+				local s, t = tileST(d, x, y, z, bx, by, bz)
+				uvs[k + 1] = fracUV(s, t)
+			elseif textured then
 				local s, t = tileST(d, x, y, z, bx, by, bz)
 				uvs[k + 1] = uv(math.round(s), math.round(t))
 			elseif d <= 2 then

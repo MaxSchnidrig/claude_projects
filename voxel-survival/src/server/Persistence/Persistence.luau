@@ -179,7 +179,7 @@ local function loadRegion(rx: number, rz: number, rid: string)
 		WorldService.installDiffs(key, diffs)
 	end
 	for _, e in region.entities do
-		BlockEntityService.restore(e.kind, e.x, e.y, e.z, e.slots, e.burn, e.burnMax, e.progress)
+		BlockEntityService.restore(e.kind, e.x, e.y, e.z, e.slots, e.burn, e.burnMax, e.progress, e.data)
 	end
 	installing = false
 	regionState[rid] = "ready"
@@ -248,6 +248,7 @@ local function regionProducer(rx: number, rz: number): (any) -> any
 				burn = if f then f.burn else 0,
 				burnMax = if f then f.burnMax else 0,
 				progress = if f then f.progress else 0,
+				data = e.data,
 			})
 		end
 		Persistence.stats.regionsSaved += 1

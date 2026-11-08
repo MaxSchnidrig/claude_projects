@@ -34,6 +34,10 @@ export type BlockDef = {
 	gravity: boolean,
 	flammable: { number }?,
 	altDrop: { item: string, chance: number }?,
+	state: { [string]: any },
+	family: string, -- own key unless the block is one state of a family (stairs, doors...)
+	noItem: boolean,
+	icon: string?,
 }
 
 local BlockRegistry = {}
@@ -89,6 +93,9 @@ local isTransparentGroup = table.create(4096, false) :: { boolean }
 local lightEmission = table.create(4096, 0) :: { number }
 local lightOpacity = table.create(4096, 0) :: { number }
 local isCube = table.create(4096, true) :: { boolean }
+-- Non-cube blocks drawn by the mesher as boxes (Blocks/Shapes); other non-cubes are small models.
+local BOX_SHAPES = { slab = true, stairs = true, fence = true, door = true, ladder = true }
+local isBoxShape = table.create(4096, false) :: { boolean }
 
 -- Sound group when a block doesn't name one: by its preferred tool.
 local SOUND_BY_TOOL = { pickaxe = "stone", axe = "wood", shovel = "gravel", hoe = "grass", shears = "wool" }
@@ -139,6 +146,10 @@ for _, d in BlockDefs do
 		gravity = d.gravity == true,
 		flammable = d.flammable,
 		altDrop = d.altDrop,
+		state = d.state or {},
+		family = d.family or d.key,
+		noItem = d.noItem == true,
+		icon = d.icon,
 	}
 	byId[d.id] = def
 	byKey[d.key] = def
@@ -151,6 +162,7 @@ for _, d in BlockDefs do
 	lightEmission[d.id + 1] = def.light
 	lightOpacity[d.id + 1] = d.opacity or (if isOpaque[d.id + 1] then 15 else 0)
 	isCube[d.id + 1] = def.shape == "cube"
+	isBoxShape[d.id + 1] = BOX_SHAPES[def.shape] == true
 end
 
 BlockRegistry.byId = byId
@@ -164,6 +176,7 @@ BlockRegistry.isTransparent = isTransparentGroup
 BlockRegistry.lightEmission = lightEmission
 BlockRegistry.lightOpacity = lightOpacity
 BlockRegistry.isCube = isCube
+BlockRegistry.isBoxShape = isBoxShape
 
 -- Look up an ID by key; errors on typos so mistakes surface at load time.
 function BlockRegistry.id(key: string): number

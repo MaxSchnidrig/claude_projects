@@ -14,6 +14,8 @@ export type ItemDef = {
 	tool: ItemDefs.ToolDef?,
 	food: ItemDefs.FoodDef?,
 	color: { number },
+	icon: string?, -- block items drawn as a shape icon (ItemIconGen) instead of the flat texture
+	iconTexture: string?, -- texture key that icon is painted with
 }
 
 local ItemRegistry = {}
@@ -32,14 +34,16 @@ local NOT_ITEMS = {
 }
 
 for _, def in BlockRegistry.byId do
-	if not NOT_ITEMS[def.key] and not def.fluid and def.key ~= "campfire_unlit" then
+	if not NOT_ITEMS[def.key] and not def.fluid and def.key ~= "campfire_unlit" and not def.noItem then
 		byKey[def.key] = {
 			key = def.key,
 			name = def.name,
-			stack = 64,
+			stack = if def.shape == "sign" then 16 else 64,
 			block = def.id,
 			tool = nil,
 			color = BlockRegistry.textureColor(def.faceTexture[BlockRegistry.Dir.TOP]),
+			icon = def.icon,
+			iconTexture = BlockRegistry.textureKeys[def.faceTexture[BlockRegistry.Dir.EAST]],
 		}
 	end
 end

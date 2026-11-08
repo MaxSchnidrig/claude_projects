@@ -1118,6 +1118,167 @@ test("fluids: Java spread distances, infinite water, lava + water", function()
 	eq(Fluids.height(0), 8 / 9); eq(Fluids.height(7), 1 / 9); eq(Fluids.height(8), 1)
 end)
 
+test("shapes: slabs, stairs corners, fences, doors, ladders", function()
+	local Shapes = Loader.require("src/shared/Blocks/Shapes")
+	local Placement = Loader.require("src/shared/Blocks/Placement")
+	local id = BlockRegistry.id
+	-- a tiny world
+	local cells: { [string]: number } = {}
+	local function get(x: number, y: number, z: number): number?
+		return cells[`{x},{y},{z}`] or (if y < 0 then 1 else 0)
+	end
+	local function set(x: number, y: number, z: number, v: number)
+		cells[`{x},{y},{z}`] = v
+	end
+	local function rel(x: number, y: number, z: number)
+		return function(dx: number, dy: number, dz: number): number?
+			return get(x + dx, y + dy, z + dz)
+		end
+	end
+	-- ids are unique and above 255 exist
+	assert(BlockRegistry.byKey.oak_sign_15.id > 255, "u16 ids in use")
+	-- slab halves
+	local bottom = Shapes.boxes(id("oak_slab"), rel(0, 0, 0), true)
+	eq(#bottom, 1); eq(bottom[1][5], 0.5)
+	eq(Shapes.boxes(id("oak_slab_top"), rel(0, 0, 0), true)[1][2], 0.5)
+	eq(Shapes.boxes(id("oak_slab_double"), rel(0, 0, 0), true)[1][5], 1)
+	-- straight stairs facing north: slab + the north half on top
+	local st = Placement.stairsState("oak_stairs", "north", "bottom")
+	set(0, 0, 0, st)
+	local b = Shapes.boxes(st, rel(0, 0, 0), false)
+	eq(#b, 2); eq(b[2][3], 0); eq(b[2][6], 0.5); eq(b[2][2], 0.5)
+	-- outer corner: a stair facing east in front (north of it)
+	set(0, 0, -1, Placement.stairsState("oak_stairs", "east", "bottom"))
+	eq(Shapes.stairsShape(BlockRegistry.byId[st].state, rel(0, 0, 0)), "outer_right")
+	set(0, 0, -1, 0)
+	set(0, 0, 1, Placement.stairsState("oak_stairs", "west", "bottom"))
+	eq(Shapes.stairsShape(BlockRegistry.byId[st].state, rel(0, 0, 0)), "inner_left")
+	-- fences connect to fences and full blocks; collision is 1.5 tall
+	local F = id("oak_fence")
+	set(5, 0, 0, F)
+	eq(#Shapes.boxes(F, rel(5, 0, 0), false), 1) -- lone post
+	set(6, 0, 0, F)
+	set(5, 0, -1, id("stone"))
+	local fb = Shapes.boxes(F, rel(5, 0, 0), true)
+	eq(#fb, 3); eq(fb[1][5], 1.5)
+	-- doors: closed facing north is the south-side panel; open with left hinge is the east panel
+	local closed = Shapes.doorBox("north", false, "left")
+	eq(closed[3], 13 / 16)
+	eq(Shapes.doorBox("north", true, "left")[4], 3 / 16)
+	-- ladders sit against their wall
+	local lad = Shapes.boxes(id("ladder"), rel(0, 5, 0), true)[1] -- facing north: wall at +z
+	eq(lad[6], 1); eq(lad[3], 13 / 16)
+end)
+
+test("placement: slab halves and merging, stairs facing, doors, ladders, signs", function()
+	local Placement = Loader.require("src/shared/Blocks/Placement")
+	local id = BlockRegistry.id
+	local cells: { [string]: number } = {}
+	local function get(x: number, y: number, z: number): number?
+		return cells[`{x},{y},{z}`] or (if y <= 0 then 1 else 0)
+	end
+	local function ctx(hx, hy, hz, nx, ny, nz, px, py, pz, lx, lz)
+		return { hx = hx, hy = hy, hz = hz, nx = nx, ny = ny, nz = nz, px = px, py = py, pz = pz, lx = lx or 0, lz = lz or -1 }
+	end
+	-- slab on the ground: bottom; on the upper half of a wall side: top
+	local c = Placement.resolve(id("oak_slab"), ctx(0, 0, 0, 0, 1, 0, 0.5, 1, 0.5), get) :: any
+	eq(c[1].id, id("oak_slab")); eq(c[1].y, 1)
+	cells["1,1,0"] = id("stone")
+	c = Placement.resolve(id("oak_slab"), ctx(1, 1, 0, -1, 0, 0, 1, 1.8, 0.5), get) :: any
+	eq(c[1].id, id("oak_slab_top"))
+	-- clicking the top of a bottom slab with the same slab makes a double slab in that cell
+	cells["3,1,0"] = id("oak_slab")
+	c = Placement.resolve(id("oak_slab"), ctx(3, 1, 0, 0, 1, 0, 3.5, 1.5, 0.5), get) :: any
+	eq(c[1].id, id("oak_slab_double")); eq(c[1].y, 1); eq(c[1].x, 3)
+	-- a different slab doesn't merge
+	c = Placement.resolve(id("cobblestone_slab"), ctx(3, 1, 0, 0, 1, 0, 3.5, 1.5, 0.5), get) :: any
+	eq(c[1].y, 2)
+	-- stairs face where the player looks; upside down from below
+	c = Placement.resolve(id("oak_stairs"), ctx(0, 0, 0, 0, 1, 0, 0.5, 1, 0.5, 1, 0), get) :: any
+	eq(BlockRegistry.byId[c[1].id].state.facing, "east")
+	eq(BlockRegistry.byId[c[1].id].state.half, "bottom")
+	-- doors take two cells, need a floor
+	c = Placement.resolve(id("oak_door"), ctx(5, 0, 5, 0, 1, 0, 5.3, 1, 5.5, 0, -1), get) :: any
+	eq(#c, 2); eq(c[2].id, id("oak_door_upper"))
+	eq(BlockRegistry.byId[c[1].id].state.facing, "north")
+	eq(Placement.resolve(id("oak_door"), ctx(5, 3, 5, 0, -1, 0, 5.5, 3, 5.5), get), nil) -- hanging from a ceiling
+	-- toggling flips open
+	local open = Placement.toggledDoor(c[1].id) :: number
+	eq(BlockRegistry.byId[open].state.open, true)
+	eq(Placement.toggledDoor(open), c[1].id)
+	-- ladders need a full block behind them
+	cells["8,1,8"] = id("stone")
+	c = Placement.resolve(id("ladder"), ctx(8, 1, 8, 0, 0, -1, 8.5, 1.5, 8, 0, 1), get) :: any
+	eq(BlockRegistry.byId[c[1].id].state.facing, "north")
+	local ok = Placement.supported(c[1].id, 8, 1, 7, get)
+	eq(ok, true)
+	cells["8,1,8"] = 0
+	eq((Placement.supported(c[1].id, 8, 1, 7, get)), false)
+	-- signs: standing rotation faces the player; walls; not on ceilings
+	c = Placement.resolve(id("oak_sign"), ctx(0, 0, 0, 0, 1, 0, 0.5, 1, 0.5, 0, -1), get) :: any
+	eq(BlockRegistry.byId[c[1].id].state.rotation, 0) -- looking north: the front faces south
+	c = Placement.resolve(id("oak_sign"), ctx(0, 0, 0, 0, 1, 0, 0.5, 1, 0.5, -1, 0), get) :: any
+	eq(BlockRegistry.byId[c[1].id].state.rotation, 12) -- looking west: faces east
+	cells["9,2,9"] = id("stone")
+	c = Placement.resolve(id("oak_sign"), ctx(9, 2, 9, 1, 0, 0, 10, 2.5, 9.5), get) :: any
+	eq(BlockRegistry.byId[c[1].id].key, "oak_wall_sign_east")
+end)
+
+test("shaped blocks: mesher boxes, mob physics steps onto slabs, raycast through a slab's gap", function()
+	local MobPhysics = Loader.require("src/shared/Mobs/MobPhysics")
+	local Shapes = Loader.require("src/shared/Blocks/Shapes")
+	local VoxelRaycast = Loader.require("src/shared/World/VoxelRaycast")
+	local SLAB = BlockRegistry.id("stone_slab")
+	-- mesher: a single bottom slab gives 6 faces, the top one at half height
+	local P = SectionSampler.SIZE
+	local padded = buffer.create(SectionSampler.BYTES)
+	local light = buffer.create(SectionSampler.VOLUME)
+	buffer.fill(light, 0, 15)
+	buffer.writeu16(padded, ((5 + 1) + (5 + 1) * P + (5 + 1) * P * P) * 2, SLAB)
+	local r = GreedyMesher.meshLit(padded, light, {})
+	eq(r.quadCount, 6)
+	local found = false
+	for _, quads in r.groups do
+		for q = 1, #quads, GreedyMesher.QUAD do
+			if quads[q] == 3 then
+				eq(quads[q + 1], 4.5) -- top face plane at 5.5
+				found = true
+			end
+		end
+	end
+	assert(found, "top face")
+	-- physics: walk into a slab, step up onto it
+	local world: { [string]: number } = {}
+	local function get(x: number, y: number, z: number): number?
+		return world[`{x},{y},{z}`] or (if y < 0 then 1 else 0)
+	end
+	world["2,0,0"] = SLAB
+	local solid = Shapes.physicsFn(get)
+	local x, y, z = 0.5, 0, 0.5
+	local vx, vy, vz = 4, 0, 0
+	for _ = 1, 12 do
+		vy -= 0.08 * 20
+		x, y, z, vx, vy, vz = MobPhysics.move(solid, x, y, z, 4, vy, 0, 0.6, 1.8, 0.05, 0.6)
+	end
+	assert(x > 2.4 and x < 3, `stands on the slab (x = {x})`)
+	eq(math.floor(y * 100 + 0.5) / 100, 0.5)
+	-- without a step height it is blocked
+	x, y = 0.5, 0
+	for _ = 1, 40 do
+		x, y = MobPhysics.move(solid, x, y, z, 4, -1, 0, 0.6, 1.8, 0.05)
+	end
+	assert(x < 1.71, "blocked by the slab without stepping")
+	-- a ray just over a bottom slab passes it
+	local hit = VoxelRaycast.cast(get, 0.5, 0.75, 0.5, 1, 0, 0, 5, function(id)
+		return id ~= 0
+	end, Shapes.rayShapeFn(get))
+	eq(hit, nil)
+	hit = VoxelRaycast.cast(get, 0.5, 0.25, 0.5, 1, 0, 0, 5, function(id)
+		return id ~= 0
+	end, Shapes.rayShapeFn(get)) :: any
+	eq(hit.x, 2); eq(hit.nx, -1)
+end)
+
 print(`\n{passed} passed, {failed} failed`)
 if failed > 0 then
 	process.exit(1)

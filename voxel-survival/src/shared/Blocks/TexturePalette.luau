@@ -56,6 +56,15 @@ local palette: { [string]: { number } } = {
 	fire = { 240, 140, 40 },
 	campfire_log = { 96, 70, 42 },
 	campfire_top = { 120, 92, 56 },
+	ladder = { 150, 116, 66 },
+	oak_door_lower = { 154, 122, 72 },
+	oak_door_upper = { 140, 124, 96 },
+	spruce_door_lower = { 108, 80, 48 },
+	spruce_door_upper = { 100, 84, 70 },
+	birch_door_lower = { 190, 174, 120 },
+	birch_door_upper = { 170, 166, 140 },
+	iron_door_lower = { 196, 196, 200 },
+	iron_door_upper = { 186, 188, 194 },
 }
 
 -- Flowing water and lava levels reuse the source colour (their own keys let the renderer give

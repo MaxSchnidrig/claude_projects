@@ -35,6 +35,25 @@ local shaped: { Shaped } = {
 	{ pattern = { " S ", "SCS", "LLL" }, key = { S = "stick", C = "#coals", L = "#logs" }, result = { item = "campfire", count = 1 } },
 }
 
+-- Building blocks (Phase 8b)
+do
+	local ShapedDefs = require(script.Parent.Parent.Blocks.ShapedDefs)
+	for _, m in ShapedDefs.MATERIALS do
+		local base = ShapedDefs.BASE_BLOCK[m.key]
+		table.insert(shaped, { pattern = { "MMM" }, key = { M = base }, result = { item = `{m.key}_slab`, count = 6 } })
+		table.insert(shaped, { pattern = { "M  ", "MM ", "MMM" }, key = { M = base }, result = { item = `{m.key}_stairs`, count = 4 } })
+	end
+	for _, w in ShapedDefs.WOODS do
+		local planks = `{w}_planks`
+		table.insert(shaped, { pattern = { "PSP", "PSP" }, key = { P = planks, S = "stick" }, result = { item = `{w}_fence`, count = 3 } })
+		table.insert(shaped, { pattern = { "PP", "PP", "PP" }, key = { P = planks }, result = { item = `{w}_door`, count = 3 } })
+		table.insert(shaped, { pattern = { "PPP", "PPP", " S " }, key = { P = planks, S = "stick" }, result = { item = `{w}_sign`, count = 3 } })
+	end
+	table.insert(shaped, { pattern = { "II", "II", "II" }, key = { I = "iron_ingot" }, result = { item = "iron_door", count = 3 } })
+	table.insert(shaped, { pattern = { "S S", "SSS", "S S" }, key = { S = "stick" }, result = { item = "ladder", count = 3 } })
+	table.insert(shaped, { pattern = { "SSS", "SLS", "SSS" }, key = { S = "stick", L = "leather" }, result = { item = "item_frame", count = 1 } })
+end
+
 -- Tools: same shapes for every material tier.
 local TOOL_MATERIALS = {
 	{ prefix = "wooden", material = "#planks" },
@@ -110,6 +129,13 @@ Recipes.fuel = {
 	wooden_shovel = 10,
 	wooden_hoe = 10,
 	wooden_sword = 10,
+	-- Java burn times in ticks / 20
+	oak_slab = 7.5, spruce_slab = 7.5, birch_slab = 7.5,
+	oak_stairs = 15, spruce_stairs = 15, birch_stairs = 15,
+	oak_fence = 15, spruce_fence = 15, birch_fence = 15,
+	oak_door = 10, spruce_door = 10, birch_door = 10,
+	oak_sign = 10, spruce_sign = 10, birch_sign = 10,
+	ladder = 15,
 } :: { [string]: number }
 
 return Recipes

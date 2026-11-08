@@ -23,12 +23,15 @@
 --   opacity     how much light it removes passing through (0 clear .. 15 opaque); default 15
 --               for opaque blocks, 0 otherwise; leaves, water and ice are 1
 --   sound       material sound group (Audio/SoundConfig); default from the tool type
---   shape       "cube" (meshed), "torch" / "wall_torch" (own small model); default "cube"
+--   shape       "cube" (meshed); "slab", "stairs", "fence", "door", "ladder" (meshed boxes, see
+--               Blocks/Shapes); "torch", "wall_torch", "fire", "campfire", "sign", "wall_sign"
+--               (own small models); default "cube"
 --   facing      wall torches: the side it leans towards ("east" = its wall is at x - 1)
 --   fluid / fluidLevel   water and lava: one block id per level (Java fluid states)
 --   gravity     falls like sand when nothing is below
 --   flammable   Java fire spread values { encouragement, flammability }
 --   altDrop     replaces the normal drop with this chance (gravel drops flint 10 %)
+--   state / family / noItem / icon   shaped blocks (Blocks/ShapedDefs, Blocks/Shapes)
 
 export type BlockDefInput = {
 	id: number,
@@ -56,6 +59,10 @@ export type BlockDefInput = {
 	gravity: boolean?, -- falls when unsupported (sand, gravel)
 	flammable: { number }?, -- Java fire values { encouragement, flammability }
 	altDrop: { item: string, chance: number }?, -- drops this instead, with this chance (gravel -> flint)
+	state: { [string]: any }?, -- shaped blocks: half, facing, open, hinge, upper, rotation
+	family: string?, -- shaped blocks: all states of one block share this key (= its item)
+	noItem: boolean?, -- this state has no item of its own (it drops / picks its family)
+	icon: string?, -- item icon shape instead of the flat texture ("slab", "stairs", "door", ...)
 }
 
 local defs: { BlockDefInput } = {
@@ -134,5 +141,10 @@ local defs: { BlockDefInput } = {
 	{ id = 62, key = "campfire_unlit", name = "Campfire", hardness = 2, tool = "axe", drop = "charcoal", dropMin = 2, dropMax = 2, textures = { top = "campfire_top", side = "campfire_log", bottom = "campfire_log" }, transparent = true, opacity = 0, sound = "wood", shape = "campfire" },
 	{ id = 37, key = "white_wool", name = "White Wool", hardness = 0.8, tool = "shears", textures = { all = "white_wool" }, sound = "wool", flammable = { 30, 60 } },
 }
+
+-- Slabs, stairs, fences, doors, ladders, signs (ids 100+; see ShapedDefs).
+for _, d in require(script.Parent.ShapedDefs).list() do
+	table.insert(defs, d :: any)
+end
 
 return defs

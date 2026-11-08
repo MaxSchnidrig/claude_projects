@@ -126,6 +126,7 @@ export type EntityRecord = {
 	burn: number,
 	burnMax: number,
 	progress: number,
+	data: { [string]: any }?, -- signs: { front = {4 lines}, back = {4 lines} }; item frames: { facing, rot }
 }
 
 export type Region = {
@@ -152,9 +153,38 @@ function SaveFormat.encodeRegion(region: Region): { [string]: any }
 			b = if e.burn > 0 then e.burn else nil,
 			bm = if e.burnMax > 0 then e.burnMax else nil,
 			p = if e.progress > 0 then e.progress else nil,
+			d = e.data,
 		})
 	end
 	return { v = SaveFormat.VERSION, chunks = chunks, entities = entities }
+end
+
+-- Sign lines / item frame placement, checked (saves are data, not trusted structure).
+local FACES = { up = true, down = true, north = true, south = true, east = true, west = true }
+function SaveFormat.decodeData(kind: string, d: any): { [string]: any }?
+	if typeof(d) ~= "table" then
+		return nil
+	end
+	if kind == "sign" then
+		local function lines(t: any): { string }
+			local out = { "", "", "", "" }
+			if typeof(t) == "table" then
+				for i = 1, 4 do
+					if typeof(t[i]) == "string" then
+						out[i] = string.sub(t[i], 1, 200)
+					end
+				end
+			end
+			return out
+		end
+		return { front = lines(d.front), back = lines(d.back) }
+	elseif kind == "item_frame" then
+		return {
+			facing = if typeof(d.facing) == "string" and FACES[d.facing] then d.facing else "up",
+			rot = if typeof(d.rot) == "number" then math.clamp(math.floor(d.rot), 0, 7) else 0,
+		}
+	end
+	return nil
 end
 
 function SaveFormat.decodeRegion(record: any): Region

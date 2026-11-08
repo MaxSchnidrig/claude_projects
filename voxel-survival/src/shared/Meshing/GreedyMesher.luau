@@ -18,6 +18,7 @@ local Shared = script.Parent.Parent
 local Config = require(Shared.Config)
 local BlockRegistry = require(Shared.Blocks.BlockRegistry)
 local SectionSampler = require(script.Parent.SectionSampler)
+local Shapes = require(Shared.Blocks.Shapes)
 
 local SS = Config.SECTION_SIZE
 local P = SectionSampler.SIZE
@@ -27,6 +28,7 @@ local isOpaque = BlockRegistry.isOpaque
 local isLiquid = BlockRegistry.isLiquid
 local cullSelf = BlockRegistry.cullSelf
 local isCube = BlockRegistry.isCube
+local isBoxShape = BlockRegistry.isBoxShape
 
 -- Per direction: normal axis (0 x, 1 y, 2 z), sign, and the (u, v) axes with u x v = normal.
 -- This ordering gives counter-clockwise winding seen from outside (see quadCorners).
@@ -125,6 +127,80 @@ function GreedyMesher.classify(padded: buffer): string
 		end
 	end
 	return "buried"
+end
+
+-- Box-shaped blocks (slabs, stairs, fences, doors, ladders) ----------------------------------------
+-- Each box face becomes one quad with fractional coordinates; the backend maps its texture by the
+-- face's position inside the block (a slab side shows the lower half of the texture, like Java).
+-- Faces on the cell boundary are hidden when the neighbour covers that whole face. Brightness:
+-- the neighbour cell's light for boundary faces, the block's own cell for inner faces; no AO.
+local OPP = { 2, 1, 4, 3, 6, 5 }
+local CURVE_REF: { number } = {}
+local function emitShapes(padded: buffer, light: buffer?, groups: { [number]: { number } }): (number, number)
+	local quads, faces = 0, 0
+	for y = 0, SS - 1 do
+		for z = 0, SS - 1 do
+			for x = 0, SS - 1 do
+				local p = (x + 1) + (z + 1) * P + (y + 1) * P2
+				local b = buffer.readu16(padded, p * 2)
+				if b ~= 0 and isBoxShape[b + 1] then
+					local function get(dx: number, dy: number, dz: number): number?
+						return buffer.readu16(padded, (p + dx + dz * P + dy * P2) * 2)
+					end
+					local own = if light then buffer.readu8(light, p) else 15
+					for _, box in Shapes.boxes(b, get, false) do
+						local lo = { box[1], box[2], box[3] }
+						local hi = { box[4], box[5], box[6] }
+						for d = 1, 6 do
+							local dir = DIRS[d]
+							local a = dir.axis + 1
+							local onEdge = if dir.sign > 0 then hi[a] >= 1 else lo[a] <= 0
+							local nOff = STRIDE[dir.axis] * dir.sign
+							local visible = true
+							if onEdge then
+								local n = buffer.readu16(padded, (p + nOff) * 2)
+								if n ~= 0 and Shapes.coversFace(n, OPP[d]) then
+									visible = false
+								end
+							end
+							if visible then
+								faces += 1
+								local tex = faceTex[b * 6 + d]
+								local list = groups[tex]
+								if not list then
+									list = {}
+									groups[tex] = list
+								end
+								local base = { x, y, z }
+								local plane = base[a] + (if dir.sign > 0 then hi[a] else lo[a])
+								local ua, va = dir.u + 1, dir.v + 1
+								local level = own
+								if light and onEdge then
+									local nl = buffer.readu8(light, p + nOff)
+									local n = buffer.readu16(padded, (p + nOff) * 2)
+									level = if isOpaque[n + 1] then own else nl
+								end
+								local bright = if light then math.floor(CURVE_REF[level * 4 + 1] * 255 + 0.5) else 255
+								local nl = #list
+								list[nl + 1] = d
+								list[nl + 2] = if dir.sign > 0 then plane - 1 else plane
+								list[nl + 3] = base[ua] + lo[ua]
+								list[nl + 4] = base[va] + lo[va]
+								list[nl + 5] = hi[ua] - lo[ua]
+								list[nl + 6] = hi[va] - lo[va]
+								list[nl + 7] = bright
+								list[nl + 8] = bright
+								list[nl + 9] = bright
+								list[nl + 10] = bright
+								quads += 1
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+	return quads, faces
 end
 
 -- `padded` is a buffer filled by SectionSampler.fill. `checkpoint` (optional) is called after
@@ -228,7 +304,8 @@ function GreedyMesher.mesh(padded: buffer, checkpoint: (() -> ())?): MeshResult
 		end
 	end
 
-	return { groups = groups, quadCount = quadCount, faceCount = faceCount }
+	local sq, sf = emitShapes(padded, nil, groups)
+	return { groups = groups, quadCount = quadCount + sq, faceCount = faceCount + sf }
 end
 
 -- Lit, per-face meshing ------------------------------------------------------------------------
@@ -243,6 +320,7 @@ for i = 0, 60 do
 	local v = base * 0.5 + (1 - (1 - base) ^ 4) * 0.5
 	CURVE[i + 1] = 0.035 + 0.965 * v
 end
+CURVE_REF = CURVE
 -- Ambient occlusion factor by number of occluders around a corner (0 = fully enclosed).
 local AO = { [0] = 0.5, [1] = 0.66, [2] = 0.82, [3] = 1.0 }
 -- corner -> (sign along u, sign along v), matching quadCorners order
@@ -396,7 +474,8 @@ function GreedyMesher.meshLit(padded: buffer, light: buffer, merge: { [number]: 
 			checkpoint()
 		end
 	end
-	return { groups = groups, quadCount = quadCount, faceCount = faceCount }
+	local sq, sf = emitShapes(padded, light, groups)
+	return { groups = groups, quadCount = quadCount + sq, faceCount = faceCount + sf }
 end
 
 -- Corner positions (section-local block units) of a quad, in counter-clockwise order seen from

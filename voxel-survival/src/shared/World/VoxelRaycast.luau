@@ -14,18 +14,24 @@ export type Hit = {
 	nz: number, -- face normal (which side was entered); 0,0,0 if the ray started inside
 	distance: number, -- along the ray, in blocks
 	id: number,
+	px: number,
+	py: number,
+	pz: number, -- the exact hit point (block units)
 }
 
 local VoxelRaycast = {}
 
 -- `getBlock(x, y, z)` returns a block id, or nil if unknown (unloaded) which stops the ray.
 -- `stopsAt(id)` decides what counts as a hit (e.g. solid, or "not air and not liquid").
+-- `shapeOf(id, x, y, z)` (optional) returns the block's boxes (0..1 cell units) for non-cubes;
+-- the ray then has to hit one of them (a slab's empty half lets it through).
 function VoxelRaycast.cast(
 	getBlock: (number, number, number) -> number?,
 	ox: number, oy: number, oz: number,
 	dx: number, dy: number, dz: number,
 	maxDist: number,
-	stopsAt: (number) -> boolean
+	stopsAt: (number) -> boolean,
+	shapeOf: ((number, number, number, number) -> { { number } }?)?
 ): Hit?
 	local len = math.sqrt(dx * dx + dy * dy + dz * dz)
 	if len < 1e-9 then
@@ -53,7 +59,58 @@ function VoxelRaycast.cast(
 			return nil
 		end
 		if stopsAt(id) then
-			return { x = x, y = y, z = z, nx = nx, ny = ny, nz = nz, distance = t, id = id }
+			local boxes = shapeOf and shapeOf(id, x, y, z)
+			if not boxes then
+				return { x = x, y = y, z = z, nx = nx, ny = ny, nz = nz, distance = t, id = id,
+					px = ox + dx * t, py = oy + dy * t, pz = oz + dz * t }
+			end
+			-- slab method against each box; nearest entry wins
+			local best, bnx, bny, bnz = math.huge, 0, 0, 0
+			for _, b in boxes do
+				local tmin, tmax = -math.huge, math.huge
+				local hnx, hny, hnz = 0, 0, 0
+				local ok = true
+				for axis = 1, 3 do
+					local o = if axis == 1 then ox elseif axis == 2 then oy else oz
+					local v = if axis == 1 then dx elseif axis == 2 then dy else dz
+					local base = if axis == 1 then x elseif axis == 2 then y else z
+					local lo, hi = base + b[axis], base + b[axis + 3]
+					if math.abs(v) < 1e-12 then
+						if o < lo or o > hi then
+							ok = false
+							break
+						end
+					else
+						local t1, t2 = (lo - o) / v, (hi - o) / v
+						local sgn = -1
+						if t1 > t2 then
+							t1, t2 = t2, t1
+							sgn = 1
+						end
+						if t1 > tmin then
+							tmin = t1
+							hnx, hny, hnz = 0, 0, 0
+							if axis == 1 then hnx = sgn elseif axis == 2 then hny = sgn else hnz = sgn end
+						end
+						tmax = math.min(tmax, t2)
+						if tmin > tmax then
+							ok = false
+							break
+						end
+					end
+				end
+				if ok and tmax >= 0 and tmin < best then
+					best = math.max(tmin, 0)
+					bnx, bny, bnz = hnx, hny, hnz
+					if tmin < 0 then
+						bnx, bny, bnz = 0, 0, 0 -- started inside the box
+					end
+				end
+			end
+			if best <= maxDist then
+				return { x = x, y = y, z = z, nx = bnx, ny = bny, nz = bnz, distance = best, id = id,
+					px = ox + dx * best, py = oy + dy * best, pz = oz + dz * best }
+			end
 		end
 		if tMaxX < tMaxY and tMaxX < tMaxZ then
 			x += stepX

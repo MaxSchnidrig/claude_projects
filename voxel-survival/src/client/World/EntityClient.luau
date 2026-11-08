@@ -12,6 +12,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Remotes = require(Shared.Net.Remotes)
 local BlockRegistry = require(Shared.Blocks.BlockRegistry)
+local Shapes = require(Shared.Blocks.Shapes)
 local MobPhysics = require(Shared.Mobs.MobPhysics)
 local TextureAtlas = require(script.Parent.Parent.Render.TextureAtlas)
 
@@ -24,10 +25,8 @@ local entities: { [number]: E } = {}
 local folder: Folder
 local getBlock: ((number, number, number) -> number?)? = nil
 
-local function solid(x: number, y: number, z: number): boolean
-	local gb = getBlock
-	local id = gb and gb(x, y, z)
-	return id == nil or BlockRegistry.isSolid[id + 1]
+local solid: (number, number, number) -> any = function()
+	return true
 end
 
 local function texturedCube(block: number): Part
@@ -131,6 +130,7 @@ end
 
 function EntityClient.init(blockAt: (number, number, number) -> number?)
 	getBlock = blockAt
+	solid = Shapes.physicsFn(blockAt)
 	local f = Instance.new("Folder")
 	f.Name = "FallingEntities"
 	f.Parent = workspace

@@ -39,6 +39,17 @@ are fine.
 - 7.2: atmosphere sky (default), faster torch light.
 - 7.3: Java world height −64…320 (internal 0…383), save format v2 with conversion, Java ore height bands, cave culling.
 
+## Phase 8 progress
+
+- 8a (done): flowing water and lava, buckets, falling sand and gravel, fire, campfires, TNT.
+- 8b (done, 0.8.2): 2-byte block ids (up to 4095 block states; save format v3 converts old
+  saves), the shape system (mesher boxes, collision parts, mob physics with step-up, shape
+  raycasts), slabs and stairs (oak, spruce, birch, cobblestone, stone, sandstone) with Java
+  corner shapes, wooden fences, doors (3 woods + iron), ladders with climbing, signs with
+  filtered text on both sides, item frames.
+- 8b2 (not started): the rest of "Building blocks": trapdoors, fence gates, walls, glass panes,
+  iron bars, vines, hanging signs, glow item frames.
+
 ## Phase 8 – Survival foundations (XL)
 
 **Liquids and gravity blocks**
@@ -437,6 +448,8 @@ A consistent, polished look for everything, all our own original designs:
 | Volt system | Very large machines get a per-tick work budget; Java order and timing are replicated, raw speed may differ |
 | Vehicles | Minecarts, boats, horses and the glider are custom kinematic movement, not Roblox physics |
 | Dimensions | One server holds all dimensions (friends stay together); memory limits per-dimension view radius |
+| Light through slabs and stairs | Light passes through slabs and stairs as if they were open (Java blocks it by shape); a slab roof doesn't darken a room |
+| Item frames | Show the item as a flat icon, not a 3D model |
 | Text | Every player-written text (signs, books, chat, names) uses Roblox filtering; commands only for the owner and players they trust |
 | Maps | EditableImage memory budget caps the number of maps visible at once |
 | Mobs | Java caps are kept; mobs far from players are simulated in less detail |

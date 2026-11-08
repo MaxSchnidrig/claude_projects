@@ -21,6 +21,11 @@
 --                         (buckets, flint and steel, campfires)
 --   EntityEvent   S -> C  { type = "spawn" | "remove" | "fizz", ... } falling blocks and primed TNT
 --   CampfireState S -> C  (x, y, z, { item keys }) what's cooking on a campfire
+--   Decor         S -> C  { type = "sign", x, y, z, front, back } | { type = "signRemove", x, y, z }
+--                         | { type = "frame", key, x, y, z, facing, item, rot } | { type = "frameRemove", key }
+--                         | { type = "signEditor", x, y, z, side }
+--                 C -> S  { type = "signEdit", x, y, z, side, lines } | { type = "framePlace", x, y, z, nx, ny, nz }
+--                         | { type = "frameUse", key } | { type = "frameHit", key }
 --   StareMob      C -> S  (mobId)  the player has looked a voidling in the eyes for 5 ticks
 --   Knockback     S -> C  { dir = Vector3, strength } (Java hit knockback, blocks/tick) or
 --                         { add = Vector3 } (explosion push, blocks/tick)
@@ -49,6 +54,7 @@ local NAMES = {
 	"UseItem",
 	"EntityEvent",
 	"CampfireState",
+	"Decor",
 }
 -- High-frequency state where a lost packet doesn't matter (the next one replaces it).
 local UNRELIABLE = { "MobSnapshot" }
