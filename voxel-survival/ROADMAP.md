@@ -61,6 +61,17 @@ are fine.
   on the landing tick; ladders climb by walking into them, Shift holds still; a height guard
   stops the Roblox body sliding up edges (fences, walls, 1.5 and 2+ block ledges); glass panes
   without inner lines.
+- 0.8.7: sign / item frame saves load again (they were saved but skipped on load); glass pane
+  seams merged; height guard only resets on real ground, no landing while rising, fence /
+  wall / gate collision 2 blocks tall for the Roblox body.
+- 8c (done, 0.8.7): beds in 16 colours (sleep, skip the night, respawn point, bounce, half
+  fall damage), armour (leather, chainmail, iron, gold, diamond with Java points, toughness,
+  durability, shown on the character), armour and off-hand slots (F swaps), shield (blocks
+  from the front after 5 ticks), bow (draw power, critical arrows, FOV zoom), crossbow (load,
+  fire, always critical), arrow pickup.
+  Left for later: coloured wool / dyes (only the white bed is craftable), phantoms (the rest
+  counter is kept), axes disabling shields (needs attacking players or axe mobs), multishot and
+  other enchantments (phase 10), leather dyeing, thunderstorm sleeping (weather, phase 9).
 
 ## Phase 8 – Survival foundations (XL)
 

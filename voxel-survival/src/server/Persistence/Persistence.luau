@@ -330,6 +330,8 @@ local function playerProducer(p: Player): (any) -> any
 		air = surv.air,
 		pos = if lp and not dead then lp.pos else nil,
 		yaw = if lp then lp.yaw else 0,
+		bed = require(script.Parent.Parent.Player.BedService).spawnOf(p),
+		sinceRest = require(script.Parent.Parent.Player.BedService).sinceRest(p),
 	}
 	local encoded = SaveFormat.encodePlayer(state)
 	return function(_old: any): any
@@ -377,9 +379,10 @@ local function onPlayer(p: Player)
 		p:Kick("Couldn't load your save (saving service unavailable). Please rejoin in a minute.")
 		return
 	end
-	local state = SaveFormat.decodePlayer(v, Config.INVENTORY_SLOTS)
+	local state = SaveFormat.decodePlayer(v, Config.PLAYER_SLOTS)
 	if state then
 		InventoryService.restore(p, state.slots, state.selected)
+		require(script.Parent.Parent.Player.BedService).restore(p, state.bed, state.sinceRest or 0)
 		SurvivalService.setRestore(p, {
 			health = state.health,
 			food = state.food,

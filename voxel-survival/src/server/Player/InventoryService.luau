@@ -38,6 +38,10 @@ type Inv = {
 }
 
 local N = Config.INVENTORY_SLOTS
+local ALL = Config.PLAYER_SLOTS -- with armour (37..40) and the off hand (41)
+local OFFHAND = Config.OFFHAND_SLOT
+local ARMOR_SLOTS = { Config.ARMOR_SLOT.head, Config.ARMOR_SLOT.chest, Config.ARMOR_SLOT.legs, Config.ARMOR_SLOT.feet }
+local ARMOR_INDEX = { [Config.ARMOR_SLOT.head] = "head", [Config.ARMOR_SLOT.chest] = "chest", [Config.ARMOR_SLOT.legs] = "legs", [Config.ARMOR_SLOT.feet] = "feet" }
 local HOTBAR = Config.HOTBAR_SLOTS
 local BS = Config.BLOCK_SIZE
 local CRAFTING_TABLE = BlockRegistry.id("crafting_table")
@@ -52,6 +56,18 @@ local function inv(player: Player): Inv
 		invs[player] = i
 	end
 	return i
+end
+
+-- Worn armour or the off hand changed: avatar pieces, armour points (set by AvatarService /
+-- SurvivalService to avoid require cycles).
+local armorListeners: { (Player) -> () } = {}
+function InventoryService.onArmorChanged(fn: (Player) -> ())
+	table.insert(armorListeners, fn)
+end
+local function armorChanged(player: Player)
+	for _, fn in armorListeners do
+		task.spawn(fn, player)
+	end
 end
 
 local function craftWidth(i: Inv): number
@@ -111,7 +127,7 @@ end
 function InventoryService.snapshot(player: Player): ({ [number]: Stack }, number)
 	local i = inv(player)
 	local slots: { [number]: Stack } = {}
-	for idx = 1, N do
+	for idx = 1, ALL do
 		local st = i.slots[idx]
 		if st then
 			slots[idx] = SlotLogic.copy(st, st.count)
@@ -139,11 +155,12 @@ function InventoryService.restore(player: Player, slots: { [number]: Stack }, se
 	local i = inv(player)
 	table.clear(i.slots)
 	for idx, st in slots do
-		if idx >= 1 and idx <= N then
+		if idx >= 1 and idx <= ALL then
 			i.slots[idx] = st
 		end
 	end
 	i.selected = math.clamp(selected, 1, HOTBAR)
+	armorChanged(player)
 	i.dirty = true
 end
 
@@ -194,13 +211,14 @@ end
 function InventoryService.dropAll(player: Player, pos: Vector3)
 	local i = inv(player)
 	local stacks: { Stack } = {}
-	for idx = 1, N do
+	for idx = 1, ALL do
 		local s = i.slots[idx]
 		if s then
 			table.insert(stacks, s)
 		end
 		i.slots[idx] = nil
 	end
+	armorChanged(player)
 	for idx, s in i.craft do
 		if s then
 			table.insert(stacks, s)
@@ -214,6 +232,107 @@ function InventoryService.dropAll(player: Player, pos: Vector3)
 	i.window = { kind = "inventory" }
 	i.dirty = true
 	ItemEntityService.spawnAround(stacks, pos)
+end
+
+---------------------------------------------------------------------------------------------
+-- Armour, off hand, ammunition (Phase 8c)
+---------------------------------------------------------------------------------------------
+
+-- The worn armour (head, chest, legs, feet; nil where empty).
+function InventoryService.armor(player: Player): { Stack? }
+	local i = inv(player)
+	return { i.slots[ARMOR_SLOTS[1]], i.slots[ARMOR_SLOTS[2]], i.slots[ARMOR_SLOTS[3]], i.slots[ARMOR_SLOTS[4]] }
+end
+
+-- Java hurtArmor: every worn piece loses max(1, floor(damage / 4)) durability; broken pieces go.
+-- Returns the keys of pieces that broke.
+function InventoryService.damageArmor(player: Player, damage: number): { string }
+	local i = inv(player)
+	local loss = math.max(1, math.floor(damage / 4))
+	local broke = {}
+	for _, idx in ARMOR_SLOTS do
+		local s = i.slots[idx]
+		if s and s.durability then
+			s.durability -= loss
+			if (s.durability :: number) <= 0 then
+				table.insert(broke, s.item)
+				i.slots[idx] = nil
+			end
+		end
+	end
+	i.dirty = true
+	if #broke > 0 then
+		armorChanged(player)
+	end
+	return broke
+end
+
+function InventoryService.offhand(player: Player): Stack?
+	return inv(player).slots[OFFHAND]
+end
+
+-- Wear or damage the off hand / main hand item by slot (shield, bow).
+function InventoryService.damageSlot(player: Player, idx: number, n: number): boolean
+	local i = inv(player)
+	local s = i.slots[idx]
+	if not s or s.durability == nil then
+		return false
+	end
+	s.durability -= n
+	i.dirty = true
+	if (s.durability :: number) <= 0 then
+		i.slots[idx] = nil
+		if idx == OFFHAND then
+			armorChanged(player)
+		end
+		return true
+	end
+	return false
+end
+
+function InventoryService.setSlot(player: Player, idx: number, stack: Stack?)
+	local i = inv(player)
+	i.slots[idx] = stack
+	i.dirty = true
+	if idx > N then
+		armorChanged(player)
+	end
+end
+
+function InventoryService.getSlot(player: Player, idx: number): Stack?
+	return inv(player).slots[idx]
+end
+
+-- Find and use one `item` (arrows): the off hand first, then hotbar, then the bag (Java order).
+function InventoryService.takeOne(player: Player, item: string): boolean
+	local i = inv(player)
+	local order = { OFFHAND }
+	for idx = 1, N do
+		table.insert(order, idx)
+	end
+	for _, idx in order do
+		local s = i.slots[idx]
+		if s and s.item == item then
+			s.count -= 1
+			if s.count <= 0 then
+				i.slots[idx] = nil
+			end
+			i.dirty = true
+			return true
+		end
+	end
+	return false
+end
+
+function InventoryService.has(player: Player, item: string): boolean
+	local i = inv(player)
+	for idx = 1, ALL do
+		local s = i.slots[idx]
+		if s and s.item == item then
+			return true
+		end
+	end
+	return false
 end
 
 ---------------------------------------------------------------------------------------------
@@ -383,11 +502,33 @@ end
 local function click(player: Player, i: Inv, container: string, index: number, button: string, shift: boolean)
 	local leftClick = button ~= "right"
 	if container == "inv" then
-		if index < 1 or index > N then
+		if index < 1 or index > ALL then
 			return
 		end
+		local armorSlot = ARMOR_INDEX[index]
+		if armorSlot and not shift then
+			-- armour slots only take the matching piece, one at a time
+			local c = i.cursor
+			local def = c and ItemRegistry.get(c.item)
+			if c and not (def and def.armor and def.armor.slot == armorSlot) then
+				return
+			end
+		end
 		if shift then
-			SlotLogic.quickMove(i.slots, index, inventoryTargets(i, index))
+			if index > N then
+				SlotLogic.quickMove(i.slots, index, toInventory(i)) -- armour / off hand back to the bag
+			else
+				-- Java: shift-clicking a piece of armour wears it when that slot is free
+				local s = i.slots[index]
+				local def = s and ItemRegistry.get(s.item)
+				local target = def and def.armor and Config.ARMOR_SLOT[def.armor.slot]
+				if target and not i.slots[target] and i.window.kind == "inventory" then
+					i.slots[target] = s
+					i.slots[index] = nil
+				else
+					SlotLogic.quickMove(i.slots, index, inventoryTargets(i, index))
+				end
+			end
 		elseif leftClick then
 			i.cursor = SlotLogic.leftClick(i.slots, index, i.cursor)
 		else
@@ -396,6 +537,9 @@ local function click(player: Player, i: Inv, container: string, index: number, b
 		local e = windowEntity(i)
 		if e then
 			touchViewers(e)
+		end
+		if index > N or shift then
+			armorChanged(player)
 		end
 	elseif container == "craft" then
 		local w = craftWidth(i)
@@ -548,7 +692,7 @@ local function sync(player: Player)
 		end
 	end
 	Remotes.get("InventorySync"):FireClient(player, {
-		slots = pack(i.slots, N),
+		slots = pack(i.slots, ALL),
 		selected = i.selected,
 		cursor = if i.cursor then { item = i.cursor.item, count = i.cursor.count, durability = i.cursor.durability } else false,
 		window = window,
@@ -575,6 +719,21 @@ local function onAction(player: Player, a: any)
 	elseif t == "collect" then
 		if typeof(a.container) == "string" and isInt(a.index) then
 			collect(i, a.container, a.index)
+		end
+	elseif t == "swapHands" then
+		-- F (Java): main hand <-> off hand
+		i.slots[i.selected], i.slots[OFFHAND] = i.slots[OFFHAND], i.slots[i.selected]
+		i.dirty = true
+		armorChanged(player)
+	elseif t == "equipHeld" then
+		-- right-click with a piece of armour: wear it (swapping out what was worn)
+		local s = i.slots[i.selected]
+		local def = s and ItemRegistry.get(s.item)
+		if def and def.armor then
+			local target = Config.ARMOR_SLOT[def.armor.slot]
+			i.slots[i.selected], i.slots[target] = i.slots[target], s
+			i.dirty = true
+			armorChanged(player)
 		end
 	elseif t == "openInventory" then
 		if i.window.kind ~= "inventory" then
@@ -637,7 +796,7 @@ local function onAction(player: Player, a: any)
 		local slots: { [number]: Stack? }? = nil
 		local size = 0
 		if a.container == "inv" then
-			slots, size = i.slots, N
+			slots, size = i.slots, ALL
 		elseif a.container == "craft" then
 			slots, size = i.craft, craftWidth(i) ^ 2
 		elseif a.container == "block" then

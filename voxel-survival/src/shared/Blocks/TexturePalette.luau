@@ -71,6 +71,22 @@ local palette: { [string]: { number } } = {
 	iron_trapdoor = { 192, 192, 198 },
 	iron_bars = { 110, 112, 118 },
 	vine = { 52, 108, 34 },
+	white_bed = { 234, 236, 236 },
+	orange_bed = { 240, 118, 20 },
+	magenta_bed = { 190, 68, 180 },
+	light_blue_bed = { 58, 176, 218 },
+	yellow_bed = { 248, 198, 40 },
+	lime_bed = { 112, 186, 26 },
+	pink_bed = { 238, 142, 172 },
+	gray_bed = { 62, 68, 72 },
+	light_gray_bed = { 142, 142, 134 },
+	cyan_bed = { 22, 138, 146 },
+	purple_bed = { 122, 42, 172 },
+	blue_bed = { 54, 58, 158 },
+	brown_bed = { 114, 72, 40 },
+	green_bed = { 84, 108, 28 },
+	red_bed = { 160, 38, 34 },
+	black_bed = { 22, 22, 26 },
 }
 
 -- Flowing water and lava levels reuse the source colour (their own keys let the renderer give

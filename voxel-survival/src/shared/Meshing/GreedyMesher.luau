@@ -171,7 +171,7 @@ local function emitShapes(padded: buffer, light: buffer?, groups: { [number]: { 
 							end
 							if visible then
 								faces += 1
-								local tex = faceTex[b * 6 + d]
+								local tex = box[7] or faceTex[b * 6 + d] -- a box may carry its own texture (bed legs)
 								local list = groups[tex]
 								if not list then
 									list = {}

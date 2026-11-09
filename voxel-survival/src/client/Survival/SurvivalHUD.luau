@@ -12,6 +12,7 @@ local TweenService = game:GetService("TweenService")
 
 local SurvivalClient = require(script.Parent.SurvivalClient)
 local CameraController = require(script.Parent.Parent.Player.CameraController)
+local InventoryClient = require(script.Parent.Parent.Player.InventoryClient)
 
 local PIP = 16
 local PIP_GAP = 2
@@ -100,6 +101,9 @@ function SurvivalHUD.setEatProgress(p: number?)
 	end
 end
 
+local armorRow: Frame
+local armorPips: { Pip }
+
 function SurvivalHUD.init()
 	gui = Instance.new("ScreenGui")
 	gui.Name = "SurvivalHUD"
@@ -126,6 +130,12 @@ function SurvivalHUD.init()
 	aRow.Position = UDim2.new(1, 0, 1, -(PIP + 6))
 	airRow = aRow
 	airPips = ap
+	-- armour points (Java: above the health bar, only while wearing armour)
+	local arRow, arp = pipRow(hud, 10, Color3.fromRGB(196, 200, 210), false, false)
+	arRow.AnchorPoint = Vector2.new(0, 1)
+	arRow.Position = UDim2.new(0, 0, 1, -(PIP + 6))
+	armorRow = arRow
+	armorPips = arp
 
 	flash = Instance.new("Frame")
 	flash.BorderSizePixel = 0
@@ -223,6 +233,9 @@ function SurvivalHUD.init()
 		local maxAir = SurvivalClient.maxAir
 		airRow.Visible = air < maxAir
 		setPips(airPips, math.ceil(air / maxAir * 20), true)
+		local armor = InventoryClient.armorPoints()
+		armorRow.Visible = armor > 0
+		setPips(armorPips, armor, false)
 	end)
 end
 

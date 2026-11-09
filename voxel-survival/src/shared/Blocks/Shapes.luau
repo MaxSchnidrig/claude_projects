@@ -65,7 +65,7 @@ local function rot(b: Box, facing: string): Box
 	end
 	local ax, az = map(b[1], b[3])
 	local bx, bz = map(b[4], b[6])
-	return { math.min(ax, bx), b[2], math.min(az, bz), math.max(ax, bx), b[5], math.max(az, bz) }
+	return { math.min(ax, bx), b[2], math.min(az, bz), math.max(ax, bx), b[5], math.max(az, bz), b[7] }
 end
 Shapes.rotate = rot
 
@@ -382,6 +382,32 @@ local function vineBoxes(mask: number): { Box }
 	return out
 end
 
+-- Beds (our own model): a blanket box on short wooden legs at the outer end of each half, and a
+-- pillow on the head half. Designed for "north" (the head half points to -z). An optional 7th
+-- number in a box is the texture index it uses instead of the block's.
+local PLANKS_TEX = BlockRegistry.textureIndex["oak_planks"]
+local PILLOW_TEX = BlockRegistry.textureIndex["white_wool"]
+local function bedBoxes(st: { [string]: any }, collision: boolean): { Box }
+	if collision then
+		return { px(0, 0, 0, 16, 9, 16) } -- Java: 9/16 high
+	end
+	local head = st.part == "head"
+	local legZ0, legZ1 = if head then 0 else 13, if head then 3 else 16
+	local out: { Box } = {
+		px(0, 3, 0, 16, 9, 16),
+		{ 0, 0, legZ0 / 16, 3 / 16, 3 / 16, legZ1 / 16, PLANKS_TEX },
+		{ 13 / 16, 0, legZ0 / 16, 1, 3 / 16, legZ1 / 16, PLANKS_TEX },
+	}
+	if head then
+		table.insert(out, { 2 / 16, 9 / 16, 1 / 16, 14 / 16, 11 / 16, 7 / 16, PILLOW_TEX })
+	end
+	local f = st.facing :: string
+	for i, b in out do
+		out[i] = rot(b, f)
+	end
+	return out
+end
+
 -- Public --------------------------------------------------------------------------------------
 
 -- Boxes of block `id`. `collision` = the movement shape (else the visual shape). Full cubes
@@ -409,6 +435,8 @@ function Shapes.boxes(id: number, get: Getter, collision: boolean): { Box }
 		return { Shapes.doorBox(s.facing, s.open, s.hinge) }
 	elseif shape == "trapdoor" then
 		return { trapdoorBox(st) }
+	elseif shape == "bed" then
+		return bedBoxes(st, collision)
 	elseif shape == "fence_gate" then
 		return gateBoxes(st, collision)
 	elseif shape == "wall" then

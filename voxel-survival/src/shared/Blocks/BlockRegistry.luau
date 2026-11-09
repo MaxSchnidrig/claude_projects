@@ -97,7 +97,7 @@ local isCube = table.create(4096, true) :: { boolean }
 -- Non-cube blocks drawn by the mesher as boxes (Blocks/Shapes); other non-cubes are small models.
 local BOX_SHAPES = {
 	slab = true, stairs = true, fence = true, door = true, ladder = true,
-	trapdoor = true, fence_gate = true, wall = true, pane = true, vine = true,
+	trapdoor = true, fence_gate = true, wall = true, pane = true, vine = true, bed = true,
 }
 local isBoxShape = table.create(4096, false) :: { boolean }
 

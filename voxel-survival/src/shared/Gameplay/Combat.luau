@@ -119,13 +119,38 @@ function Combat.applyInvulnerability(s: HurtState, amount: number, now: number):
 	return amount, true
 end
 
-function Combat.armorReduce(damage: number, armor: number): number
+-- Java CombatRules.getDamageAfterAbsorb: armour points cut damage by up to 80 %, less against
+-- big hits; toughness (diamond) makes big hits count less.
+function Combat.armorReduce(damage: number, armor: number, toughness: number?): number
 	if armor <= 0 then
 		return damage
 	end
-	local points = math.clamp(math.max(armor / 5, armor - damage / 2), 0, 20)
+	local f = 2 + (toughness or 0) / 4
+	local points = math.clamp(armor - damage / f, armor * 0.2, 20)
 	return damage * (1 - points / 25)
 end
+
+-- Java ShieldItem / LivingEntity.isDamageSourceBlocked: blocked when the damage comes from in
+-- front (the direction from the source to the player points against the view direction).
+function Combat.shieldBlocks(lookX: number, lookZ: number, playerX: number, playerZ: number, srcX: number, srcZ: number): boolean
+	local dx, dz = playerX - srcX, playerZ - srcZ
+	local len = math.sqrt(dx * dx + dz * dz)
+	if len < 1e-6 then
+		return false
+	end
+	return (dx / len) * lookX + (dz / len) * lookZ < 0
+end
+
+-- Java BowItem.getPowerForTime: draw time (ticks) -> 0..1. Under 0.1 the bow doesn't shoot.
+function Combat.bowPower(ticks: number): number
+	local f = ticks / 20
+	f = (f * f + f * 2) / 3
+	return math.min(f, 1)
+end
+Combat.CROSSBOW_CHARGE_TICKS = 25 -- Java: 1.25 s without Quick Charge
+Combat.CROSSBOW_SPEED = 3.15 -- blocks/tick
+Combat.BOW_SPEED = 3.0 -- blocks/tick at full power
+Combat.ARROW_DAMAGE = 2.0
 
 function Combat.explosionDamage(power: number, distance: number): number
 	local impact = 1 - distance / (2 * power)

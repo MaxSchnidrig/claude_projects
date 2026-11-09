@@ -101,6 +101,9 @@ function CreativeMenu.init()
 		Remotes.get("DebugAction"):FireServer({ type = "giveItem", item = key, count = count })
 	end
 	for _, def in ItemRegistry.list() do
+		if def.hidden then
+			continue
+		end
 		local b = Instance.new("TextButton")
 		b.Name = def.name .. " " .. def.key
 		b.Text = ""

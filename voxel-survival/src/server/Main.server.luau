@@ -98,6 +98,12 @@ Startup.run("server", {
 	{ name = "DecorService", run = function()
 		require(server.Simulation.DecorService).init()
 	end },
+	{ name = "CombatGearService", run = function()
+		require(server.Player.CombatGearService).init()
+	end },
+	{ name = "BedService", run = function()
+		require(server.Player.BedService).init()
+	end },
 	{ name = "Persistence", run = function()
 		Persistence.startWorld({
 			InventoryService = require(server.Player.InventoryService),

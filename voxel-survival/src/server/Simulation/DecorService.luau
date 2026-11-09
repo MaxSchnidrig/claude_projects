@@ -266,7 +266,7 @@ end
 
 local NEEDS_SUPPORT: { [number]: boolean } = {}
 for id, d in BlockRegistry.byId do
-	if d.shape == "ladder" or d.shape == "door" or d.shape == "vine" or SIGN_SHAPES[d.shape] then
+	if d.shape == "ladder" or d.shape == "door" or d.shape == "vine" or d.shape == "bed" or SIGN_SHAPES[d.shape] then
 		NEEDS_SUPPORT[id] = true
 	end
 end

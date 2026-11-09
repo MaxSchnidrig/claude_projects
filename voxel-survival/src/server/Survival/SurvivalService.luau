@@ -134,10 +134,26 @@ end
 -- 0.5 s after a hit only a stronger hit gets through, and only its difference. Returns the damage
 -- dealt and whether it was a fresh hit (callers apply knockback only then). `bypass` skips the
 -- invulnerability check (falling out of the world).
-function SurvivalService.damage(p: Player, amount: number, cause: string, bypass: boolean?): (number, boolean)
+-- Damage options (Phase 8c): `armor` = worn armour reduces it (attacks, arrows, explosions,
+-- fire, lava; not falls, drowning, starving, the void); `source` = where it came from (block
+-- units) so a raised shield in front can block it.
+export type DamageOpts = { armor: boolean?, source: Vector3? }
+-- Set by CombatGearService (avoids a require cycle): shield and armour.
+local gear: { block: (Player, number, DamageOpts) -> boolean, armor: (Player, number) -> number }? = nil
+function SurvivalService.setGear(g: { block: (Player, number, DamageOpts) -> boolean, armor: (Player, number) -> number })
+	gear = g
+end
+
+function SurvivalService.damage(p: Player, amount: number, cause: string, bypass: boolean?, opts: DamageOpts?): (number, boolean)
 	local humanoid = humanoidOf(p)
 	local s = state(p)
 	if not humanoid or s.dead or humanoid.Health <= 0 or amount <= 0 then
+		return 0, false
+	end
+	-- Java order: a shield blocks first (nothing gets through, no knockback), then the hurt
+	-- cooldown, then armour.
+	if gear and opts and opts.source and gear.block(p, amount, opts) then
+		sync(p, "blocked")
 		return 0, false
 	end
 	local dealt, fresh = amount, true
@@ -147,6 +163,11 @@ function SurvivalService.damage(p: Player, amount: number, cause: string, bypass
 			return 0, false
 		end
 	end
+	if gear and opts and opts.armor then
+		dealt = gear.armor(p, dealt)
+	end
+	-- Java: getting hurt wakes a sleeping player
+	require(script.Parent.Parent.Player.BedService).onHurt(p)
 	SurvivalRules.addExhaustion(s.hunger, SurvivalRules.EXHAUSTION.damage)
 	s.lastCause = cause
 	humanoid.Health = math.max(0, humanoid.Health - dealt)
@@ -262,24 +283,24 @@ local function stepPlayer(p: Player, s: State, dt: number)
 	-- fire burns 1 per second until it runs out or you step into water (Java).
 	if isLava(feetBlock) or isLava(bodyBlock) then
 		s.burning = 15
-		SurvivalService.damage(p, SurvivalRules.LAVA_DAMAGE, "tried to swim in lava")
+		SurvivalService.damage(p, SurvivalRules.LAVA_DAMAGE, "tried to swim in lava", nil, { armor = true })
 	elseif s.inLiquid then
 		s.burning = 0
 	elseif feetBlock == FIRE or bodyBlock == FIRE then
 		-- Java: standing in fire hurts 1 per hit and sets you on fire for 8 s
 		s.burning = math.max(s.burning, 8)
-		SurvivalService.damage(p, 1, "went up in flames")
+		SurvivalService.damage(p, 1, "went up in flames", nil, { armor = true })
 	end
 	-- Java: walking on a lit campfire hurts (1), unless sneaking
 	if grounded and not s.sneaking and block(bx, belowY, bz) == CAMPFIRE then
-		SurvivalService.damage(p, 1, "was burned on a campfire")
+		SurvivalService.damage(p, 1, "was burned on a campfire", nil, { armor = true })
 	end
 	if s.burning > 0 then
 		s.burning -= dt
 		s.fireTimer += dt
 		if s.fireTimer >= 1 then
 			s.fireTimer -= 1
-			SurvivalService.damage(p, 1, "burned to death")
+			SurvivalService.damage(p, 1, "burned to death", nil, { armor = true })
 		end
 	else
 		s.fireTimer = 0
@@ -325,7 +346,12 @@ local function onAction(p: Player, a: any)
 		local seen = (highest - feetY) / BS + 1 -- +1 block of slack for timing
 		local bx, bz = math.floor(root.Position.X / BS), math.floor(root.Position.Z / BS)
 		local here = block(bx, math.floor((feetY + 0.1) / BS), bz)
-		local dmg = SurvivalRules.fallDamage(math.clamp(a.blocks, 0, seen), isLiquid[here + 1])
+		local blocks = math.clamp(a.blocks, 0, seen)
+		local hereDef = BlockRegistry.byId[here]
+		if hereDef and hereDef.shape == "bed" then
+			blocks *= 0.5 -- Java: beds halve fall damage
+		end
+		local dmg = SurvivalRules.fallDamage(blocks, isLiquid[here + 1])
 		if dmg > 0 then
 			SurvivalService.damage(p, dmg, "fell from a high place")
 		end

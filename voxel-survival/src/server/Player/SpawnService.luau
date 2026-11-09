@@ -49,8 +49,22 @@ local function dataLoaded(player: Player): boolean
 	return player:GetAttribute("DataLoaded") == true
 end
 
--- Respawn at the world spawn (phase 6+: beds / personal spawn points).
+-- Where a player respawns instead of the world spawn (BedService: their bed), or nil.
+local resolver: ((Player) -> CFrame?)? = nil
+function SpawnService.setRespawnResolver(fn: (Player) -> CFrame?)
+	resolver = fn
+end
+
+-- Respawn: at the player's bed if it still works, else the world spawn.
 function SpawnService.respawn(player: Player)
+	local r = resolver
+	local at = r and r(player)
+	if at and player.Parent then
+		local b = at.Position / BS
+		player:SetAttribute("SpawnBlock", Vector3.new(math.floor(b.X), math.floor(b.Y), math.floor(b.Z)))
+		AvatarService.spawn(player, at)
+		return
+	end
 	spawn(player)
 end
 

@@ -44,6 +44,8 @@ local MovementController = {}
 MovementController.sprinting = false
 MovementController.inLiquid = false
 MovementController.onLadder = false
+MovementController.sleeping = false -- lying in a bed (BedClient): the view drops to the pillow
+MovementController.bowPull = 0 -- 0..1 while drawing a bow (BlockInteraction): FOV zoom
 MovementController.stepOffset = 0 -- studs; the camera lags behind a step-up and glides after it
 MovementController.sneaking = false -- crouched (Shift held, or no room to stand)
 MovementController.usingItem = false -- set by BlockInteraction while eating
@@ -554,7 +556,8 @@ function MovementController.init()
 			SurvivalClient.setSneaking(crouch)
 		end
 		-- Java eye height eases toward the target (half the difference per tick)
-		local targetEye = if crouch then Config.EYE_HEIGHT_SNEAK else Config.EYE_HEIGHT
+		local targetEye = if MovementController.sleeping then 0.3 * BS
+			elseif crouch then Config.EYE_HEIGHT_SNEAK else Config.EYE_HEIGHT
 		MovementController.eyeHeight += (targetEye - MovementController.eyeHeight) * (1 - 0.5 ^ (dt * 20))
 
 		-- Sprint latch: needs forward movement, food > 6, not sneaking or using an item, and not
@@ -803,7 +806,17 @@ function MovementController.init()
 		elseif humanoid.FloorMaterial ~= Enum.Material.Air then
 			local peak = peakFeetY
 			if peak and peak - feetY > 3 * BS then
-				SurvivalClient.reportFall((peak - feetY) / BS)
+				SurvivalClient.reportFall((peak - feetY) / BS) -- the server halves it on a bed
+			end
+			-- Java: beds bounce you back up at 66 % of the landing speed (not while sneaking)
+			local under = ClientWorld.getBlock(math.floor(p.X / BS), math.floor((feetY + 0.1) / BS), math.floor(p.Z / BS))
+			local ud = under and BlockRegistry.byId[under]
+			if peak and ud and ud.shape == "bed" and not crouch and peak - feetY > 0.3 * BS then
+				local impact = math.sqrt(2 * Config.GRAVITY * (peak - feetY))
+				local vb = impact * 0.66
+				local v0 = root.AssemblyLinearVelocity
+				root.AssemblyLinearVelocity = Vector3.new(v0.X, vb, v0.Z)
+				raiseLimit(feetY / BS, vb)
 			end
 			peakFeetY = nil
 		else
@@ -814,6 +827,8 @@ function MovementController.init()
 		-- sprinting is +30 % speed, so x1.15 (70 -> 80.5). GameRenderer.tickFov eases half the
 		-- remaining gap per tick.
 		local targetFov = if MovementController.sprinting then BASE_FOV * 1.15 else BASE_FOV
+		-- Java: drawing a bow zooms in by up to 15 %
+		targetFov *= 1 - MovementController.bowPull * 0.15
 		camera.FieldOfView += (targetFov - camera.FieldOfView) * (1 - 0.5 ^ (dt * 20))
 	end)
 end

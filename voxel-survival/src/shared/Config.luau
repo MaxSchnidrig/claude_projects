@@ -139,6 +139,11 @@ Config.CONTAINER_REACH = 6 -- blocks: further away and an open container window 
 
 Config.HOTBAR_SLOTS = 9
 Config.INVENTORY_SLOTS = 36 -- 9 hotbar + 27 main (main inventory UI arrives in phase 3)
+-- Phase 8c: armour and the off hand live after the inventory in the same slot list.
+Config.ARMOR_SLOT = { head = 37, chest = 38, legs = 39, feet = 40 }
+Config.OFFHAND_SLOT = 41
+Config.PLAYER_SLOTS = 41 -- everything a player carries (saves, syncs)
+Config.KEY_SWAP_HANDS = "F"
 -- Items given on spawn while testing in Studio (ignored in live games).
 Config.STUDIO_STARTER_KIT = {
 	{ "wooden_pickaxe", 1 },

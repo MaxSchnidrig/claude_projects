@@ -22,12 +22,17 @@ export type ToolDef = {
 -- Food values (classic): hunger points restored and saturation gained.
 export type FoodDef = { hunger: number, saturation: number }
 
+-- Armour (Java values): slot "head" | "chest" | "legs" | "feet", armour points, toughness.
+export type ArmorDef = { slot: string, defense: number, toughness: number, material: string }
+
 export type ItemDefInput = {
 	key: string,
 	name: string,
 	stack: number?, -- max stack size (default 64)
 	tool: ToolDef?,
 	food: FoodDef?,
+	armor: ArmorDef?,
+	hidden: boolean?, -- not listed in the Studio test menu (internal states like a loaded crossbow)
 	color: { number }?, -- placeholder icon colour (RGB)
 }
 
@@ -146,5 +151,43 @@ table.insert(defs, {
 	},
 	color = { 200, 200, 200 },
 })
+
+-- Armour: Java defense points (helmet, chestplate, leggings, boots), toughness, durability.
+local ARMOR = {
+	{ prefix = "leather", label = "Leather", defense = { 1, 3, 2, 1 }, toughness = 0, durability = { 55, 80, 75, 65 }, color = { 150, 96, 56 } },
+	{ prefix = "chainmail", label = "Chainmail", defense = { 2, 5, 4, 1 }, toughness = 0, durability = { 165, 240, 225, 195 }, color = { 150, 152, 160 } },
+	{ prefix = "iron", label = "Iron", defense = { 2, 6, 5, 2 }, toughness = 0, durability = { 165, 240, 225, 195 }, color = { 214, 214, 218 } },
+	{ prefix = "golden", label = "Golden", defense = { 2, 5, 3, 1 }, toughness = 0, durability = { 77, 112, 105, 91 }, color = { 246, 210, 60 } },
+	{ prefix = "diamond", label = "Diamond", defense = { 3, 8, 6, 3 }, toughness = 2, durability = { 363, 528, 495, 429 }, color = { 100, 226, 226 } },
+}
+local PIECES = {
+	{ key = "helmet", label = "Helmet", slot = "head" },
+	{ key = "chestplate", label = "Chestplate", slot = "chest" },
+	{ key = "leggings", label = "Leggings", slot = "legs" },
+	{ key = "boots", label = "Boots", slot = "feet" },
+}
+for _, m in ARMOR do
+	for i, piece in PIECES do
+		local label = if m.prefix == "leather" and piece.key == "helmet" then "Leather Cap"
+			elseif m.prefix == "leather" and piece.key == "chestplate" then "Leather Tunic"
+			elseif m.prefix == "leather" and piece.key == "leggings" then "Leather Pants"
+			else `{m.label} {piece.label}`
+		table.insert(defs, {
+			key = `{m.prefix}_{piece.key}`,
+			name = label,
+			stack = 1,
+			tool = { kind = "armor", tier = 0, speed = 1, durability = m.durability[i] },
+			armor = { slot = piece.slot, defense = m.defense[i], toughness = m.toughness, material = m.prefix },
+			color = m.color,
+		})
+	end
+end
+-- Tripwire hook: needed for the crossbow now; it becomes a placeable block with the Volt system.
+table.insert(defs, { key = "tripwire_hook", name = "Tripwire Hook", color = { 150, 150, 156 } })
+-- Shield, bow, crossbow (Java durability). A loaded crossbow is its own internal item.
+table.insert(defs, { key = "shield", name = "Shield", stack = 1, tool = { kind = "shield", tier = 0, speed = 1, durability = 336 }, color = { 140, 104, 64 } })
+table.insert(defs, { key = "bow", name = "Bow", stack = 1, tool = { kind = "bow", tier = 0, speed = 1, durability = 384 }, color = { 130, 92, 52 } })
+table.insert(defs, { key = "crossbow", name = "Crossbow", stack = 1, tool = { kind = "crossbow", tier = 0, speed = 1, durability = 465 }, color = { 110, 80, 50 } })
+table.insert(defs, { key = "crossbow_loaded", name = "Crossbow", stack = 1, hidden = true, tool = { kind = "crossbow", tier = 0, speed = 1, durability = 465 }, color = { 110, 80, 50 } })
 
 return defs

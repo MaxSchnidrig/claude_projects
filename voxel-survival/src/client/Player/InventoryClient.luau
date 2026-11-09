@@ -58,7 +58,7 @@ function InventoryClient.init()
 		if typeof(data) ~= "table" or typeof(data.slots) ~= "table" then
 			return
 		end
-		InventoryClient.slots = unpackSlots(data.slots, Config.INVENTORY_SLOTS)
+		InventoryClient.slots = unpackSlots(data.slots, Config.PLAYER_SLOTS)
 		InventoryClient.cursor = stackOrNil(data.cursor)
 		local w = data.window
 		if typeof(w) == "table" and typeof(w.kind) == "string" then
@@ -79,8 +79,10 @@ function InventoryClient.init()
 		end
 		InventoryClient.syncCount += 1
 		local n = 0
-		for _, st in InventoryClient.slots do
-			n += (st :: Stack).count
+		for idx, st in InventoryClient.slots do
+			if idx <= Config.INVENTORY_SLOTS then
+				n += (st :: Stack).count
+			end
 		end
 		InventoryClient.itemCount = n
 		changed:Fire(false)
@@ -146,6 +148,34 @@ end
 -- Q while hovering a slot in an open window.
 function InventoryClient.dropSlot(container: string, index: number, all: boolean)
 	send({ type = "dropSlot", container = container, index = index, all = all })
+end
+
+-- F: swap the held item with the off hand.
+function InventoryClient.swapHands()
+	send({ type = "swapHands" })
+end
+
+-- Right-click with a piece of armour: wear it.
+function InventoryClient.equipHeld()
+	send({ type = "equipHeld" })
+end
+
+function InventoryClient.offhand(): Stack?
+	return InventoryClient.slots[Config.OFFHAND_SLOT]
+end
+
+-- Total armour points worn (HUD).
+function InventoryClient.armorPoints(): number
+	local ItemRegistry = require(Shared.Items.ItemRegistry)
+	local total = 0
+	for _, idx in Config.ARMOR_SLOT do
+		local s = InventoryClient.slots[idx]
+		local def = s and ItemRegistry.get(s.item)
+		if def and def.armor then
+			total += def.armor.defense
+		end
+	end
+	return total
 end
 
 function InventoryClient.dropCursor(all: boolean)

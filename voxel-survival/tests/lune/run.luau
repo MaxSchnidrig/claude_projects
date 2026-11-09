@@ -1379,6 +1379,47 @@ test("8b2: trapdoors, fence gates, walls, panes, bars, vines, hanging signs", fu
 	eq(BlockRegistry.byId[c[1].id].key, "oak_wall_hanging_sign_east")
 end)
 
+test("8c: armour maths, shield direction, bow power, beds", function()
+	local Combat = Loader.require("src/shared/Gameplay/Combat")
+	local Placement = Loader.require("src/shared/Blocks/Placement")
+	local Shapes = Loader.require("src/shared/Blocks/Shapes")
+	local ItemRegistry = Loader.require("src/shared/Items/ItemRegistry")
+	local SaveFormat = Loader.require("src/shared/Persistence/SaveFormat")
+	local id = BlockRegistry.id
+	-- Java: full iron (15 points) vs a 10 damage hit: 10 * (1 - max(3, 15 - 5) / 25) = 6
+	eq(math.floor(Combat.armorReduce(10, 15, 0) * 1000 + 0.5) / 1000, 6)
+	-- diamond (20 points, toughness 8) vs 20 damage: f = 4, points = 20 - 5 = 15 -> 8
+	eq(math.floor(Combat.armorReduce(20, 20, 8) * 1000 + 0.5) / 1000, 8)
+	eq(Combat.armorReduce(5, 0, 0), 5)
+	eq(ItemRegistry.get("diamond_chestplate").armor.defense, 8)
+	eq(ItemRegistry.get("leather_boots").tool.durability, 65)
+	-- shield: looking north (-z), a zombie at z - 3 is in front; one behind is not
+	eq(Combat.shieldBlocks(0, -1, 0, 0, 0, -3), true)
+	eq(Combat.shieldBlocks(0, -1, 0, 0, 0, 3), false)
+	-- bow: 20 ticks = full power, 1 tick is too weak to shoot
+	eq(Combat.bowPower(20), 1)
+	assert(Combat.bowPower(1) < 0.1, "too short")
+	-- beds: foot where clicked, head the way you look; halves need each other
+	local cells: { [string]: number } = {}
+	local function get(x: number, y: number, z: number): number?
+		return cells[`{x},{y},{z}`] or (if y <= 0 then 1 else 0)
+	end
+	local c = Placement.resolve(id("white_bed"), { hx = 0, hy = 0, hz = 0, nx = 0, ny = 1, nz = 0, px = 0.5, py = 1, pz = 0.5, lx = 0, lz = -1 }, get) :: any
+	eq(#c, 2); eq(c[2].z, -1); eq(BlockRegistry.byId[c[2].id].state.part, "head")
+	cells["0,1,0"] = c[1].id
+	cells["0,1,-1"] = c[2].id
+	eq((Placement.supported(c[2].id, 0, 1, -1, get)), true)
+	cells["0,1,0"] = 0
+	local ok, drops = Placement.supported(c[2].id, 0, 1, -1, get)
+	eq(ok, false); eq(drops, true) -- the head drops the bed
+	eq(Shapes.boxes(c[1].id, function() return 0 end, true)[1][5], 9 / 16)
+	-- the bed respawn point and rest counter are saved
+	local rec = SaveFormat.encodePlayer({ slots = { [38] = { item = "iron_chestplate", count = 1, durability = 200 } }, selected = 1, health = 20, food = 20,
+		saturation = 5, exhaustion = 0, air = 15, pos = nil, yaw = 0, bed = Loader.globals.Vector3.new(3, 70, -4), sinceRest = 1234 })
+	local back = SaveFormat.decodePlayer(rec, 41) :: any
+	eq(back.bed.Y, 70); eq(back.sinceRest, 1234); eq(back.slots[38].item, "iron_chestplate")
+end)
+
 print(`\n{passed} passed, {failed} failed`)
 if failed > 0 then
 	process.exit(1)

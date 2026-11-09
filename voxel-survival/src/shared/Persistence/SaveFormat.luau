@@ -240,6 +240,8 @@ export type PlayerState = {
 	air: number,
 	pos: Vector3?, -- feet, block units
 	yaw: number,
+	bed: Vector3?, -- respawn point: the bed's head block (Phase 8c)
+	sinceRest: number?, -- ticks since the player last slept (the insomnia counter)
 }
 
 function SaveFormat.encodePlayer(p: PlayerState): { [string]: any }
@@ -254,6 +256,8 @@ function SaveFormat.encodePlayer(p: PlayerState): { [string]: any }
 		air = p.air,
 		pos = if p.pos then { p.pos.X, p.pos.Y, p.pos.Z } else nil,
 		yaw = p.yaw,
+		bed = if p.bed then { p.bed.X, p.bed.Y, p.bed.Z } else nil,
+		rest = p.sinceRest,
 	}
 end
 
@@ -284,6 +288,11 @@ function SaveFormat.decodePlayer(record: any, inventorySlots: number): PlayerSta
 		air = num(record.air, 15, 0, 15),
 		pos = pos,
 		yaw = num(record.yaw, 0, -1000, 1000),
+		bed = if typeof(record.bed) == "table" and typeof(record.bed[1]) == "number" and typeof(record.bed[2]) == "number"
+				and typeof(record.bed[3]) == "number"
+			then Vector3.new(math.floor(record.bed[1]), math.floor(record.bed[2]), math.floor(record.bed[3]))
+			else nil,
+		sinceRest = num(record.rest, 0, 0, 1e9),
 	}
 end
 

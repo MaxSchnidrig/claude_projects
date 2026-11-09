@@ -66,6 +66,29 @@ do
 	table.insert(shaped, { pattern = { "SSS", "SLS", "SSS" }, key = { S = "stick", L = "leather" }, result = { item = "item_frame", count = 1 } })
 end
 
+-- Armour, shield, ranged weapons (Phase 8c)
+do
+	local ARMOR_SHAPES = {
+		helmet = { "MMM", "M M" },
+		chestplate = { "M M", "MMM", "MMM" },
+		leggings = { "MMM", "M M", "M M" },
+		boots = { "M M", "M M" },
+	}
+	for prefix, material in { leather = "leather", iron = "iron_ingot", golden = "gold_ingot", diamond = "diamond" } do
+		for piece, pattern in ARMOR_SHAPES do
+			table.insert(shaped, { pattern = pattern, key = { M = material }, result = { item = `{prefix}_{piece}`, count = 1 } })
+		end
+	end
+	-- chainmail has no recipe in Java (trades and mob drops)
+	-- beds: 3 wool of the bed's colour + 3 planks; only white wool exists so far
+	table.insert(shaped, { pattern = { "WWW", "PPP" }, key = { W = "white_wool", P = "#planks" }, result = { item = "white_bed", count = 1 } })
+	table.insert(shaped, { pattern = { "WIW", "WWW", " W " }, key = { W = "#planks", I = "iron_ingot" }, result = { item = "shield", count = 1 } })
+	table.insert(shaped, { pattern = { " SX", "S X", " SX" }, key = { S = "stick", X = "string" }, result = { item = "bow", count = 1 } })
+	table.insert(shaped, { pattern = { "SIS", "XTX", " S " }, key = { S = "stick", I = "iron_ingot", X = "string", T = "tripwire_hook" }, result = { item = "crossbow", count = 1 } })
+	table.insert(shaped, { pattern = { "I", "S", "P" }, key = { I = "iron_ingot", S = "stick", P = "#planks" }, result = { item = "tripwire_hook", count = 2 } })
+	table.insert(shaped, { pattern = { "F", "S", "E" }, key = { F = "flint", S = "stick", E = "feather" }, result = { item = "arrow", count = 4 } })
+end
+
 -- Tools: same shapes for every material tier.
 local TOOL_MATERIALS = {
 	{ prefix = "wooden", material = "#planks" },
@@ -152,6 +175,7 @@ Recipes.fuel = {
 	oak_trapdoor = 15, spruce_trapdoor = 15, birch_trapdoor = 15,
 	oak_fence_gate = 15, spruce_fence_gate = 15, birch_fence_gate = 15,
 	oak_hanging_sign = 10, spruce_hanging_sign = 10, birch_hanging_sign = 10,
+	bow = 15, crossbow = 15, shield = 15,
 } :: { [string]: number }
 
 return Recipes

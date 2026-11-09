@@ -17,6 +17,7 @@
 --   490, 491  glass pane, iron bars (connections follow neighbours)
 --   500..530  vines         one id per set of faces (north 1, east 2, south 4, west 8, up 16)
 --   540..599  hanging signs oak, spruce, birch x 20: 16 ceiling rotations + 4 wall facings
+--   600..727  beds          16 colours x 8 (facing x foot / head)
 
 local ShapedDefs = {}
 
@@ -42,6 +43,7 @@ ShapedDefs.BASE_BLOCK = {
 }
 
 local WOODS = { "oak", "spruce", "birch" }
+ShapedDefs.BED_COLORS = { "white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray", "light_gray", "cyan", "purple", "blue", "brown", "green", "red", "black" }
 ShapedDefs.WOODS = WOODS
 local DOORS = { "oak", "spruce", "birch", "iron" }
 ShapedDefs.DOORS = DOORS
@@ -238,6 +240,26 @@ function ShapedDefs.list(): { Def }
 				opacity = 0, shape = "wall_hanging_sign", state = { facing = facing }, family = family,
 				drop = family, noItem = true, icon = "hanging_sign", sound = "wood", flammable = { 5, 20 },
 			})
+		end
+	end
+	-- beds (Java dye colour order)
+	for c, colour in ShapedDefs.BED_COLORS do
+		local family = `{colour}_bed`
+		local name = string.gsub(" " .. colour, "_(%a)", function(a) return " " .. string.upper(a) end)
+		name = string.gsub(name, " (%a)", function(a) return " " .. string.upper(a) end)
+		name = string.sub(name, 2) .. " Bed"
+		for f, facing in FACINGS do
+			for part = 0, 1 do
+				local id = 600 + (c - 1) * 8 + (f - 1) * 2 + part
+				local key = if f == 1 and part == 0 then family else `{family}_{facing}_{if part == 1 then "head" else "foot"}`
+				table.insert(out, {
+					id = id, key = key, name = name, hardness = 0.2, textures = { all = family },
+					transparent = true, opacity = 0, shape = "bed",
+					state = { facing = facing, part = if part == 1 then "head" else "foot", colour = colour },
+					family = family, drop = if part == 1 then family else false, noItem = key ~= family,
+					icon = "bed", sound = "wool", flammable = nil,
+				})
+			end
 		end
 	end
 	return out

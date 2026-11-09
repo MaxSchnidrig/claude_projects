@@ -85,6 +85,9 @@ export type Mob = {
 	-- projectiles
 	owner: string?,
 	ownerId: number?,
+	ownerPlayer: Player?, -- arrows a player shot (never hit them; pickup allowed)
+	crit: boolean?,
+	pickup: boolean?,
 	damage: number?,
 	stuck: number?,
 }
@@ -352,7 +355,7 @@ end
 -- Damage a player from a mob (melee / arrow). A fresh hit pushes the player away from `from`
 -- with Java's 0.4 knockback (the client applies it to its own character).
 function MobService.hurtPlayer(t: Target, amount: number, cause: string, from: Vector3)
-	local dealt, fresh = SurvivalService.damage(t.player, amount, cause)
+	local dealt, fresh = SurvivalService.damage(t.player, amount, cause, nil, { armor = true, source = from })
 	if dealt > 0 and fresh then
 		local d = Vector3.new(t.feet.X - from.X, 0, t.feet.Z - from.Z)
 		Remotes.get("Knockback"):FireClient(t.player, { dir = d, strength = Combat.KNOCKBACK })
@@ -493,6 +496,20 @@ local function stepProjectile(m: Mob, dt: number)
 		m.stuck -= dt
 		if (m.stuck :: number) <= 0 then
 			MobService.remove(m)
+			return
+		end
+		-- Java: an arrow a player shot is picked up by walking over it
+		local pick = arrowPickup
+		if m.pickup and pick then
+			for _, t in MobService.targets() do
+				local f = t.feet
+				if math.abs(m.x - f.X) < 1 and math.abs(m.z - f.Z) < 1 and m.y >= f.Y - 0.5 and m.y <= f.Y + 2.3 then
+					if pick(t.player) then
+						MobService.remove(m)
+						return
+					end
+				end
+			end
 		end
 		return
 	end
@@ -511,9 +528,12 @@ local function stepProjectile(m: Mob, dt: number)
 			end
 			m.x, m.y, m.z = nx, ny, nz
 			local dmg = math.ceil(math.clamp(speed * (m.damage or 2), 0, 2147483647))
+			if m.crit then
+				dmg += math.random(0, dmg // 2 + 1)
+			end
 			for _, t in targets do
 				local f = t.feet
-				if math.abs(m.x - f.X) < 0.55 and math.abs(m.z - f.Z) < 0.55 and m.y >= f.Y - 0.25 and m.y <= f.Y + 2.05 then
+				if t.player ~= m.ownerPlayer and math.abs(m.x - f.X) < 0.55 and math.abs(m.z - f.Z) < 0.55 and m.y >= f.Y - 0.25 and m.y <= f.Y + 2.05 then
 					MobService.hurtPlayer(t, dmg, `was shot by {m.owner or "an arrow"}`, Vector3.new(m.x - vx * 4, m.y, m.z - vz * 4))
 					MobService.remove(m)
 					return
@@ -529,7 +549,7 @@ local function stepProjectile(m: Mob, dt: number)
 								ai.dodge(o)
 							end
 						else
-							MobService.damage(o, dmg, { kind = "projectile", from = Vector3.new(m.x - vx * 4, m.y, m.z - vz * 4), living = true })
+							MobService.damage(o, dmg, { kind = "projectile", from = Vector3.new(m.x - vx * 4, m.y, m.z - vz * 4), living = true, attacker = m.ownerPlayer })
 							MobService.remove(m)
 							return
 						end
@@ -552,8 +572,10 @@ local function stepProjectile(m: Mob, dt: number)
 	end
 end
 
--- Fire an arrow (block units) from `from` with velocity `vel` (blocks/s).
-function MobService.shootArrow(from: Vector3, vel: Vector3, baseDamage: number, owner: string, ownerId: number?)
+-- Fire an arrow (block units) from `from` with velocity `vel` (blocks/s). `opts.player`: shot
+-- by a player (it never hits them, and with `pickup` it can be collected from the ground);
+-- `opts.crit`: a critical arrow (Java: + random 0 .. damage / 2 + 1).
+function MobService.shootArrow(from: Vector3, vel: Vector3, baseDamage: number, owner: string, ownerId: number?, opts: { player: Player?, crit: boolean?, pickup: boolean? }?)
 	local a = MobService.spawn("arrow", from.X, from.Y, from.Z)
 	if a then
 		a.vx, a.vy, a.vz = vel.X, vel.Y, vel.Z
@@ -561,7 +583,17 @@ function MobService.shootArrow(from: Vector3, vel: Vector3, baseDamage: number, 
 		a.owner = owner
 		a.ownerId = ownerId
 		a.persistent = false
+		if opts then
+			a.ownerPlayer = opts.player
+			a.crit = opts.crit
+			a.pickup = opts.pickup
+		end
 	end
+end
+
+local arrowPickup: ((Player) -> boolean)? = nil
+function MobService.setArrowPickup(fn: (Player) -> boolean)
+	arrowPickup = fn
 end
 
 ---------------------------------------------------------------------------------------------
@@ -702,6 +734,18 @@ function MobService.count(category: string, near: Vector3?, radius: number?): nu
 	return n
 end
 
+-- Any living mob of `category` whose feet are inside the box (block units)?
+function MobService.anyIn(category: string, lo: Vector3, hi: Vector3): boolean
+	for _, m in mobs do
+		if m.alive and m.def.category == category and m.x >= lo.X and m.x <= hi.X and m.y >= lo.Y and m.y <= hi.Y
+			and m.z >= lo.Z and m.z <= hi.Z
+		then
+			return true
+		end
+	end
+	return false
+end
+
 function MobService.init()
 	ai = require(script.Parent.MobAI)
 	ai.init(MobService)
@@ -720,8 +764,8 @@ function MobService.init()
 		end
 	end)
 
-	ExplosionService.setHooks(function(p: Player, amount: number, cause: string)
-		SurvivalService.damage(p, amount, cause)
+	ExplosionService.setHooks(function(p: Player, amount: number, cause: string, center: Vector3?)
+		SurvivalService.damage(p, amount, cause, nil, { armor = true, source = center })
 	end, explosionDamage)
 
 	Remotes.get("AttackMob").OnServerEvent:Connect(onAttack)

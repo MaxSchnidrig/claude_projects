@@ -28,7 +28,7 @@ local RESISTANT = {
 local ExplosionService = {}
 
 -- Hooks set by other services (avoid require cycles).
-local damagePlayer: ((Player, number, string) -> ())? = nil
+local damagePlayer: ((Player, number, string, Vector3?) -> ())? = nil
 local damageMobs: ((center: Vector3, power: number) -> ())? = nil
 local primeTnt: ((x: number, y: number, z: number) -> ())? = nil
 local TNT = BlockRegistry.id("tnt")
@@ -37,7 +37,7 @@ local TNT = BlockRegistry.id("tnt")
 function ExplosionService.setTntHook(fn: (x: number, y: number, z: number) -> ())
 	primeTnt = fn
 end
-function ExplosionService.setHooks(playerDamage: (Player, number, string) -> (), mobDamage: (Vector3, number) -> ())
+function ExplosionService.setHooks(playerDamage: (Player, number, string, Vector3?) -> (), mobDamage: (Vector3, number) -> ())
 	damagePlayer = playerDamage
 	damageMobs = mobDamage
 end
@@ -99,7 +99,7 @@ function ExplosionService.explode(center: Vector3, power: number, cause: string,
 			local dmg = Combat.explosionDamage(power, d)
 			if dmg > 0 then
 				if damagePlayer then
-					(damagePlayer :: (Player, number, string) -> ())(p, dmg, cause)
+					(damagePlayer :: (Player, number, string, Vector3?) -> ())(p, dmg, cause, center)
 				end
 				local dir = (pos - center)
 				dir = if dir.Magnitude > 0.01 then dir.Unit else Vector3.yAxis

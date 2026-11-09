@@ -48,6 +48,7 @@ type Widget = {
 	durabilityBg: Frame,
 	durability: Frame,
 	shown: string?,
+	hint: string?, -- faint label of an empty armour / off-hand slot
 }
 
 local gui: ScreenGui
@@ -304,7 +305,28 @@ local function build(kind: string)
 	shiftMarker = marker
 	y += 26
 
-	if kind == "inventory" or kind == "crafting_table" then
+	if kind == "inventory" then
+		-- armour column (head, chest, legs, feet) and the off hand, then the 2x2 grid
+		local hints = { "Head", "Chest", "Legs", "Feet" }
+		for r, part in { "head", "chest", "legs", "feet" } do
+			local w = slot(PAD, y + (r - 1) * (SLOT + GAP), "inv", Config.ARMOR_SLOT[part])
+			w.hint = hints[r]
+			w.shown = "\0" -- force the first draw (shows the hint)
+		end
+		local off = slot(PAD + SLOT + GAP * 3, y + 3 * (SLOT + GAP), "inv", Config.OFFHAND_SLOT)
+		off.hint = "Off hand"
+		off.shown = "\0"
+		local cw = 2
+		local gx = PAD + 190
+		local gridY = y + (rowsHeight(4) - rowsHeight(cw)) / 2
+		grid(gx, gridY, cw, cw, "craft", 1)
+		local gridW = cw * SLOT + (cw - 1) * GAP
+		local midY = gridY + rowsHeight(cw) / 2
+		local fill = arrow(gx + gridW + 20, midY - 4)
+		fill.Size = UDim2.fromScale(1, 1)
+		slot(gx + gridW + 90, midY - (SLOT + 8) / 2, "result", 1, true)
+		y += rowsHeight(4)
+	elseif kind == "crafting_table" then
 		local cw = if kind == "crafting_table" then 3 else 2
 		local gx = PAD + (if cw == 3 then 60 else 110)
 		grid(gx, y, cw, cw, "craft", 1)
@@ -404,6 +426,17 @@ function refresh()
 				ItemIcon.draw(w.icon, key)
 			else
 				ItemIcon.clear(w.icon)
+				if w.hint then
+					local h = Instance.new("TextLabel")
+					h.BackgroundTransparency = 1
+					h.Size = UDim2.fromScale(1, 1)
+					h.Font = Enum.Font.Gotham
+					h.TextSize = 10
+					h.TextWrapped = true
+					h.TextColor3 = Color3.fromRGB(110, 114, 126)
+					h.Text = w.hint :: string
+					h.Parent = w.icon
+				end
 			end
 		end
 		w.count.Text = if s and s.count > 1 then tostring(s.count) else ""

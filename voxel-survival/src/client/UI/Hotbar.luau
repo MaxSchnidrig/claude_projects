@@ -48,6 +48,9 @@ local nameLabel: TextLabel
 
 local shownItems: { [number]: string? } = {}
 
+local offhandUi: { frame: Frame, icon: Frame, count: TextLabel }? = nil
+local offhandShown: string? = nil
+
 local function refresh(selectionChanged: boolean)
 	for i, ui in slots do
 		local stack = InventoryClient.slots[i]
@@ -75,6 +78,21 @@ local function refresh(selectionChanged: boolean)
 		ui.stroke.Color = if selected then Color3.fromRGB(250, 250, 255) else Color3.fromRGB(190, 192, 200)
 		ui.stroke.Transparency = if selected then 0 else 0.45
 		ui.frame.Position = UDim2.fromOffset((i - 1) * (SLOT + GAP), if selected then -4 else 0)
+	end
+	local o = offhandUi
+	if o then
+		local st = InventoryClient.offhand()
+		local key = st and st.item
+		o.frame.Visible = key ~= nil
+		if key ~= offhandShown then
+			offhandShown = key
+			if key then
+				ItemIcon.draw(o.icon, key)
+			else
+				ItemIcon.clear(o.icon)
+			end
+		end
+		o.count.Text = if st and st.count > 1 then tostring(st.count) else ""
 	end
 	if selectionChanged then
 		local stack = InventoryClient.heldStack()
@@ -181,6 +199,43 @@ local function buildGui()
 		frame.Parent = bar
 		slots[i] = { frame = frame, stroke = stroke, icon = icon, count = count, durability = durability, durabilityBg = durabilityBg }
 	end
+
+	-- the off hand (Java: a slot left of the hotbar, only while holding something there)
+	local off = Instance.new("Frame")
+	off.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
+	off.BackgroundTransparency = 0.3
+	off.BorderSizePixel = 0
+	off.Size = UDim2.fromOffset(SLOT, SLOT)
+	off.Position = UDim2.fromOffset(-(SLOT + GAP * 4), 0)
+	off.Visible = false
+	local oc = Instance.new("UICorner")
+	oc.CornerRadius = UDim.new(0, 4)
+	oc.Parent = off
+	local os_ = Instance.new("UIStroke")
+	os_.Color = Color3.fromRGB(190, 192, 200)
+	os_.Transparency = 0.45
+	os_.Parent = off
+	local oIcon = Instance.new("Frame")
+	oIcon.BackgroundTransparency = 1
+	oIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+	oIcon.Position = UDim2.fromScale(0.5, 0.48)
+	oIcon.Size = UDim2.fromOffset(30, 30)
+	oIcon.Parent = off
+	local oCount = Instance.new("TextLabel")
+	oCount.BackgroundTransparency = 1
+	oCount.AnchorPoint = Vector2.new(1, 1)
+	oCount.Position = UDim2.new(1, -3, 1, -1)
+	oCount.Size = UDim2.fromOffset(30, 16)
+	oCount.Font = Enum.Font.GothamBold
+	oCount.TextSize = 14
+	oCount.TextXAlignment = Enum.TextXAlignment.Right
+	oCount.TextColor3 = Color3.fromRGB(250, 250, 250)
+	oCount.TextStrokeTransparency = 0.2
+	oCount.ZIndex = 3
+	oCount.Text = ""
+	oCount.Parent = off
+	off.Parent = bar
+	offhandUi = { frame = off, icon = oIcon, count = oCount }
 
 	step("gui built")
 end

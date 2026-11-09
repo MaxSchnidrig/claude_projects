@@ -14,6 +14,8 @@ export type ItemDef = {
 	tool: ItemDefs.ToolDef?,
 	food: ItemDefs.FoodDef?,
 	color: { number },
+	armor: ItemDefs.ArmorDef?,
+	hidden: boolean?, -- not in the Studio test menu
 	icon: string?, -- block items drawn as a shape icon (ItemIconGen) instead of the flat texture
 	iconTexture: string?, -- texture key that icon is painted with
 }
@@ -57,6 +59,8 @@ for _, d in ItemDefs do
 		block = nil,
 		tool = d.tool,
 		food = d.food,
+		armor = d.armor,
+		hidden = d.hidden,
 		color = d.color or { 255, 0, 255 },
 	}
 end

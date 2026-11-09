@@ -119,6 +119,14 @@ function AudioClient.init(deps: { [string]: any })
 			AudioClient.play("bucket.empty_lava")
 		elseif held == "flint_and_steel" then
 			AudioClient.play("fire.ignite")
+		elseif held == "bow_shoot" then
+			AudioClient.play("bow.shoot")
+		elseif held == "crossbow_load" then
+			AudioClient.play("crossbow.load")
+		elseif held == "crossbow_shoot" then
+			AudioClient.play("crossbow.shoot")
+		elseif held == "armor_equip" then
+			AudioClient.play("armor.equip")
 		elseif held == "door_open" then
 			AudioClient.play("door.open")
 		elseif held == "door_close" then
@@ -178,6 +186,8 @@ function AudioClient.init(deps: { [string]: any })
 	Remotes.get("SurvivalSync").OnClientEvent:Connect(function(p: any)
 		if typeof(p) == "table" and p.event == "hurt" then
 			AudioClient.play("hurt")
+		elseif typeof(p) == "table" and p.event == "blocked" then
+			AudioClient.play("shield.block")
 		end
 	end)
 

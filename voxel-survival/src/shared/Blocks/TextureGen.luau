@@ -812,6 +812,39 @@ recipes.vine = function(seed)
 	return img
 end
 
+-- Bed blankets (our own design): soft quilted squares in the bed's colour.
+local BED_COLORS: { [string]: RGB } = {
+	white = { 234, 236, 236 },
+	orange = { 240, 118, 20 },
+	magenta = { 190, 68, 180 },
+	light_blue = { 58, 176, 218 },
+	yellow = { 248, 198, 40 },
+	lime = { 112, 186, 26 },
+	pink = { 238, 142, 172 },
+	gray = { 62, 68, 72 },
+	light_gray = { 142, 142, 134 },
+	cyan = { 22, 138, 146 },
+	purple = { 122, 42, 172 },
+	blue = { 54, 58, 158 },
+	brown = { 114, 72, 40 },
+	green = { 84, 108, 28 },
+	red = { 160, 38, 34 },
+	black = { 22, 22, 26 },
+}
+for colour, c in BED_COLORS do
+	recipes[`{colour}_bed`] = function(seed)
+		local img = new()
+		for y = 0, N - 1 do
+			for x = 0, N - 1 do
+				local seam = x % 8 == 0 or y % 8 == 0
+				local f = (if seam then 0.82 else 1) + (rnd(seed, x, y) - 0.5) * 0.08
+				put(img, x, y, shade(c, f))
+			end
+		end
+		return img
+	end
+end
+
 -- Ladder: the rails and rungs are real geometry; this is their wood, with a lengthwise grain.
 recipes.ladder = function(seed)
 	local img = new()

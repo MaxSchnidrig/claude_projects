@@ -207,6 +207,11 @@ local function tryInteract(shift: boolean): boolean
 		end
 		return true
 	end
+	if not shift and def and def.shape == "bed" then
+		Remotes.get("Bed"):FireServer({ type = "use", x = hit.x, y = hit.y, z = hit.z })
+		BlockInteraction.swing:Fire()
+		return true
+	end
 	local heldKey = InventoryClient.heldItem()
 	if heldKey == "item_frame" or heldKey == "glow_item_frame" then
 		if hit.nx ~= 0 or hit.ny ~= 0 or hit.nz ~= 0 then
@@ -380,6 +385,127 @@ local function updateEating(dt: number)
 	end
 end
 
+-- Bow, crossbow and shield (Phase 8c): held right button. Server: CombatGearService.
+type GearUse = { kind: string, start: number, slot: number }
+local gearUse: GearUse? = nil
+local gearHeld = false
+
+local function hasArrows(): boolean
+	for idx, st in InventoryClient.slots do
+		if st and st.item == "arrow" then
+			return true
+		end
+	end
+	return false
+end
+
+local function gearRemote(m: { [string]: any })
+	Remotes.get("Gear"):FireServer(m)
+end
+
+local function lookVector(): Vector3?
+	local _, look = CameraController.getEyeAndLook()
+	return look
+end
+
+-- What a right-click starts with the held items (nil = nothing gear-related). `aimingAtBlock`
+-- lets a held block be placed instead of raising an off-hand shield (Java: main hand first).
+local function gearFor(aimingAtBlock: boolean): string?
+	local held = InventoryClient.heldItem()
+	if held == "bow" or held == "crossbow" then
+		return if hasArrows() then held else nil
+	elseif held == "crossbow_loaded" then
+		return "fire"
+	elseif held == "shield" then
+		return "shield"
+	end
+	local def = ItemRegistry.get(held)
+	if def and (def.food or (def.block and aimingAtBlock)) then
+		return nil
+	end
+	local off = InventoryClient.offhand()
+	if off and off.item == "shield" then
+		return "shield"
+	end
+	return nil
+end
+
+local function stopGear(release: boolean)
+	local g = gearUse
+	gearUse = nil
+	MovementController.bowPull = 0
+	if not g then
+		return
+	end
+	if g.kind == "shield" then
+		gearRemote({ type = "shield", on = false })
+	elseif release and g.kind == "bow" then
+		local ticks = (os.clock() - g.start) * 20
+		local f = ticks / 20
+		if (f * f + f * 2) / 3 >= 0.1 then
+			gearRemote({ type = "release", look = lookVector() })
+			BlockInteraction.used:Fire("bow_shoot", 0)
+			BlockInteraction.swing:Fire()
+		else
+			gearRemote({ type = "release", look = lookVector() }) -- too short: the server ignores it
+		end
+	elseif release and g.kind == "crossbow" then
+		if (os.clock() - g.start) * 20 >= Combat.CROSSBOW_CHARGE_TICKS then
+			BlockInteraction.used:Fire("crossbow_load", 0)
+		end
+		gearRemote({ type = "release", look = lookVector() })
+	end
+end
+
+-- Start using gear on a right-click. Returns true if the click was used.
+local function startGear(aimingAtBlock: boolean): boolean
+	local kind = gearFor(aimingAtBlock)
+	if not kind then
+		return false
+	end
+	if kind == "fire" then
+		gearRemote({ type = "fire", look = lookVector() })
+		BlockInteraction.used:Fire("crossbow_shoot", 0)
+		BlockInteraction.swing:Fire()
+		return true
+	end
+	gearUse = { kind = kind, start = os.clock(), slot = InventoryClient.selected }
+	gearHeld = true
+	if kind == "shield" then
+		gearRemote({ type = "shield", on = true })
+	else
+		gearRemote({ type = "draw" })
+	end
+	return true
+end
+
+local function updateGear()
+	local g = gearUse
+	if not g then
+		return
+	end
+	if not gearHeld or InventoryClient.uiOpen or SurvivalClient.dead or g.slot ~= InventoryClient.selected then
+		stopGear(gearHeld == false and not InventoryClient.uiOpen and not SurvivalClient.dead and g.slot == InventoryClient.selected)
+		return
+	end
+	if g.kind == "bow" then
+		-- Java FOV zoom while drawing: f = min(1, (ticks / 20)^2)
+		local f = (os.clock() - g.start)
+		MovementController.bowPull = math.min(1, f * f)
+	end
+end
+
+-- Right-click with a piece of armour: wear it (Java).
+local function tryEquip(): boolean
+	local def = ItemRegistry.get(InventoryClient.heldItem())
+	if def and def.armor then
+		InventoryClient.equipHeld()
+		BlockInteraction.used:Fire("armor_equip", 0)
+		return true
+	end
+	return false
+end
+
 local function update(dt: number)
 	local now = os.clock()
 	if Players.LocalPlayer:GetAttribute("Spectating") then
@@ -398,7 +524,9 @@ local function update(dt: number)
 		stopEating()
 	end
 	updateEating(dt)
-	MovementController.usingItem = eating ~= nil -- Java: slows you to 20 % and stops sprinting
+	updateGear()
+	-- Java: eating, drawing a bow, charging a crossbow or blocking slows you to 20 %
+	MovementController.usingItem = eating ~= nil or gearUse ~= nil
 	if InventoryClient.uiOpen or SurvivalClient.dead then
 		-- a window is open: no mining/placing, no highlight
 		breakHeld, placeHeld = false, false
@@ -576,6 +704,12 @@ local function makeTouchButtons()
 		if tryInteract(MovementController.sneaking) then
 			return
 		end
+		if tryEquip() then
+			return
+		end
+		if startGear(hit ~= nil) then
+			return
+		end
 		if tryUse() then
 			return
 		end
@@ -589,6 +723,7 @@ local function makeTouchButtons()
 	end, function()
 		placeHeld = false
 		useHeld = false
+		gearHeld = false
 	end)
 	button("Sneak", UDim2.new(1, -216, 1, -130), function()
 		MovementController.toggleSneak()
@@ -621,15 +756,21 @@ function BlockInteraction.init()
 			if hit and INTERACTABLE[hit.id] and not shift then
 				InventoryClient.openBlock(hit.x, hit.y, hit.z) -- server opens the window; the UI follows
 			elseif tryInteract(shift) then
-				-- door / sign / item frame handled
+				-- door / sign / item frame / bed handled
 			elseif tryUse() then
 				-- bucket / flint and steel / campfire handled
+			elseif tryEquip() then
+				-- armour worn
+			elseif startGear(hit ~= nil) then
+				-- bow / crossbow / shield
 			elseif held and held.food then
 				useHeld = true -- eat
 			else
 				placeHeld = true
 				nextPlaceAt = 0 -- first placement is immediate
 			end
+		elseif input.KeyCode == (Enum.KeyCode :: any)[Config.KEY_SWAP_HANDS] then
+			InventoryClient.swapHands() -- F (Java): main hand <-> off hand
 		elseif input.KeyCode == keyDrop or input.KeyCode == Enum.KeyCode.ButtonB then
 			local ctrl = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
 			InventoryClient.drop(ctrl)
@@ -642,6 +783,7 @@ function BlockInteraction.init()
 		elseif t == Enum.UserInputType.MouseButton2 or input.KeyCode == Enum.KeyCode.ButtonL2 then
 			placeHeld = false
 			useHeld = false
+			gearHeld = false
 		end
 	end)
 	if UserInputService.TouchEnabled then

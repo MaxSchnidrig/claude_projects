@@ -88,6 +88,9 @@ Startup.run("client", {
 	system("DecorClient", function()
 		return client.World.DecorClient
 	end),
+	system("BedClient", function()
+		return client.Player.BedClient
+	end),
 	system("BlockInteraction", function()
 		return client.Interaction.BlockInteraction
 	end),

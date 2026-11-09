@@ -67,6 +67,11 @@ Entries marked *built in* already work (Roblox's own default character sounds). 
 | `item.pickup` | pop pickup small | — |
 | `item.break` | tool break snap | — |
 | `explosion` | explosion medium | — |
+| `shield.block` | wooden shield block thud | — |
+| `bow.shoot` | bow release twang | — |
+| `crossbow.load` | crossbow load click | — |
+| `crossbow.shoot` | crossbow shot | — |
+| `armor.equip` | armor equip clank | — |
 | `mob.zombie.idle` | zombie groan | — |
 | `mob.zombie.hurt` | zombie hurt | — |
 | `mob.zombie.death` | zombie death | — |

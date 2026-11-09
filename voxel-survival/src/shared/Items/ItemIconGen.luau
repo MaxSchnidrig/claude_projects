@@ -434,6 +434,22 @@ local BLOCK_ICONS: { [string]: (img: buffer, tex: buffer, def: any) -> () } = {
 			end
 		end
 	end,
+	bed = function(img, tex)
+		for y = 6, 10 do
+			for x = 1, 14 do
+				put(img, x, y, texel(tex, x, y, if y == 6 then 1.1 else 1))
+			end
+		end
+		for y = 4, 6 do
+			for x = 2, 5 do
+				put(img, x, y, { 236, 236, 234 }) -- pillow
+			end
+		end
+		for _, x in { 1, 2, 13, 14 } do
+			put(img, x, 11, { 120, 88, 50 })
+			put(img, x, 12, { 100, 72, 40 })
+		end
+	end,
 	hanging_sign = function(img, tex)
 		for y = 6, 13 do
 			for x = 1, 14 do
@@ -469,6 +485,108 @@ function ItemIconGen.generate(def: any): buffer
 	if def.icon and BLOCK_ICONS[def.icon] and def.iconTexture then
 		local img = new()
 		BLOCK_ICONS[def.icon](img, TextureGen.generate(def.iconTexture), def)
+		outline(img, { 30, 26, 24 })
+		return img
+	end
+	local armor = def.armor
+	if armor then
+		-- armour pieces (our own pixel shapes) in the material colour
+		local img = new()
+		local c = def.color or { 200, 200, 200 }
+		local dark = shade(c, 0.7)
+		local function rect(x0: number, y0: number, x1: number, y1: number, col: { number })
+			for y = y0, y1 do
+				for x = x0, x1 do
+					put(img, x, y, col)
+				end
+			end
+		end
+		if armor.slot == "head" then
+			rect(3, 4, 12, 7, c)
+			rect(3, 8, 5, 11, c)
+			rect(10, 8, 12, 11, c)
+			rect(4, 4, 11, 4, shade(c, 1.15))
+		elseif armor.slot == "chest" then
+			rect(2, 3, 5, 6, c)
+			rect(10, 3, 13, 6, c)
+			rect(4, 4, 11, 13, c)
+			rect(7, 4, 8, 6, { 0, 0, 0 })
+			rect(4, 13, 11, 13, dark)
+		elseif armor.slot == "legs" then
+			rect(4, 2, 11, 5, c)
+			rect(4, 6, 6, 14, c)
+			rect(9, 6, 11, 14, c)
+			rect(4, 2, 11, 2, shade(c, 1.15))
+		else
+			rect(3, 7, 6, 12, c)
+			rect(9, 7, 12, 12, c)
+			rect(2, 11, 6, 12, dark)
+			rect(9, 11, 13, 12, dark)
+		end
+		outline(img, { 30, 26, 24 })
+		return img
+	end
+	if def.key == "shield" then
+		local img = new()
+		local wood = { 140, 104, 64 }
+		for y = 1, 14 do
+			for x = 3, 12 do
+				local edge = x == 3 or x == 12 or y == 1 or y == 14
+				put(img, x, y, if edge then { 150, 150, 156 } else shade(wood, 0.9 + ((x + y * 3) % 4) * 0.04))
+			end
+		end
+		for y = 2, 13 do
+			put(img, 7, y, { 120, 120, 128 }) -- iron band
+			put(img, 8, y, { 150, 150, 156 })
+		end
+		outline(img, { 30, 26, 24 })
+		return img
+	end
+	if def.key == "bow" or def.key == "crossbow" or def.key == "crossbow_loaded" then
+		local img = new()
+		local wood = { 130, 92, 52 }
+		if def.key == "bow" then
+			for i = 0, 11 do
+				local x = 3 + i
+				local y = 12 - i + math.floor(((i - 5.5) / 5.5) ^ 2 * -2.5 + 2.5)
+				put(img, x, y, wood)
+				put(img, x, y + 1, shade(wood, 0.8))
+			end
+			for i = 0, 10 do
+				put(img, 3 + i, 13 - i, { 230, 230, 230 }) -- string
+			end
+		else
+			for i = 0, 11 do
+				put(img, 2 + i, 13 - i, wood) -- stock
+				put(img, 3 + i, 13 - i, shade(wood, 0.8))
+			end
+			for i = 0, 8 do
+				put(img, 4 + i, 4 + i // 3, { 150, 150, 156 }) -- limbs
+				put(img, 4 + i // 3, 4 + i, { 150, 150, 156 })
+			end
+			if def.key == "crossbow_loaded" then
+				for i = 0, 6 do
+					put(img, 6 + i, 9 - i, { 220, 220, 220 }) -- the arrow on it
+				end
+				put(img, 13, 2, { 200, 200, 206 })
+			end
+		end
+		outline(img, { 30, 26, 24 })
+		return img
+	end
+	if def.key == "tripwire_hook" then
+		local img = new()
+		for y = 2, 9 do
+			put(img, 7, y, { 160, 160, 166 })
+			put(img, 8, y, { 130, 130, 136 })
+		end
+		for y = 10, 14 do
+			put(img, 7, y, { 140, 104, 60 })
+			put(img, 8, y, { 120, 88, 50 })
+		end
+		for x = 5, 10 do
+			put(img, x, 3, { 180, 180, 186 })
+		end
 		outline(img, { 30, 26, 24 })
 		return img
 	end

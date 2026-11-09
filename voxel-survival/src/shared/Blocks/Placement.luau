@@ -36,6 +36,7 @@ local isSolid = BlockRegistry.isSolid
 local isCube = BlockRegistry.isCube
 local isOpaque = BlockRegistry.isOpaque
 local FIRE = BlockRegistry.id("fire")
+local DIR = Shapes.DIR
 
 -- Cells a placement may overwrite: air, liquids, fire.
 function Placement.replaceable(id: number?): boolean
@@ -182,6 +183,20 @@ function Placement.toggle(id: number, lx: number, lz: number): number?
 	return nil
 end
 
+function Placement.bedState(family: string, facing: string, part: string): number?
+	return cachedState(family, `bed{facing}{part}`, function(st)
+		return st.facing == facing and st.part == part
+	end)
+end
+
+-- The other half of a bed: (x, y, z) of the partner cell.
+function Placement.bedPartner(id: number, x: number, y: number, z: number): (number, number, number)
+	local d = byId[id]
+	local v = DIR[d.state.facing :: string]
+	local sign = if d.state.part == "head" then -1 else 1
+	return x + v[1] * sign, y, z + v[2] * sign
+end
+
 local function ladderState(facing: string): number?
 	return cachedState("ladder", facing, function(st)
 		return st.facing == facing
@@ -199,7 +214,6 @@ local function signState(family: string, rotation: number?, wallFacing: string?)
 	end)
 end
 
-local DIR = Shapes.DIR
 
 -- Java DoorBlock.getHinge.
 local function doorHinge(family: string, facing: string, x: number, y: number, z: number, ctx: Ctx, get: (number, number, number) -> number?): string
@@ -295,6 +309,21 @@ function Placement.resolve(itemBlock: number, ctx: Ctx, get: (number, number, nu
 
 	if not replaceable(get(x, y, z)) then
 		return nil, "cell occupied"
+	end
+
+	if shape == "bed" then
+		-- the foot goes where you click, the head one block further the way you look
+		local facing = Placement.facingOf(ctx.lx, ctx.lz)
+		local v = DIR[facing]
+		if not replaceable(get(x + v[1], y, z + v[2])) then
+			return nil, "no room for the bed"
+		end
+		local foot = Placement.bedState(def.family, facing, "foot")
+		local head = Placement.bedState(def.family, facing, "head")
+		if not foot or not head then
+			return nil, "no bed state"
+		end
+		return { { x = x, y = y, z = z, id = foot }, { x = x + v[1], y = y, z = z + v[2], id = head } }
 	end
 
 	if shape == "trapdoor" then
@@ -419,6 +448,13 @@ function Placement.supported(id: number, x: number, y: number, z: number, get: (
 		local v = DIR[d.state.facing :: string]
 		local wall = get(x - v[1], y, z - v[2])
 		return wall == nil or isSolid[wall + 1], true
+	elseif shape == "bed" then
+		-- a half without its partner goes; the head half drops the bed (Java loot is on the head)
+		local px_, py_, pz_ = Placement.bedPartner(id, x, y, z)
+		local other = get(px_, py_, pz_)
+		local od = other and byId[other]
+		local ok = other == nil or (od ~= nil and od.family == d.family and od.state.part ~= d.state.part)
+		return ok, d.state.part == "head"
 	elseif shape == "hanging_sign" then
 		local above = get(x, y + 1, z)
 		return above == nil or isSolid[above + 1], true

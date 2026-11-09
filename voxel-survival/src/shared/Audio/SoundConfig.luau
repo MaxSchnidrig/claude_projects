@@ -100,6 +100,12 @@ SoundConfig.sounds = {
 	["item.pickup"] = E("", 0.3, 1.2, 1.8, "pop pickup small"),
 	["item.break"] = E("", 0.6, 0.9, 1.1, "tool break snap"),
 	["explosion"] = E("", 1.0, 0.8, 1.0, "explosion medium"),
+	-- combat gear (Phase 8c)
+	["shield.block"] = E("", 0.8, 0.8, 1.2, "wooden shield block thud"),
+	["bow.shoot"] = E("", 0.6, 0.9, 1.2, "bow release twang"),
+	["crossbow.load"] = E("", 0.6, 0.9, 1.1, "crossbow load click"),
+	["crossbow.shoot"] = E("", 0.7, 0.9, 1.1, "crossbow shot"),
+	["armor.equip"] = E("", 0.6, 0.9, 1.1, "armor equip clank"),
 
 	-- mobs: real animals get real-animal sounds; our own mobs get their own fitting sounds
 	["mob.zombie.idle"] = E("", 0.5, 0.8, 1.2, "zombie groan"),
