@@ -742,6 +742,76 @@ recipes.birch_door_upper = function(seed) return woodDoor(seed, P.birchWood, tru
 recipes.iron_door_lower = function(seed) return ironDoor(seed, false) end
 recipes.iron_door_upper = function(seed) return ironDoor(seed, true) end
 
+-- Trapdoors (our own designs): a framed hatch of boards with two dark slots and an iron hinge
+-- strip; the iron one is a riveted plate with a grille of slots.
+local function woodTrapdoor(seed: number, wood: RGB): Img
+	local img = new()
+	local frame = shade(wood, 0.72)
+	for y = 0, N - 1 do
+		for x = 0, N - 1 do
+			local edge = x <= 1 or x >= N - 2 or y <= 1 or y >= N - 2
+			local c
+			if edge then
+				c = shade(frame, 0.92 + rnd(seed, x, y) * 0.12)
+			elseif (y == 5 or y == 10) and x >= 4 and x <= 11 then
+				c = { 40, 30, 22 } -- slots
+			else
+				local seam = (x - 2) % 4 == 3
+				c = shade(wood, (if seam then 0.74 else 0.96) + (rnd(seed, x, y) - 0.5) * 0.1)
+			end
+			put(img, x, y, c)
+		end
+	end
+	for x = 2, 13 do
+		put(img, x, 2, { 92, 90, 92 }) -- hinge strip
+	end
+	return img
+end
+recipes.oak_trapdoor = function(seed) return woodTrapdoor(seed, P.oakWood) end
+recipes.spruce_trapdoor = function(seed) return woodTrapdoor(seed, P.spruceWood) end
+recipes.birch_trapdoor = function(seed) return woodTrapdoor(seed, P.birchWood) end
+recipes.iron_trapdoor = function(seed)
+	local img = new()
+	for y = 0, N - 1 do
+		for x = 0, N - 1 do
+			local edge = x == 0 or y == 0 or x == N - 1 or y == N - 1
+			local slot = x >= 3 and x <= 12 and y >= 3 and y <= 12 and (x % 3 == 0)
+			local f = if edge then 0.7 elseif slot then 0.45 else 0.95 + (rnd(seed, x, y) - 0.5) * 0.08
+			put(img, x, y, shade({ 200, 200, 206 }, f))
+		end
+	end
+	for _, r in { { 1, 1 }, { 14, 1 }, { 1, 14 }, { 14, 14 } } do
+		put(img, r[1], r[2], { 120, 120, 128 })
+	end
+	return img
+end
+
+-- Iron bars: the rods are real geometry; this is their dark, slightly mottled metal.
+recipes.iron_bars = function(seed)
+	local img = new()
+	for y = 0, N - 1 do
+		for x = 0, N - 1 do
+			put(img, x, y, shade({ 118, 120, 126 }, 0.9 + rnd(seed, x, y) * 0.2))
+		end
+	end
+	return img
+end
+
+-- Vines: a mat of small leaves over darker stems (drawn as a thin opaque sheet).
+recipes.vine = function(seed)
+	local img = new()
+	for y = 0, N - 1 do
+		for x = 0, N - 1 do
+			local stem = (x + y // 3) % 5 == 0
+			local leaf = rnd(seed, x // 2, y // 2, 9) > 0.35
+			local c = if stem then { 46, 70, 26 } elseif leaf then shade({ 64, 124, 40 }, 0.85 + rnd(seed, x, y) * 0.3)
+				else { 30, 58, 22 }
+			put(img, x, y, c)
+		end
+	end
+	return img
+end
+
 -- Ladder: the rails and rungs are real geometry; this is their wood, with a lengthwise grain.
 recipes.ladder = function(seed)
 	local img = new()

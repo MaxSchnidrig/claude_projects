@@ -308,7 +308,7 @@ local SHAPE_OF: { [string]: string } = {
 	raw_chicken = "meat", cooked_chicken = "meat", raw_mutton = "meat", cooked_mutton = "meat",
 	rotten_flesh = "meat",
 	arrow = "arrow", feather = "feather", bone = "bone", string = "string",
-	bread = "loaf", void_shard = "sphere",
+	bread = "loaf", void_shard = "sphere", glow_ink_sac = "ball",
 	bucket = "bucket", water_bucket = "water_bucket", lava_bucket = "lava_bucket",
 }
 
@@ -370,6 +370,81 @@ local BLOCK_ICONS: { [string]: (img: buffer, tex: buffer, def: any) -> () } = {
 			end
 		end
 	end,
+	trapdoor = function(img, tex)
+		for y = 1, 14 do
+			for x = 1, 14 do
+				put(img, x, y, texel(tex, x, y))
+			end
+		end
+	end,
+	fence_gate = function(img, tex)
+		for y = 2, 14 do
+			for _, x in { 1, 2, 13, 14 } do
+				put(img, x, y, texel(tex, x, y, if x == 1 or x == 13 then 1.1 else 1))
+			end
+		end
+		for x = 3, 12 do
+			for _, y in { 4, 5, 10, 11 } do
+				put(img, x, y, texel(tex, x, y, 0.9))
+			end
+		end
+		for i = 0, 4 do
+			put(img, 6 + i, 6 + i // 1, texel(tex, 6 + i, 6 + i, 0.8))
+		end
+	end,
+	wall = function(img, tex)
+		for y = 1, 15 do
+			for x = 4, 11 do
+				put(img, x, y, texel(tex, x, y, if x == 4 then 1.1 else 1))
+			end
+		end
+		for y = 4, 15 do
+			for _, x in { 0, 1, 2, 3, 12, 13, 14, 15 } do
+				put(img, x, y, texel(tex, x, y, 0.9))
+			end
+		end
+	end,
+	pane = function(img, tex)
+		for y = 0, 15 do
+			for x = 6, 9 do
+				put(img, x, y, texel(tex, x, y), 200)
+			end
+		end
+		for y = 0, 15 do
+			put(img, 6, y, { 210, 230, 236 })
+		end
+	end,
+	bars = function(img, tex)
+		for y = 0, 15 do
+			for _, x in { 1, 5, 10, 14 } do
+				put(img, x, y, texel(tex, x, y, 1.2))
+			end
+		end
+		for x = 1, 14 do
+			put(img, x, 1, texel(tex, x, 1, 1.1))
+			put(img, x, 14, texel(tex, x, 14, 1.1))
+		end
+	end,
+	vine = function(img, tex)
+		for y = 0, 15 do
+			for x = 0, 15 do
+				if (x * 7 + y * 3) % 5 ~= 0 and math.abs(x - 7.5) + (y % 4) < 9 then
+					put(img, x, y, texel(tex, x, y))
+				end
+			end
+		end
+	end,
+	hanging_sign = function(img, tex)
+		for y = 6, 13 do
+			for x = 1, 14 do
+				put(img, x, y, texel(tex, x, y, if y == 6 then 1.12 else 1))
+			end
+		end
+		for y = 0, 5 do
+			put(img, 3, y, if y % 2 == 0 then { 70, 72, 78 } else { 110, 112, 120 })
+			put(img, 12, y, if y % 2 == 0 then { 70, 72, 78 } else { 110, 112, 120 })
+		end
+	end,
 	sign = function(img, tex)
 		for y = 2, 9 do
 			for x = 1, 14 do
@@ -397,13 +472,16 @@ function ItemIconGen.generate(def: any): buffer
 		outline(img, { 30, 26, 24 })
 		return img
 	end
-	if def.key == "item_frame" then
+	if def.key == "item_frame" or def.key == "glow_item_frame" then
+		local glow = def.key == "glow_item_frame"
 		-- a wooden frame around a leather backing (our own design)
 		local img = new()
 		for y = 1, 14 do
 			for x = 1, 14 do
 				local border = x <= 2 or x >= 13 or y <= 2 or y >= 13
-				put(img, x, y, if border then shade({ 150, 108, 64 }, 0.9 + ((x * 7 + y * 3) % 5) * 0.04) else { 132, 82, 48 })
+				local wood = if glow then { 150, 190, 150 } else { 150, 108, 64 }
+				put(img, x, y, if border then shade(wood, 0.9 + ((x * 7 + y * 3) % 5) * 0.04)
+					elseif glow then { 70, 170, 150 } else { 132, 82, 48 })
 			end
 		end
 		outline(img, { 30, 26, 24 })

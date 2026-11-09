@@ -50,8 +50,13 @@ are fine.
 - 0.8.3: the texture atlas was full (64 slots, 8b needed 69) and textures switched off; now
   121 slots (each texture drawn 5x instead of 7x), overflow only warns, and a test checks the
   fit. Before Phase 12 (hundreds of textures) the atlas needs several pages.
-- 8b2 (not started): the rest of "Building blocks": trapdoors, fence gates, walls, glass panes,
-  iron bars, vines, hanging signs, glow item frames.
+- 0.8.4: door use reached only the local view (fixed); no jumping over fences (Java body box in
+  the air); calmer step-up and camera; break effects follow the shape.
+- 8b2 (done, 0.8.5): trapdoors (3 woods + iron), fence gates, cobblestone and sandstone walls,
+  glass panes, iron bars, vines (climbable, shears only), hanging signs (ceiling and wall),
+  glow item frames; sprint FOV x1.15 like Java.
+  Left for later: vines spreading (random ticks, phase 9); hanging sign recipe (chains and
+  stripped logs, phase 12); glow ink sacs (glow squid, phase 14); gates lowering in walls.
 
 ## Phase 8 – Survival foundations (XL)
 
@@ -453,6 +458,7 @@ A consistent, polished look for everything, all our own original designs:
 | Dimensions | One server holds all dimensions (friends stay together); memory limits per-dimension view radius |
 | Light through slabs and stairs | Light passes through slabs and stairs as if they were open (Java blocks it by shape); a slab roof doesn't darken a room |
 | Item frames | Show the item as a flat icon, not a 3D model |
+| Vines | Drawn as a thin leafy sheet without see-through gaps (the terrain mesh has no cut-out transparency) |
 | Text | Every player-written text (signs, books, chat, names) uses Roblox filtering; commands only for the owner and players they trust |
 | Maps | EditableImage memory budget caps the number of maps visible at once |
 | Mobs | Java caps are kept; mobs far from players are simulated in less detail |

@@ -151,6 +151,36 @@ function Shapes.fenceConnects(id: number?): boolean
 	return isOpaque[id + 1] and isCube[id + 1]
 end
 
+-- Fences, walls and panes join a fence gate whose span runs across the joining direction.
+local function gateJoins(id: number?, dir: string): boolean
+	local d = id and byId[id]
+	return d ~= nil and d.shape == "fence_gate" and axisOf(d.state.facing) ~= axisOf(dir)
+end
+
+-- Walls join walls, panes / bars, gates and full solid blocks (Java WallBlock.connectsTo).
+local function wallConnects(id: number?, dir: string): boolean
+	if id == nil or id == 0 then
+		return false
+	end
+	local d = byId[id]
+	if d and (d.shape == "wall" or d.shape == "pane") then
+		return true
+	end
+	return gateJoins(id, dir) or (isOpaque[id + 1] and isCube[id + 1])
+end
+
+-- Panes and iron bars join each other, walls and full solid blocks (Java IronBarsBlock).
+local function paneConnects(id: number?): boolean
+	if id == nil or id == 0 then
+		return false
+	end
+	local d = byId[id]
+	if d and (d.shape == "pane" or d.shape == "wall") then
+		return true
+	end
+	return isOpaque[id + 1] and isCube[id + 1]
+end
+
 local function fenceBoxes(get: Getter, collision: boolean): { Box }
 	local out: { Box } = {}
 	if collision then
@@ -160,7 +190,8 @@ local function fenceBoxes(get: Getter, collision: boolean): { Box }
 	end
 	for _, dir in { "north", "east", "south", "west" } do
 		local v = DIR[dir]
-		if Shapes.fenceConnects(get(v[1], 0, v[2])) then
+		local n = get(v[1], 0, v[2])
+		if Shapes.fenceConnects(n) or gateJoins(n, dir) then
 			-- arms designed toward north (-z); rot() turns a north-designed box toward `dir`
 			if collision then
 				table.insert(out, rot(px(6, 0, 0, 10, 24, 6), dir))
@@ -222,6 +253,115 @@ local LADDER_RENDER_NORTH: { Box } = {
 }
 local LADDER_COLLISION_NORTH = px(0, 0, 13, 16, 16, 16)
 
+-- Trapdoors (Java TrapDoorBlock shapes) ---------------------------------------------------------
+
+local TRAP_OPEN = {
+	north = px(0, 0, 13, 16, 16, 16),
+	south = px(0, 0, 0, 16, 16, 3),
+	west = px(13, 0, 0, 16, 16, 16),
+	east = px(0, 0, 0, 3, 16, 16),
+}
+local function trapdoorBox(st: { [string]: any }): Box
+	if st.open then
+		return TRAP_OPEN[st.facing :: string]
+	end
+	return if st.half == "top" then px(0, 13, 0, 16, 16, 16) else px(0, 0, 0, 16, 3, 16)
+end
+
+-- Fence gates: designed for "north" (the gate spans along x); collision 1.5 tall while closed,
+-- nothing while open.
+local GATE_CLOSED_NORTH: { Box } = {
+	px(0, 5, 7, 2, 16, 9), px(14, 5, 7, 16, 16, 9), -- posts
+	px(2, 6, 7, 14, 9, 9), px(2, 12, 7, 14, 15, 9), -- rails
+	px(6, 9, 7, 10, 12, 9), -- middle brace
+}
+local GATE_OPEN_NORTH: { Box } = {
+	px(0, 5, 7, 2, 16, 9), px(14, 5, 7, 16, 16, 9),
+	px(0, 6, 1, 2, 9, 7), px(0, 12, 1, 2, 15, 7), -- left leaf swung toward -z
+	px(14, 6, 1, 16, 9, 7), px(14, 12, 1, 16, 15, 7), -- right leaf
+}
+local function gateBoxes(st: { [string]: any }, collision: boolean): { Box }
+	local f = st.facing :: string
+	if collision then
+		if st.open then
+			return NONE
+		end
+		return { rot(px(0, 0, 6, 16, 24, 10), f) }
+	end
+	local out = {}
+	for _, b in (if st.open then GATE_OPEN_NORTH else GATE_CLOSED_NORTH) do
+		table.insert(out, rot(b, f))
+	end
+	return out
+end
+
+-- Walls: a post plus arms toward connections (Java WallBlock); straight runs have no post.
+local function wallBoxes(get: Getter, collision: boolean): { Box }
+	local con = {}
+	local count = 0
+	for _, dir in { "north", "east", "south", "west" } do
+		local v = DIR[dir]
+		if wallConnects(get(v[1], 0, v[2]), dir) then
+			con[dir] = true
+			count += 1
+		end
+	end
+	local above = get(0, 1, 0)
+	local tall = above ~= nil and above ~= 0 and isSolid[above + 1]
+	local straight = count == 2 and ((con.north and con.south) or (con.east and con.west))
+	local out = {}
+	local h = if collision then 24 elseif tall then 16 else 14
+	if not straight or (above ~= nil and byId[above] ~= nil and byId[above].shape == "wall") then
+		table.insert(out, px(4, 0, 4, 12, if collision then 24 else 16, 12))
+	end
+	for dir in con do
+		table.insert(out, rot(px(5, 0, 0, 11, h, 8), dir))
+	end
+	if #out == 0 then
+		table.insert(out, px(4, 0, 4, 12, 16, 12))
+	end
+	return out
+end
+
+-- Glass panes and iron bars: a thin post and arms toward connections; bars are rods.
+local function paneBoxes(st: { [string]: any }, get: Getter, collision: boolean): { Box }
+	local bars = st.bars == true and not collision
+	local out: { Box } = { px(7, 0, 7, 9, 16, 9) }
+	for _, dir in { "north", "east", "south", "west" } do
+		local v = DIR[dir]
+		if paneConnects(get(v[1], 0, v[2])) then
+			if bars then
+				table.insert(out, rot(px(7, 0, 1, 9, 16, 2.5), dir))
+				table.insert(out, rot(px(7, 0, 4.5, 9, 16, 6), dir))
+				table.insert(out, rot(px(7, 0, 0, 9, 1, 7), dir))
+				table.insert(out, rot(px(7, 15, 0, 9, 16, 7), dir))
+			else
+				table.insert(out, rot(px(7, 0, 0, 9, 16, 7), dir))
+			end
+		end
+	end
+	return out
+end
+
+-- Vines: a thin sheet on each face that has one (bits: north 1, east 2, south 4, west 8, up 16).
+Shapes.VINE_BITS = { north = 1, east = 2, south = 4, west = 8, up = 16 }
+local VINE_SHEET = {
+	north = px(0, 0, 0, 16, 16, 0.8),
+	east = px(15.2, 0, 0, 16, 16, 16),
+	south = px(0, 0, 15.2, 16, 16, 16),
+	west = px(0, 0, 0, 0.8, 16, 16),
+	up = px(0, 15.2, 0, 16, 16, 16),
+}
+local function vineBoxes(mask: number): { Box }
+	local out = {}
+	for face, bit in Shapes.VINE_BITS do
+		if (mask // bit) % 2 == 1 then
+			table.insert(out, VINE_SHEET[face])
+		end
+	end
+	return out
+end
+
 -- Public --------------------------------------------------------------------------------------
 
 -- Boxes of block `id`. `collision` = the movement shape (else the visual shape). Full cubes
@@ -247,6 +387,16 @@ function Shapes.boxes(id: number, get: Getter, collision: boolean): { Box }
 	elseif shape == "door" then
 		local s = Shapes.doorState(id, get)
 		return { Shapes.doorBox(s.facing, s.open, s.hinge) }
+	elseif shape == "trapdoor" then
+		return { trapdoorBox(st) }
+	elseif shape == "fence_gate" then
+		return gateBoxes(st, collision)
+	elseif shape == "wall" then
+		return wallBoxes(get, collision)
+	elseif shape == "pane" then
+		return paneBoxes(st, get, collision)
+	elseif shape == "vine" then
+		return if collision then NONE else vineBoxes(st.faces)
 	elseif shape == "ladder" then
 		if collision then
 			return { rot(LADDER_COLLISION_NORTH, st.facing) }
@@ -269,6 +419,22 @@ function Shapes.coversFace(id: number, d: number): boolean
 	local def = byId[id]
 	if def and def.shape == "slab" then
 		return (def.state.half == "bottom" and d == 4) or (def.state.half == "top" and d == 3)
+	end
+	return false
+end
+
+-- Ladders and vines; an open trapdoor right above a ladder facing the same way (Java).
+function Shapes.climbable(id: number?, below: number?): boolean
+	local d = id and byId[id]
+	if not d then
+		return false
+	end
+	if d.shape == "ladder" or d.shape == "vine" then
+		return true
+	end
+	if d.shape == "trapdoor" and d.state.open then
+		local b = below and byId[below]
+		return b ~= nil and b.shape == "ladder" and b.state.facing == d.state.facing
 	end
 	return false
 end

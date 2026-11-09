@@ -38,6 +38,7 @@ export type BlockDef = {
 	family: string, -- own key unless the block is one state of a family (stairs, doors...)
 	noItem: boolean,
 	icon: string?,
+	shearsOnly: boolean,
 }
 
 local BlockRegistry = {}
@@ -94,7 +95,10 @@ local lightEmission = table.create(4096, 0) :: { number }
 local lightOpacity = table.create(4096, 0) :: { number }
 local isCube = table.create(4096, true) :: { boolean }
 -- Non-cube blocks drawn by the mesher as boxes (Blocks/Shapes); other non-cubes are small models.
-local BOX_SHAPES = { slab = true, stairs = true, fence = true, door = true, ladder = true }
+local BOX_SHAPES = {
+	slab = true, stairs = true, fence = true, door = true, ladder = true,
+	trapdoor = true, fence_gate = true, wall = true, pane = true, vine = true,
+}
 local isBoxShape = table.create(4096, false) :: { boolean }
 
 -- Sound group when a block doesn't name one: by its preferred tool.
@@ -150,6 +154,7 @@ for _, d in BlockDefs do
 		family = d.family or d.key,
 		noItem = d.noItem == true,
 		icon = d.icon,
+		shearsOnly = d.shearsOnly == true,
 	}
 	byId[d.id] = def
 	byKey[d.key] = def

@@ -22,13 +22,14 @@ local ClientWorld = require(script.Parent.ClientWorld)
 
 local BS = Config.BLOCK_SIZE
 local MAX_LINE = 18
+local maxLine = MAX_LINE -- 12 while editing a hanging sign (Java fits less text)
 
 local DecorClient = {}
 DecorClient.signChanged = Instance.new("BindableEvent") -- (x, y, z)
 DecorClient.editing = false
 
 local signs: { [string]: { front: { string }, back: { string } } } = {}
-type Frame = { key: string, x: number, y: number, z: number, facing: string, rot: number, item: string?, model: Model? }
+type Frame = { key: string, x: number, y: number, z: number, facing: string, rot: number, item: string?, glow: boolean?, model: Model? }
 local frames: { [string]: Frame } = {}
 local folder: Folder
 
@@ -50,6 +51,10 @@ function DecorClient.signNormal(id: number): Vector3
 	local d = BlockRegistry.byId[id]
 	if d and d.shape == "wall_sign" then
 		local v = Shapes.DIR[d.state.facing :: string]
+		return Vector3.new(v[1], 0, v[2])
+	elseif d and d.shape == "wall_hanging_sign" then
+		-- the board stands out of the wall: its faces look along the wall
+		local v = Shapes.DIR[Shapes.ccw(d.state.facing :: string)]
 		return Vector3.new(v[1], 0, v[2])
 	end
 	local r = (d and d.state.rotation or 0) :: number
@@ -79,14 +84,15 @@ local function buildFrame(f: Frame)
 	p.CanTouch = false
 	p.CastShadow = false
 	p.Material = Enum.Material.Wood
-	p.Color = Color3.fromRGB(140, 100, 60)
+	p.Color = if f.glow then Color3.fromRGB(150, 190, 150) else Color3.fromRGB(140, 100, 60)
 	p.Size = Vector3.new(0.75 * BS, 0.75 * BS, BS / 16)
 	p.CFrame = frameCFrame(f)
 	p.Parent = m
 	local gui = Instance.new("SurfaceGui")
 	gui.Face = Enum.NormalId.Front
 	gui.CanvasSize = Vector2.new(96, 96)
-	gui.LightInfluence = 1
+	gui.LightInfluence = if f.glow then 0 else 1 -- glow frames show the item at full brightness
+	gui.Brightness = if f.glow then 1.5 else 1
 	local back = Instance.new("Frame")
 	back.BorderSizePixel = 0
 	back.BackgroundColor3 = Color3.fromRGB(124, 78, 46)
@@ -194,6 +200,8 @@ function DecorClient.openEditor(x: number, y: number, z: number, side: string)
 		return
 	end
 	editTarget = { x = x, y = y, z = z, side = side }
+	local d = BlockRegistry.byId[ClientWorld.getBlock(x, y, z) or 0]
+	maxLine = if d and (d.shape == "hanging_sign" or d.shape == "wall_hanging_sign") then 12 else MAX_LINE
 	local cur = signs[key(x, y, z)]
 	local lines = if cur then (if side == "back" then cur.back else cur.front) else nil
 	for i, b in boxes do
@@ -261,8 +269,8 @@ local function makeEditor()
 		b.PlaceholderText = ""
 		b:GetPropertyChangedSignal("Text"):Connect(function()
 			local t = string.gsub(b.Text, "[%c]", "")
-			if utf8.len(t) and (utf8.len(t) :: number) > MAX_LINE then
-				t = string.sub(t, 1, (utf8.offset(t, MAX_LINE + 1) :: number) - 1)
+			if utf8.len(t) and (utf8.len(t) :: number) > maxLine then
+				t = string.sub(t, 1, (utf8.offset(t, maxLine + 1) :: number) - 1)
 			end
 			if t ~= b.Text then
 				b.Text = t
@@ -337,6 +345,7 @@ function DecorClient.init()
 			local fr = frames[m.key] or { key = m.key, x = m.x, y = m.y, z = m.z, facing = m.facing, rot = 0 }
 			fr.rot = if typeof(m.rot) == "number" then m.rot else 0
 			fr.item = if typeof(m.item) == "string" then m.item else nil
+			fr.glow = m.glow == true
 			frames[m.key] = fr
 			buildFrame(fr)
 		elseif m.type == "frameRemove" and typeof(m.key) == "string" then

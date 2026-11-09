@@ -91,10 +91,12 @@ function Backend.build(groups: { [number]: { number } }, padded: buffer, originS
 			local dir = GreedyMesher.DIRS[d]
 			local size = { 0, 0, 0 }
 			local center = { 0, 0, 0 }
-			local eU0 = continues(padded, d, k, i - 1, i - 1, j, j + h - 1)
-			local eU1 = continues(padded, d, k, i + w, i + w, j, j + h - 1)
-			local eV0 = continues(padded, d, k, i, i + w - 1, j - 1, j - 1)
-			local eV1 = continues(padded, d, k, i, i + w - 1, j + h, j + h)
+			-- box-shaped blocks (glass panes) give fractional faces: no seam extension for them
+			local frac = k % 1 ~= 0 or i % 1 ~= 0 or j % 1 ~= 0 or w % 1 ~= 0 or h % 1 ~= 0
+			local eU0 = if frac then 0 else continues(padded, d, k, i - 1, i - 1, j, j + h - 1)
+			local eU1 = if frac then 0 else continues(padded, d, k, i + w, i + w, j, j + h - 1)
+			local eV0 = if frac then 0 else continues(padded, d, k, i, i + w - 1, j - 1, j - 1)
+			local eV1 = if frac then 0 else continues(padded, d, k, i, i + w - 1, j + h, j + h)
 			size[dir.u + 1] = w * BS + eU0 + eU1
 			size[dir.v + 1] = h * BS + eV0 + eV1
 			center[dir.u + 1] = (i + w / 2) * BS + (eU1 - eU0) / 2

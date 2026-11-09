@@ -25,10 +25,13 @@ function Mining.canHarvest(blockId: number, itemKey: string?): boolean
 	if not block then
 		return false
 	end
+	local tool = toolOf(itemKey)
+	if block.shearsOnly then
+		return tool ~= nil and tool.kind == "shears" -- Java: vines drop only for shears
+	end
 	if block.minTier <= 0 then
 		return true
 	end
-	local tool = toolOf(itemKey)
 	return tool ~= nil and tool.kind == block.tool and tool.tier >= block.minTier
 end
 

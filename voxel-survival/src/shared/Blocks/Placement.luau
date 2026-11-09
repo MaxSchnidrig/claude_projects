@@ -127,6 +127,61 @@ function Placement.toggledDoor(id: number): number?
 	return Placement.doorState(d.family, d.state.facing, not d.state.open, d.state.hinge)
 end
 
+function Placement.trapdoorState(family: string, facing: string, half: string, open: boolean): number?
+	return cachedState(family, `{facing}{half}{open}`, function(st)
+		return st.facing == facing and st.half == half and st.open == open
+	end)
+end
+
+function Placement.gateState(family: string, facing: string, open: boolean): number?
+	return cachedState(family, `{facing}{open}`, function(st)
+		return st.facing == facing and st.open == open
+	end)
+end
+
+local VINE_BASE = BlockRegistry.id("vine") - 4 -- vine ids are base + face mask
+function Placement.vineState(mask: number): number
+	return if mask <= 0 then 0 else VINE_BASE + mask
+end
+function Placement.vineMask(id: number?): number
+	local d = id and byId[id]
+	return if d and d.shape == "vine" then d.state.faces else 0
+end
+
+local function hangingState(family: string, rotation: number?, wallFacing: string?): number?
+	if wallFacing then
+		return cachedState(family, "hwall" .. wallFacing, function(st)
+			return st.facing == wallFacing
+		end)
+	end
+	return cachedState(family, "hrot" .. tostring(rotation), function(st)
+		return st.rotation == rotation
+	end)
+end
+
+-- Right-click on a trapdoor or fence gate (Java use()): the new id, or nil if it doesn't open
+-- by hand. A gate opening away from the player turns to face the way they look.
+function Placement.toggle(id: number, lx: number, lz: number): number?
+	local d = byId[id]
+	if not d then
+		return nil
+	end
+	if d.shape == "trapdoor" and d.family ~= "iron_trapdoor" then
+		return Placement.trapdoorState(d.family, d.state.facing, d.state.half, not d.state.open)
+	elseif d.shape == "fence_gate" then
+		if d.state.open then
+			return Placement.gateState(d.family, d.state.facing, false)
+		end
+		local look = Placement.facingOf(lx, lz)
+		local facing = d.state.facing
+		if facing == Shapes.opposite(look) then
+			facing = look
+		end
+		return Placement.gateState(d.family, facing, true)
+	end
+	return nil
+end
+
 local function ladderState(facing: string): number?
 	return cachedState("ladder", facing, function(st)
 		return st.facing == facing
@@ -215,8 +270,65 @@ function Placement.resolve(itemBlock: number, ctx: Ctx, get: (number, number, nu
 		return if id then { { x = x, y = y, z = z, id = id } } else nil, "no slab state"
 	end
 
+	if shape == "vine" then
+		-- the face toward the clicked block; an existing vine in the cell gains the face
+		local face: string?
+		if ctx.ny == -1 then
+			face = "up"
+		elseif ctx.ny == 0 then
+			face = Shapes.opposite(normalFacing(ctx.nx, ctx.nz) :: string)
+		end
+		if not face or not sturdy(get(hx, hy, hz)) then
+			return nil, "vines need a full block to grow on"
+		end
+		local here = get(x, y, z)
+		local mask = Placement.vineMask(here)
+		if mask == 0 and not replaceable(here) then
+			return nil, "cell occupied"
+		end
+		local bit = Shapes.VINE_BITS[face]
+		if (mask // bit) % 2 == 1 then
+			return nil, "already there"
+		end
+		return { { x = x, y = y, z = z, id = Placement.vineState(mask + bit) } }
+	end
+
 	if not replaceable(get(x, y, z)) then
 		return nil, "cell occupied"
+	end
+
+	if shape == "trapdoor" then
+		local facing, half
+		if ctx.ny == 0 then
+			facing = normalFacing(ctx.nx, ctx.nz) :: string
+			half = if fracY > 0.5 then "top" else "bottom"
+		else
+			facing = Shapes.opposite(Placement.facingOf(ctx.lx, ctx.lz))
+			half = if ctx.ny == 1 then "bottom" else "top"
+		end
+		local id = Placement.trapdoorState(def.family, facing, half, false)
+		return if id then { { x = x, y = y, z = z, id = id } } else nil, "no trapdoor state"
+	elseif shape == "fence_gate" then
+		local id = Placement.gateState(def.family, Placement.facingOf(ctx.lx, ctx.lz), false)
+		return if id then { { x = x, y = y, z = z, id = id } } else nil, "no gate state"
+	elseif shape == "hanging_sign" then
+		if ctx.ny == -1 then
+			local above = get(hx, hy, hz)
+			if not above or not isSolid[above + 1] then
+				return nil, "a hanging sign needs something solid above"
+			end
+			local rot = math.floor((180 + Placement.yRot(ctx.lx, ctx.lz)) * 16 / 360 + 0.5) % 16
+			local id = hangingState(def.family, rot, nil)
+			return if id then { { x = x, y = y, z = z, id = id } } else nil, "no sign state"
+		elseif ctx.ny == 0 then
+			local wall = get(hx, hy, hz)
+			if not wall or not isSolid[wall + 1] then
+				return nil, "a hanging sign needs a solid wall"
+			end
+			local id = hangingState(def.family, nil, normalFacing(ctx.nx, ctx.nz))
+			return if id then { { x = x, y = y, z = z, id = id } } else nil, "no sign state"
+		end
+		return nil, "hanging signs go under blocks or on walls"
 	end
 
 	if shape == "stairs" then
@@ -307,6 +419,13 @@ function Placement.supported(id: number, x: number, y: number, z: number, get: (
 		local v = DIR[d.state.facing :: string]
 		local wall = get(x - v[1], y, z - v[2])
 		return wall == nil or isSolid[wall + 1], true
+	elseif shape == "hanging_sign" then
+		local above = get(x, y + 1, z)
+		return above == nil or isSolid[above + 1], true
+	elseif shape == "wall_hanging_sign" then
+		local v = DIR[d.state.facing :: string]
+		local wall = get(x - v[1], y, z - v[2])
+		return wall == nil or isSolid[wall + 1], true
 	elseif shape == "door" then
 		if d.state.upper then
 			local below = get(x, y - 1, z)
@@ -322,6 +441,31 @@ function Placement.supported(id: number, x: number, y: number, z: number, get: (
 		return below == nil or Shapes.coversFace(below, 3), true
 	end
 	return true, true
+end
+
+-- Vines keep the faces that still hold: a full block behind, or (sides) the same face on a vine
+-- above. Returns the new id (0 = all gone).
+function Placement.vineSupported(id: number, x: number, y: number, z: number, get: (number, number, number) -> number?): number
+	local mask = Placement.vineMask(id)
+	local aboveMask = Placement.vineMask(get(x, y + 1, z))
+	local keep = 0
+	for face, bit in Shapes.VINE_BITS do
+		if (mask // bit) % 2 == 1 then
+			local ok
+			if face == "up" then
+				local above = get(x, y + 1, z)
+				ok = above == nil or sturdy(above)
+			else
+				local v = DIR[face]
+				local wall = get(x + v[1], y, z + v[2])
+				ok = wall == nil or sturdy(wall) or (aboveMask // bit) % 2 == 1
+			end
+			if ok then
+				keep += bit
+			end
+		end
+	end
+	return Placement.vineState(keep)
 end
 
 -- Item frames hang on any face of a solid block.

@@ -29,7 +29,7 @@ local KINDS = {
 	[BlockRegistry.id("campfire_unlit")] = "campfire",
 }
 for id, def in BlockRegistry.byId do
-	if def.shape == "sign" or def.shape == "wall_sign" then
+	if def.shape == "sign" or def.shape == "wall_sign" or def.shape == "hanging_sign" or def.shape == "wall_hanging_sign" then
 		KINDS[id] = "sign"
 	end
 end

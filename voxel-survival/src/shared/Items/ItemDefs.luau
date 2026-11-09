@@ -55,6 +55,8 @@ local defs: { ItemDefInput } = {
 	{ key = "lava_bucket", name = "Lava Bucket", stack = 1, color = { 236, 110, 30 } },
 	-- Decoration
 	{ key = "item_frame", name = "Item Frame", color = { 150, 110, 70 } },
+	{ key = "glow_item_frame", name = "Glow Item Frame", color = { 170, 200, 150 } },
+	{ key = "glow_ink_sac", name = "Glow Ink Sac", color = { 90, 210, 190 } },
 	-- Food
 	-- Mob drops
 	{ key = "leather", name = "Leather", color = { 150, 90, 50 } },

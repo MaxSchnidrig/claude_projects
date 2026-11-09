@@ -6,7 +6,7 @@
 -- goes through Roblox's TextService filter before it is stored or shown to anyone; if filtering
 -- fails, the edit is dropped.
 --
--- Item frames: entities hanging on a block face (not blocks, like Java). Right-click: put the
+-- Item frames (and glow item frames, whose item is shown at full brightness): entities hanging on a block face (not blocks, like Java). Right-click: put the
 -- held item in (one), or turn the item 45 degrees. Left-click: knock the item out, or break the
 -- empty frame. A frame drops when its block goes away or a block fills its cell.
 --
@@ -45,9 +45,15 @@ local function getBlock(x: number, y: number, z: number): number?
 	return WorldService.getBlockIfLoaded(x, y, z)
 end
 
+local SIGN_SHAPES = { sign = true, wall_sign = true, hanging_sign = true, wall_hanging_sign = true }
 local function isSign(id: number?): boolean
 	local d = id and BlockRegistry.byId[id]
-	return d ~= nil and (d.shape == "sign" or d.shape == "wall_sign")
+	return d ~= nil and SIGN_SHAPES[d.shape] == true
+end
+-- Java fits less text on hanging signs.
+local function maxLineOf(id: number?): number
+	local d = id and BlockRegistry.byId[id]
+	return if d and (d.shape == "hanging_sign" or d.shape == "wall_hanging_sign") then 12 else MAX_LINE
 end
 
 local function near(player: Player, pos: Vector3, blocks: number): boolean
@@ -63,7 +69,7 @@ local function signMessage(e: BlockEntityService.Entity): { [string]: any }
 	return { type = "sign", x = e.x, y = e.y, z = e.z, front = d.front or { "", "", "", "" }, back = d.back or { "", "", "", "" } }
 end
 
-local function cleanLine(v: any): string
+local function cleanLine(v: any, maxLen: number): string
 	if typeof(v) ~= "string" then
 		return ""
 	end
@@ -71,8 +77,8 @@ local function cleanLine(v: any): string
 	if utf8.len(s) == nil then
 		return ""
 	end
-	if (utf8.len(s) :: number) > MAX_LINE then
-		s = string.sub(s, 1, (utf8.offset(s, MAX_LINE + 1) :: number) - 1)
+	if (utf8.len(s) :: number) > maxLen then
+		s = string.sub(s, 1, (utf8.offset(s, maxLen + 1) :: number) - 1)
 	end
 	return s
 end
@@ -118,7 +124,7 @@ local function onSignEdit(player: Player, m: any)
 	local side = if m.side == "back" then "back" else "front"
 	local lines = {}
 	for i = 1, 4 do
-		lines[i] = cleanLine(m.lines[i])
+		lines[i] = cleanLine(m.lines[i], maxLineOf(getBlock(x, y, z)))
 	end
 	local filtered = filter(player, lines)
 	if not filtered then
@@ -138,7 +144,7 @@ end
 local function frameMessage(e: BlockEntityService.Entity): { [string]: any }
 	local d = e.data or {}
 	local s = e.slots[1]
-	return { type = "frame", key = e.key, x = e.x, y = e.y, z = e.z, facing = d.facing, rot = d.rot or 0, item = if s then s.item else nil }
+	return { type = "frame", key = e.key, x = e.x, y = e.y, z = e.z, facing = d.facing, rot = d.rot or 0, item = if s then s.item else nil, glow = d.glow == true }
 end
 
 local function frameCentre(e: BlockEntityService.Entity): Vector3
@@ -154,7 +160,7 @@ local function dropFrame(e: BlockEntityService.Entity)
 	if s then
 		ItemEntityService.spawn({ item = s.item, count = 1, durability = s.durability }, pos)
 	end
-	ItemEntityService.spawn({ item = "item_frame", count = 1 }, pos)
+	ItemEntityService.spawn({ item = if (e.data or {}).glow then "glow_item_frame" else "item_frame", count = 1 }, pos)
 	remote():FireAllClients({ type = "frameRemove", key = k })
 end
 
@@ -180,9 +186,10 @@ local function onFramePlace(player: Player, m: any)
 		return
 	end
 	local stack = InventoryService.selectedStack(player)
-	if not stack or stack.item ~= "item_frame" then
+	if not stack or (stack.item ~= "item_frame" and stack.item ~= "glow_item_frame") then
 		return
 	end
+	local glow = stack.item == "glow_item_frame"
 	if not Placement.frameSupported(getBlock(x, y, z)) then
 		return
 	end
@@ -203,7 +210,7 @@ local function onFramePlace(player: Player, m: any)
 	if not InventoryService.consumeSelected(player, 1) then
 		return
 	end
-	local e: BlockEntityService.Entity = { kind = "item_frame", x = cx, y = cy, z = cz, slots = {}, data = { facing = facing, rot = 0 } }
+	local e: BlockEntityService.Entity = { kind = "item_frame", x = cx, y = cy, z = cz, slots = {}, data = { facing = facing, rot = 0, glow = glow } }
 	BlockEntityService.putKeyed(k, e)
 	remote():FireAllClients(frameMessage(e))
 end
@@ -259,7 +266,7 @@ end
 
 local NEEDS_SUPPORT: { [number]: boolean } = {}
 for id, d in BlockRegistry.byId do
-	if d.shape == "ladder" or d.shape == "sign" or d.shape == "wall_sign" or d.shape == "door" then
+	if d.shape == "ladder" or d.shape == "door" or d.shape == "vine" or SIGN_SHAPES[d.shape] then
 		NEEDS_SUPPORT[id] = true
 	end
 end
@@ -274,6 +281,14 @@ function DecorService.init()
 	BlockUpdates.register("support", function(x, y, z)
 		local id = getBlock(x, y, z)
 		if not id or not NEEDS_SUPPORT[id] then
+			return
+		end
+		if BlockRegistry.byId[id].shape == "vine" then
+			-- vines lose only the faces that lost their wall (no drop without shears)
+			local keep = Placement.vineSupported(id, x, y, z, getBlock)
+			if keep ~= id then
+				BlockUpdates.set(x, y, z, keep)
+			end
 			return
 		end
 		local ok, drops = Placement.supported(id, x, y, z, getBlock)

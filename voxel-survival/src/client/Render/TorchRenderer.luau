@@ -166,7 +166,10 @@ local function buildSign(x: number, y: number, z: number, def: any): Torch
 	local n: Vector3
 	local boardCentre: Vector3
 	local wall = def.shape == "wall_sign"
-	if wall then
+	if def.shape == "hanging_sign" or def.shape == "wall_hanging_sign" then
+		n = Vector3.zAxis -- set below
+		boardCentre = cellCentre
+	elseif wall then
 		local v = ({ north = { 0, -1 }, east = { 1, 0 }, south = { 0, 1 }, west = { -1, 0 } } :: any)[def.state.facing]
 		n = Vector3.new(v[1], 0, v[2])
 		boardCentre = cellCentre - n * (0.5 - 1 / 16) * BS
@@ -179,7 +182,40 @@ local function buildSign(x: number, y: number, z: number, def: any): Torch
 		woodFaces(post, def)
 		post.Parent = model
 	end
-	local board = plain(Vector3.new(BS, BS * 0.5, BS / 12), Color3.fromRGB(176, 140, 86))
+	local boardSize = Vector3.new(BS, BS * 0.5, BS / 12)
+	local hanging = def.shape == "hanging_sign" or def.shape == "wall_hanging_sign"
+	if hanging then
+		-- hanging signs (our own model): a smaller board on two chains, from the ceiling or from
+		-- a bar sticking out of the wall
+		local CHAIN = Color3.fromRGB(70, 72, 80)
+		boardSize = Vector3.new(BS * 14 / 16, BS * 10 / 16, BS / 8)
+		boardCentre = cellCentre + Vector3.new(0, -BS * 3 / 16, 0)
+		if def.shape == "wall_hanging_sign" then
+			local v = ({ north = { 0, -1 }, east = { 1, 0 }, south = { 0, 1 }, west = { -1, 0 } } :: any)[def.state.facing]
+			local out = Vector3.new(v[1], 0, v[2]) -- away from the wall
+			local side = Vector3.new(v[2], 0, -v[1]) -- along the wall (the board faces this way)
+			n = side
+			local bar = plain(Vector3.new(BS / 8, BS / 8, BS), Color3.fromRGB(96, 70, 44))
+			bar.CFrame = CFrame.lookAt(cellCentre + Vector3.new(0, BS * 7 / 16, 0), cellCentre + Vector3.new(0, BS * 7 / 16, 0) + out)
+			woodFaces(bar, def)
+			bar.Parent = model
+			for _, o in { -0.3, 0.3 } do
+				local chain = plain(Vector3.new(BS / 24, BS * 0.25, BS / 24), CHAIN)
+				chain.CFrame = CFrame.new(cellCentre + out * o * BS + Vector3.new(0, BS * 0.25, 0))
+				chain.Parent = model
+			end
+		else
+			local t = math.rad((def.state.rotation or 0) * 22.5)
+			n = Vector3.new(-math.sin(t), 0, math.cos(t))
+			local right = Vector3.new(n.Z, 0, -n.X)
+			for _, o in { -0.3, 0.3 } do
+				local chain = plain(Vector3.new(BS / 24, BS * 0.4, BS / 24), CHAIN)
+				chain.CFrame = CFrame.new(cellCentre + right * o * BS + Vector3.new(0, BS * 0.3, 0))
+				chain.Parent = model
+			end
+		end
+	end
+	local board = plain(boardSize, Color3.fromRGB(176, 140, 86))
 	board.CFrame = CFrame.lookAt(boardCentre, boardCentre + n)
 	woodFaces(board, def)
 	local text = TorchRenderer.signText(x, y, z)
@@ -192,7 +228,7 @@ end
 
 local function build(x: number, y: number, z: number, id: number): Torch
 	local def = BlockRegistry.byId[id]
-	if def and (def.shape == "sign" or def.shape == "wall_sign") then
+	if def and (def.shape == "sign" or def.shape == "wall_sign" or def.shape == "hanging_sign" or def.shape == "wall_hanging_sign") then
 		return buildSign(x, y, z, def)
 	end
 	if def and def.shape == "fire" then

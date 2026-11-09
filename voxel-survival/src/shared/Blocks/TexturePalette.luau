@@ -65,6 +65,12 @@ local palette: { [string]: { number } } = {
 	birch_door_upper = { 170, 166, 140 },
 	iron_door_lower = { 196, 196, 200 },
 	iron_door_upper = { 186, 188, 194 },
+	oak_trapdoor = { 150, 118, 70 },
+	spruce_trapdoor = { 106, 78, 46 },
+	birch_trapdoor = { 188, 172, 118 },
+	iron_trapdoor = { 192, 192, 198 },
+	iron_bars = { 110, 112, 118 },
+	vine = { 52, 108, 34 },
 }
 
 -- Flowing water and lava levels reuse the source colour (their own keys let the renderer give

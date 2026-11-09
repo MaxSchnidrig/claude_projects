@@ -192,11 +192,6 @@ local function solidIn(x0: number, y0: number, z0: number, x1: number, y1: numbe
 	return false
 end
 
-local function isLadder(id: number?): boolean
-	local d = id and BlockRegistry.byId[id]
-	return d ~= nil and d.shape == "ladder"
-end
-
 local HALF = 0.3 -- Java player half width (blocks)
 local STEP = 0.6 -- Java max step height (blocks)
 
@@ -591,7 +586,8 @@ function MovementController.init()
 		-- Ladders (Java LivingEntity.handleOnClimbable): falling is capped at 0.15 blocks/tick;
 		-- pushing into the ladder or holding jump climbs (0.2/tick, about 2.35 blocks/s after
 		-- gravity and drag); sneaking holds you in place.
-		local onLadder = isLadder(bodyId) or isLadder(feetId)
+		local onLadder = Shapes.climbable(bodyId, ClientWorld.getBlock(bx, math.floor(p.Y / BS) - 1, bz))
+			or Shapes.climbable(feetId, ClientWorld.getBlock(bx, math.floor((p.Y - 2.5) / BS) - 1, bz))
 		MovementController.onLadder = onLadder
 		if onLadder and not root.Anchored and not inLiquid and humanoid.Health > 0 and not MovementController.spectating then
 			local v = root.AssemblyLinearVelocity
@@ -706,8 +702,11 @@ function MovementController.init()
 			peakFeetY = math.max(peakFeetY or feetY, feetY)
 		end
 		local camera = workspace.CurrentCamera
-		local targetFov = if MovementController.sprinting then BASE_FOV * 1.1 else BASE_FOV
-		camera.FieldOfView += (targetFov - camera.FieldOfView) * 0.2
+		-- Java AbstractClientPlayer.getFieldOfViewModifier: fov x (speed / walking speed + 1) / 2;
+		-- sprinting is +30 % speed, so x1.15 (70 -> 80.5). GameRenderer.tickFov eases half the
+		-- remaining gap per tick.
+		local targetFov = if MovementController.sprinting then BASE_FOV * 1.15 else BASE_FOV
+		camera.FieldOfView += (targetFov - camera.FieldOfView) * (1 - 0.5 ^ (dt * 20))
 	end)
 end
 

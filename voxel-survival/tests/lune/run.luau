@@ -1297,6 +1297,76 @@ test("texture atlas: every block texture and crack stage has its own slot", func
 	print(`       atlas: {n} of {capacity} slots used`)
 end)
 
+test("8b2: trapdoors, fence gates, walls, panes, bars, vines, hanging signs", function()
+	local Shapes = Loader.require("src/shared/Blocks/Shapes")
+	local Placement = Loader.require("src/shared/Blocks/Placement")
+	local Mining = Loader.require("src/shared/Gameplay/Mining")
+	local id = BlockRegistry.id
+	local cells: { [string]: number } = {}
+	local function get(x: number, y: number, z: number): number?
+		return cells[`{x},{y},{z}`] or (if y <= 0 then 1 else 0)
+	end
+	local function rel(x: number, y: number, z: number)
+		return function(dx: number, dy: number, dz: number): number?
+			return get(x + dx, y + dy, z + dz)
+		end
+	end
+	local function ctx(hx, hy, hz, nx, ny, nz, px, py, pz, lx, lz)
+		return { hx = hx, hy = hy, hz = hz, nx = nx, ny = ny, nz = nz, px = px, py = py, pz = pz, lx = lx or 0, lz = lz or -1 }
+	end
+	-- trapdoor on the ground: bottom, facing back toward the player; opens upright against its hinge
+	local c = Placement.resolve(id("oak_trapdoor"), ctx(0, 0, 0, 0, 1, 0, 0.5, 1, 0.5, 0, -1), get) :: any
+	local st = BlockRegistry.byId[c[1].id].state
+	eq(st.half, "bottom"); eq(st.facing, "south"); eq(st.open, false)
+	eq(Shapes.boxes(c[1].id, rel(0, 1, 0), true)[1][5], 3 / 16)
+	local opened = Placement.toggle(c[1].id, 0, -1) :: number
+	eq(BlockRegistry.byId[opened].state.open, true)
+	eq(Shapes.boxes(opened, rel(0, 1, 0), true)[1][3], 0) -- south-open panel at z 0..3
+	eq(Placement.toggle(id("iron_trapdoor"), 0, -1), nil) -- iron: not by hand
+	-- fence gate: closed has 1.5 collision, open has none; opening from behind turns it around
+	local gate = Placement.gateState("oak_fence_gate", "north", false) :: number
+	eq(Shapes.boxes(gate, rel(0, 1, 0), true)[1][5], 1.5)
+	local g2 = Placement.toggle(gate, 0, 1) :: number -- player looks south
+	eq(BlockRegistry.byId[g2].state.facing, "south"); eq(#Shapes.boxes(g2, rel(0, 1, 0), true), 0)
+	-- fences join a gate across its span
+	cells["10,1,0"] = gate -- spans along x
+	cells["11,1,0"] = id("oak_fence")
+	eq(#Shapes.boxes(id("oak_fence"), rel(11, 1, 0), false), 3) -- post + rails toward the gate
+	-- walls: lone post; straight run has no post; tall collision
+	cells["20,1,0"] = id("cobblestone_wall")
+	eq(#Shapes.boxes(id("cobblestone_wall"), rel(20, 1, 0), false), 1)
+	cells["19,1,0"] = id("cobblestone_wall"); cells["21,1,0"] = id("cobblestone_wall")
+	local wb = Shapes.boxes(id("cobblestone_wall"), rel(20, 1, 0), true)
+	eq(#wb, 2); eq(wb[1][5], 1.5)
+	-- panes join walls and blocks; bars have rods
+	cells["30,1,0"] = id("glass_pane"); cells["31,1,0"] = id("stone")
+	eq(#Shapes.boxes(id("glass_pane"), rel(30, 1, 0), false), 2)
+	cells["40,1,0"] = id("iron_bars"); cells["41,1,0"] = id("stone")
+	assert(#Shapes.boxes(id("iron_bars"), rel(40, 1, 0), false) > 2, "bars arm is rods")
+	-- vines: grow on a full block, gain faces, lose unsupported faces, drop only for shears
+	cells["50,2,0"] = id("stone")
+	c = Placement.resolve(id("vine"), ctx(50, 2, 0, 0, 0, 1, 50.5, 2.5, 1, 0, -1), get) :: any
+	eq(Placement.vineMask(c[1].id), Shapes.VINE_BITS.north)
+	cells["50,2,1"] = c[1].id
+	cells["49,2,1"] = id("stone")
+	c = Placement.resolve(id("vine"), ctx(49, 2, 1, 1, 0, 0, 50, 2.5, 1.5, -1, 0), get) :: any
+	eq(Placement.vineMask(c[1].id), Shapes.VINE_BITS.north + Shapes.VINE_BITS.west)
+	cells["50,2,0"] = 0
+	eq(Placement.vineMask(Placement.vineSupported(c[1].id, 50, 2, 1, get)), Shapes.VINE_BITS.west)
+	assert(Shapes.climbable(c[1].id, nil), "vines are climbable")
+	eq(Mining.canHarvest(id("vine"), nil), false); eq(Mining.canHarvest(id("vine"), "shears"), true)
+	-- open trapdoor over a ladder with the same facing is climbable
+	local lad = Placement.trapdoorState("oak_trapdoor", "north", "bottom", true) :: number
+	assert(Shapes.climbable(lad, id("ladder")), "trapdoor over ladder")
+	-- hanging signs: under a block, not on top
+	cells["60,3,0"] = id("stone")
+	c = Placement.resolve(id("oak_hanging_sign"), ctx(60, 3, 0, 0, -1, 0, 60.5, 3, 0.5, 0, -1), get) :: any
+	eq(BlockRegistry.byId[c[1].id].shape, "hanging_sign")
+	eq(Placement.resolve(id("oak_hanging_sign"), ctx(60, 0, 0, 0, 1, 0, 60.5, 1, 0.5), get), nil)
+	c = Placement.resolve(id("oak_hanging_sign"), ctx(60, 3, 0, 1, 0, 0, 61, 3.5, 0.5), get) :: any
+	eq(BlockRegistry.byId[c[1].id].key, "oak_wall_hanging_sign_east")
+end)
+
 print(`\n{passed} passed, {failed} failed`)
 if failed > 0 then
 	process.exit(1)

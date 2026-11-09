@@ -185,14 +185,30 @@ local function tryInteract(shift: boolean): boolean
 		BlockInteraction.swing:Fire()
 		return true
 	end
-	if not shift and def and (def.shape == "sign" or def.shape == "wall_sign") then
+	if not shift and def and (def.shape == "trapdoor" or def.shape == "fence_gate") then
+		local _, look = CameraController.getEyeAndLook()
+		local nextId = Placement.toggle(hit.id, look.X, look.Z)
+		if nextId then
+			ClientWorld.setBlock(hit.x, hit.y, hit.z, nextId, true) -- prediction; the server confirms
+			local opened = BlockRegistry.byId[nextId].state.open
+			BlockInteraction.used:Fire(if opened then "door_open" else "door_close", hit.id)
+			send("interact", hit.x, hit.y, hit.z)
+			BlockInteraction.swing:Fire()
+			return true
+		end
+		-- iron trapdoors don't open by hand: fall through (place against it)
+	end
+	if not shift and def and (def.shape == "sign" or def.shape == "wall_sign" or def.shape == "hanging_sign"
+		or def.shape == "wall_hanging_sign")
+	then
 		local eye = CameraController.getEyeAndLook()
 		if eye then
 			DecorClient.editSign(hit.x, hit.y, hit.z, hit.id, eye)
 		end
 		return true
 	end
-	if InventoryClient.heldItem() == "item_frame" then
+	local heldKey = InventoryClient.heldItem()
+	if heldKey == "item_frame" or heldKey == "glow_item_frame" then
 		if hit.nx ~= 0 or hit.ny ~= 0 or hit.nz ~= 0 then
 			DecorClient.placeFrame(hit.x, hit.y, hit.z, hit.nx, hit.ny, hit.nz)
 			BlockInteraction.swing:Fire()

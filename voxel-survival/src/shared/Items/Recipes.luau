@@ -50,6 +50,18 @@ do
 		table.insert(shaped, { pattern = { "PPP", "PPP", " S " }, key = { P = planks, S = "stick" }, result = { item = `{w}_sign`, count = 3 } })
 	end
 	table.insert(shaped, { pattern = { "II", "II", "II" }, key = { I = "iron_ingot" }, result = { item = "iron_door", count = 3 } })
+	-- 8b2
+	for _, w in ShapedDefs.WOODS do
+		local planks = `{w}_planks`
+		table.insert(shaped, { pattern = { "PPP", "PPP" }, key = { P = planks }, result = { item = `{w}_trapdoor`, count = 2 } })
+		table.insert(shaped, { pattern = { "SPS", "SPS" }, key = { P = planks, S = "stick" }, result = { item = `{w}_fence_gate`, count = 1 } })
+	end
+	table.insert(shaped, { pattern = { "II", "II" }, key = { I = "iron_ingot" }, result = { item = "iron_trapdoor", count = 1 } })
+	table.insert(shaped, { pattern = { "CCC", "CCC" }, key = { C = "cobblestone" }, result = { item = "cobblestone_wall", count = 6 } })
+	table.insert(shaped, { pattern = { "CCC", "CCC" }, key = { C = "sandstone" }, result = { item = "sandstone_wall", count = 6 } })
+	table.insert(shaped, { pattern = { "GGG", "GGG" }, key = { G = "glass" }, result = { item = "glass_pane", count = 16 } })
+	table.insert(shaped, { pattern = { "III", "III" }, key = { I = "iron_ingot" }, result = { item = "iron_bars", count = 16 } })
+	-- hanging signs need chains and stripped logs (phase 12); until then only the test menu has them
 	table.insert(shaped, { pattern = { "S S", "SSS", "S S" }, key = { S = "stick" }, result = { item = "ladder", count = 3 } })
 	table.insert(shaped, { pattern = { "SSS", "SLS", "SSS" }, key = { S = "stick", L = "leather" }, result = { item = "item_frame", count = 1 } })
 end
@@ -81,6 +93,7 @@ end
 
 local shapeless: { Shapeless } = {
 	{ ingredients = { "iron_ingot", "flint" }, result = { item = "flint_and_steel", count = 1 } },
+	{ ingredients = { "item_frame", "glow_ink_sac" }, result = { item = "glow_item_frame", count = 1 } },
 	{ ingredients = { "oak_log" }, result = { item = "oak_planks", count = 4 } },
 	{ ingredients = { "birch_log" }, result = { item = "birch_planks", count = 4 } },
 	{ ingredients = { "spruce_log" }, result = { item = "spruce_planks", count = 4 } },
@@ -136,6 +149,9 @@ Recipes.fuel = {
 	oak_door = 10, spruce_door = 10, birch_door = 10,
 	oak_sign = 10, spruce_sign = 10, birch_sign = 10,
 	ladder = 15,
+	oak_trapdoor = 15, spruce_trapdoor = 15, birch_trapdoor = 15,
+	oak_fence_gate = 15, spruce_fence_gate = 15, birch_fence_gate = 15,
+	oak_hanging_sign = 10, spruce_hanging_sign = 10, birch_hanging_sign = 10,
 } :: { [string]: number }
 
 return Recipes

@@ -182,6 +182,7 @@ function SaveFormat.decodeData(kind: string, d: any): { [string]: any }?
 		return {
 			facing = if typeof(d.facing) == "string" and FACES[d.facing] then d.facing else "up",
 			rot = if typeof(d.rot) == "number" then math.clamp(math.floor(d.rot), 0, 7) else 0,
+			glow = d.glow == true,
 		}
 	end
 	return nil

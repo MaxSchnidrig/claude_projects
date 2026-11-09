@@ -62,6 +62,7 @@ export type BlockDefInput = {
 	state: { [string]: any }?, -- shaped blocks: half, facing, open, hinge, upper, rotation
 	family: string?, -- shaped blocks: all states of one block share this key (= its item)
 	noItem: boolean?, -- this state has no item of its own (it drops / picks its family)
+	shearsOnly: boolean?, -- drops only when broken with shears (vines)
 	icon: string?, -- item icon shape instead of the flat texture ("slab", "stairs", "door", ...)
 }
 

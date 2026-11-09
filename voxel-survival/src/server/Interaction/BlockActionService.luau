@@ -386,12 +386,25 @@ local function interact(player: Player, x: number, y: number, z: number)
 	end
 	local id = WorldService.getBlock(x, y, z)
 	local def = BlockRegistry.byId[id]
-	if not def or def.shape ~= "door" or def.family == "iron_door" then
-		return correct(player, x, y, z, "nothing to use")
-	end
 	local ok, why = canReach(eye, x, y, z, false)
 	if not ok then
 		return correct(player, x, y, z, why)
+	end
+	-- trapdoors and fence gates
+	if def and (def.shape == "trapdoor" or def.shape == "fence_gate") then
+		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		local look = if root then root.CFrame.LookVector else Vector3.new(0, 0, -1)
+		local nextId = Placement.toggle(id, look.X, look.Z)
+		if not nextId then
+			return correct(player, x, y, z, "doesn't open by hand")
+		end
+		local key = WorldService.setBlock(x, y, z, nextId)
+		broadcast(key, x, y, z, nextId, player)
+		BlockActionService.stats.accepted += 1
+		return
+	end
+	if not def or def.shape ~= "door" or def.family == "iron_door" then
+		return correct(player, x, y, z, "nothing to use")
 	end
 	-- the state lives in the lower half
 	local ly = if def.state.upper then y - 1 else y
