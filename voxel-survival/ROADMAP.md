@@ -47,6 +47,9 @@ are fine.
   raycasts), slabs and stairs (oak, spruce, birch, cobblestone, stone, sandstone) with Java
   corner shapes, wooden fences, doors (3 woods + iron), ladders with climbing, signs with
   filtered text on both sides, item frames.
+- 0.8.3: the texture atlas was full (64 slots, 8b needed 69) and textures switched off; now
+  121 slots (each texture drawn 5x instead of 7x), overflow only warns, and a test checks the
+  fit. Before Phase 12 (hundreds of textures) the atlas needs several pages.
 - 8b2 (not started): the rest of "Building blocks": trapdoors, fence gates, walls, glass panes,
   iron bars, vines, hanging signs, glow item frames.
 

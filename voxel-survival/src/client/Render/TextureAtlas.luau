@@ -20,6 +20,7 @@ local TexturePalette = require(Shared.Blocks.TexturePalette)
 local TextureGen = require(Shared.Blocks.TextureGen)
 local ItemRegistry = require(Shared.Items.ItemRegistry)
 local ItemIconGen = require(Shared.Items.ItemIconGen)
+local Config = require(Shared.Config)
 
 local TextureAtlas = {}
 TextureAtlas.ready = false
@@ -28,11 +29,12 @@ TextureAtlas.iconContent = nil :: Content?
 TextureAtlas.size = 1024
 TextureAtlas.stats = { baked = false, error = "" }
 
-local SIZE = 1024
-local CELL = 128
-local SCALE = 7
-local GUTTER = (CELL - 16 * SCALE) // 2
+local SIZE = Config.ATLAS_SIZE
+local SCALE = Config.ATLAS_SCALE
+local GUTTER = Config.ATLAS_GUTTER
+local CELL = 16 * SCALE + 2 * GUTTER
 local COLS = SIZE // CELL
+TextureAtlas.capacity = COLS * COLS
 
 local cells: { [number]: number } = {} -- texture index -> cell number (0-based)
 local crackCell: { [number]: number } = {} -- stage -> cell
@@ -69,6 +71,18 @@ end
 function TextureAtlas.init()
 	local data = buffer.create(SIZE * SIZE * 4)
 	local n = 0
+	local overflow = 0
+	-- the next free cell; if the atlas is full, extra textures share the last cell (wrong
+	-- picture, but the rest of the world stays textured) and we warn once
+	local function nextCell(img: buffer): number
+		if n >= COLS * COLS then
+			overflow += 1
+			return COLS * COLS - 1
+		end
+		blit(data, n, img)
+		n += 1
+		return n - 1
+	end
 	local byBase: { [string]: number } = {}
 	for index, key in BlockRegistry.textureKeys do
 		local img = TextureGen.generate(key, TexturePalette[key])
@@ -78,18 +92,17 @@ function TextureAtlas.init()
 		if shared then
 			cells[index] = shared -- fluid levels share their fluid's cell
 		else
-			cells[index] = n
-			byBase[base] = n
-			blit(data, n, img)
-			n += 1
+			local c = nextCell(img)
+			cells[index] = c
+			byBase[base] = c
 		end
 	end
 	for stage = 0, TextureGen.CRACK_STAGES - 1 do
-		crackCell[stage] = n
-		blit(data, n, TextureGen.crack(stage))
-		n += 1
+		crackCell[stage] = nextCell(TextureGen.crack(stage))
 	end
-	assert(n <= COLS * COLS, `TextureAtlas: {n} textures don't fit`)
+	if overflow > 0 then
+		warn(`[TextureAtlas] {overflow} textures don't fit in the atlas ({COLS * COLS} slots); raise Config.ATLAS capacity`)
+	end
 	local image = AssetService:CreateEditableImage({ Size = Vector2.new(SIZE, SIZE) })
 	if not image then
 		warn("[TextureAtlas] CreateEditableImage returned nil; blocks stay untextured")

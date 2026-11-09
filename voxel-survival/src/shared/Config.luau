@@ -82,6 +82,12 @@ Config.FACE_SHADE = {
 -- Phase 7: textured terrain (atlas, one quad per face with smooth light + ambient occlusion).
 -- false = the old flat colours with merged quads (lighter on weak devices; also the F4 Parts mode).
 Config.TEXTURES = true
+-- Block texture atlas: one 1024 x 1024 image; each 16 x 16 texture is drawn ATLAS_SCALE times
+-- bigger with an ATLAS_GUTTER pixel border (stops neighbours bleeding in). Slots =
+-- (1024 // (16 * scale + 2 * gutter))^2; the tests check every texture fits.
+Config.ATLAS_SIZE = 1024
+Config.ATLAS_SCALE = 5
+Config.ATLAS_GUTTER = 6
 Config.MESH_MAX_TRIANGLES = 19000 -- split a section into several meshes above this
 Config.TORCH_POINT_LIGHTS = 24 -- nearest torches that also carry a Roblox PointLight
 Config.SKY_MODE = "atmosphere" -- "atmosphere" (Roblox Atmosphere sky + haze) or "fog" (our fog dome)

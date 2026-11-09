@@ -1279,6 +1279,24 @@ test("shaped blocks: mesher boxes, mob physics steps onto slabs, raycast through
 	eq(hit.x, 2); eq(hit.nx, -1)
 end)
 
+test("texture atlas: every block texture and crack stage has its own slot", function()
+	local Config = Loader.require("src/shared/Config")
+	local TextureGen = Loader.require("src/shared/Blocks/TextureGen")
+	local cell = 16 * Config.ATLAS_SCALE + 2 * Config.ATLAS_GUTTER
+	local capacity = (Config.ATLAS_SIZE // cell) ^ 2
+	local seen, n = {}, 0
+	for _, key in BlockRegistry.textureKeys do
+		local b = TextureGen.baseKey(key)
+		if not seen[b] then
+			seen[b] = true
+			n += 1
+		end
+	end
+	n += TextureGen.CRACK_STAGES
+	assert(n <= capacity, `{n} atlas cells needed, only {capacity} fit`)
+	print(`       atlas: {n} of {capacity} slots used`)
+end)
+
 print(`\n{passed} passed, {failed} failed`)
 if failed > 0 then
 	process.exit(1)
