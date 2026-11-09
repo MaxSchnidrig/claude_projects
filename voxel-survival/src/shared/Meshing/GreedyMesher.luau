@@ -135,6 +135,12 @@ end
 -- Faces on the cell boundary are hidden when the neighbour covers that whole face. Brightness:
 -- the neighbour cell's light for boundary faces, the block's own cell for inner faces; no AO.
 local OPP = { 2, 1, 4, 3, 6, 5 }
+local glassPane: { [number]: boolean } = {}
+for id, def in BlockRegistry.byId do
+	if def.shape == "pane" and not def.state.bars then
+		glassPane[id] = true
+	end
+end
 local CURVE_REF: { number } = {}
 local function emitShapes(padded: buffer, light: buffer?, groups: { [number]: { number } }): (number, number)
 	local quads, faces = 0, 0
@@ -159,8 +165,8 @@ local function emitShapes(padded: buffer, light: buffer?, groups: { [number]: { 
 							local visible = true
 							if onEdge then
 								local n = buffer.readu16(padded, (p + nOff) * 2)
-								if n ~= 0 and Shapes.coversFace(n, OPP[d]) then
-									visible = false
+								if n ~= 0 and (Shapes.coversFace(n, OPP[d]) or (n == b and glassPane[b])) then
+									visible = false -- (glass panes in a row / stack: no seams between them)
 								end
 							end
 							if visible then

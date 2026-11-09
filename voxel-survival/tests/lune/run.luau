@@ -1340,7 +1340,8 @@ test("8b2: trapdoors, fence gates, walls, panes, bars, vines, hanging signs", fu
 	eq(#wb, 2); eq(wb[1][5], 1.5)
 	-- panes join walls and blocks; bars have rods
 	cells["30,1,0"] = id("glass_pane"); cells["31,1,0"] = id("stone")
-	eq(#Shapes.boxes(id("glass_pane"), rel(30, 1, 0), false), 2)
+	local pb = Shapes.boxes(id("glass_pane"), rel(30, 1, 0), false)
+	eq(#pb, 1); eq(pb[1][1], 7 / 16); eq(pb[1][4], 1) -- one box from the post to the stone, no inner faces
 	cells["40,1,0"] = id("iron_bars"); cells["41,1,0"] = id("stone")
 	assert(#Shapes.boxes(id("iron_bars"), rel(40, 1, 0), false) > 2, "bars arm is rods")
 	-- vines: grow on a full block, gain faces, lose unsupported faces, drop only for shears

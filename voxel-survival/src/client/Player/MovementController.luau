@@ -57,6 +57,16 @@ local touchSneak = false
 -- Fall tracking uses the character's real ground contact (Humanoid.FloorMaterial, from the
 -- client's collision boxes): resets on every touch of the ground, step or edge.
 local peakFeetY: number? = nil
+local ladderHoldY: number? = nil -- sneaking on a ladder: the height to hold
+-- Height guard: the highest the feet may legally get (blocks). Java can't jump higher than
+-- 1.2522 blocks or step more than 0.6; a Roblox body could slide up block edges and climb onto
+-- fences, walls or two-block ledges. See the end of the Heartbeat.
+local guard = { top = nil :: number?, lastPos = nil :: Vector3?, lastLegal = nil :: CFrame? }
+local function raiseLimit(feet: number, vyStuds: number)
+	local g = Config.GRAVITY / BS
+	local vy = math.max(vyStuds / BS, 0)
+	guard.top = math.max(guard.top or feet, feet + vy * vy / (2 * g) + 0.1)
+end
 local FEET_BELOW_ROOT = 3
 local BASE_FOV = 70
 -- Java horizontal movement (PlayerPhysics) takes over from the Humanoid from a jump, a fall or a
@@ -139,6 +149,10 @@ local function configure(humanoid: Humanoid)
 	humanoid.StateChanged:Connect(function(_, new)
 		if new == Enum.HumanoidStateType.Jumping then
 			lastJumpAt = os.clock()
+			local r0 = humanoid.Parent and humanoid.Parent:FindFirstChild("HumanoidRootPart") :: BasePart?
+			if r0 then
+				guard.top = (r0.Position.Y - FEET_BELOW_ROOT) / BS + Config.JUMP_HEIGHT / BS + 0.05
+			end
 			heldSinceJump = true
 			airborneByJump = true -- jumping off an edge while sneaking is allowed
 			local root = humanoid.Parent and humanoid.Parent:FindFirstChild("HumanoidRootPart") :: BasePart?
@@ -204,6 +218,14 @@ end
 local function bodyBlocked(x: number, feetY: number, z: number, dx: number, dz: number, height: number): boolean
 	local cx, cz = x + dx, z + dz
 	return solidIn(cx - HALF, feetY + 0.05, cz - HALF, cx + HALF, feetY + height - 0.05, cz + HALF)
+end
+
+-- In the air: the Java box's height with the Roblox body's depth (0.15 blocks each side). The
+-- Humanoid's own collision lets it come closer to walls than Java's 0.3, so the full-width box
+-- would already overlap and couldn't tell "moving into" from "touching".
+local function airBlocked(x: number, feetY: number, z: number, dx: number, dz: number, height: number): boolean
+	local cx, cz = x + dx, z + dz
+	return solidIn(cx - 0.15, feetY + 0.05, cz - 0.15, cx + 0.15, feetY + height - 0.05, cz + 0.15)
 end
 
 local function roomToStand(x: number, feetY: number, z: number): boolean
@@ -357,6 +379,15 @@ function MovementController.init()
 			jumpEnabled = allow
 			humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, allow)
 		end
+		-- Java jumps again on the very tick you land while jump is held; a Roblox Humanoid waits
+		-- in its Landed state first, and those extra ground frames bleed off sprint-jump speed.
+		local state = humanoid:GetState()
+		if held and allow and not root.Anchored and humanoid.Health > 0 and not MovementController.inLiquid
+			and not MovementController.onLadder and humanoid.FloorMaterial ~= Enum.Material.Air
+			and state ~= Enum.HumanoidStateType.Jumping and state ~= Enum.HumanoidStateType.Freefall
+		then
+			humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+		end
 
 		if root.Anchored or humanoid.Health <= 0 or MovementController.inLiquid then
 			sim.active = false
@@ -417,11 +448,11 @@ function MovementController.init()
 			-- Java's body is a 0.6 x 1.8 box down to the feet; a Roblox character's legs don't
 			-- collide, so in the air it could slide over things only the legs would hit (a 1.5
 			-- block fence, a slab on a block). Stop any horizontal step the full body can't take.
-			local stuck = bodyBlocked(pb.X, feetB, pb.Z, 0, 0, h) -- already touching: never freeze
-			if not stuck and dx ~= 0 and bodyBlocked(pb.X, feetB, pb.Z, dx + math.sign(dx) * 0.02, 0, h) then
+			local stuck = airBlocked(pb.X, feetB, pb.Z, 0, 0, h) -- already inside something: never freeze
+			if not stuck and dx ~= 0 and airBlocked(pb.X, feetB, pb.Z, dx + math.sign(dx) * 0.02, 0, h) then
 				dx, sim.sx = 0, 0
 			end
-			if not stuck and dz ~= 0 and bodyBlocked(pb.X, feetB, pb.Z, dx, dz + math.sign(dz) * 0.02, h) then
+			if not stuck and dz ~= 0 and airBlocked(pb.X, feetB, pb.Z, dx, dz + math.sign(dz) * 0.02, h) then
 				dz, sim.sz = 0, 0
 			end
 			if not grounded then
@@ -483,6 +514,7 @@ function MovementController.init()
 		startSim(nv.X, nv.Z)
 		sim.lastCmd = Vector3.zero
 		root.AssemblyLinearVelocity = nv * 20 * BS
+		raiseLimit((root.Position.Y - FEET_BELOW_ROOT) / BS, nv.Y * 20 * BS)
 	end)
 	if Players.LocalPlayer.Character then
 		local h = Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
@@ -593,21 +625,46 @@ function MovementController.init()
 			local v = root.AssemblyLinearVelocity
 			local pbl = root.Position / BS
 			local feetL = (root.Position.Y - FEET_BELOW_ROOT) / BS
-			local pushing = inputDir.Magnitude > 0.1
-				and bodyBlocked(pbl.X, feetL, pbl.Z, inputDir.X * 0.08, inputDir.Z * 0.08, 1.7)
-			local up = humanoid.Jump or UserInputService:IsKeyDown(Enum.KeyCode.Space)
-			local vy
-			if pushing or up then
-				vy = 0.1176 * 20 * BS
-			elseif crouch then
-				vy = 0
-			else
-				vy = math.max(v.Y, -0.15 * 20 * BS)
+			-- Java climbs on any horizontal collision; walking toward the ladder's wall counts too
+			local towardWall = false
+			for _, id in { bodyId, feetId } do
+				local d = id and BlockRegistry.byId[id]
+				if d and d.shape == "ladder" then
+					local f = Shapes.DIR[d.state.facing :: string]
+					towardWall = towardWall or (inputDir.X * -f[1] + inputDir.Z * -f[2]) > 0.3
+				end
 			end
+			local pushing = inputDir.Magnitude > 0.1 and (towardWall
+				or bodyBlocked(pbl.X, feetL, pbl.Z, inputDir.X * 0.08, inputDir.Z * 0.08, 1.7))
+			local up = humanoid.Jump or UserInputService:IsKeyDown(Enum.KeyCode.Space)
 			local maxH = 0.15 * 20 * BS
 			local hx, hz = math.clamp(v.X, -maxH, maxH), math.clamp(v.Z, -maxH, maxH)
-			root.AssemblyLinearVelocity = Vector3.new(hx, vy, hz)
+			if crouch and not (pushing or up) then
+				-- Java: sneaking stops the slide; hold the height exactly (gravity would creep)
+				ladderHoldY = ladderHoldY or root.Position.Y
+				local hy = ladderHoldY :: number
+				root.CFrame = CFrame.new(root.Position.X, hy, root.Position.Z) * root.CFrame.Rotation
+				root.AssemblyLinearVelocity = Vector3.new(hx, 0, hz)
+			else
+				ladderHoldY = nil
+				local vy
+				if pushing or up then
+					vy = 0.1176 * 20 * BS
+					-- off the floor: a grounded Humanoid pins itself down and would fight the climb
+					local st = humanoid:GetState()
+					if st == Enum.HumanoidStateType.Running or st == Enum.HumanoidStateType.Landed
+						or st == Enum.HumanoidStateType.RunningNoPhysics
+					then
+						humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+					end
+				else
+					vy = math.max(v.Y, -0.15 * 20 * BS)
+				end
+				root.AssemblyLinearVelocity = Vector3.new(hx, vy, hz)
+			end
 			peakFeetY = nil -- Java: climbing resets the fall distance
+		else
+			ladderHoldY = nil
 		end
 
 		-- Step up (Java step height 0.6): walking into a slab, a stair step or anything up to 0.6
@@ -635,6 +692,7 @@ function MovementController.init()
 								local v = root.AssemblyLinearVelocity
 								root.AssemblyLinearVelocity = Vector3.new(v.X, math.max(v.Y, 0), v.Z)
 								MovementController.stepOffset -= lift
+								guard.top = math.max(guard.top or 0, feet0 + h + 0.1)
 							end
 							break
 						end
@@ -680,6 +738,42 @@ function MovementController.init()
 		else
 			setLedge(nil)
 			lastSupported = if crouch and onSupport and groundedNow then here else nil
+		end
+
+		-- Height guard (see `guard`)
+		do
+			local feetG = (root.Position.Y - FEET_BELOW_ROOT) / BS
+			local posB = root.Position / BS
+			local lp = guard.lastPos
+			local teleported = lp ~= nil and ((Vector3.new(posB.X, 0, posB.Z) - Vector3.new(lp.X, 0, lp.Z)).Magnitude > 2
+				or math.abs(posB.Y - lp.Y) > 3)
+			local exempt = root.Anchored or humanoid.Health <= 0 or inLiquid or MovementController.onLadder
+				or MovementController.spectating
+			local groundedG = humanoid.FloorMaterial ~= Enum.Material.Air
+			if exempt or teleported or guard.top == nil then
+				-- swimming up or climbing out keeps its momentum (jumping out of water onto a ledge)
+				guard.top = feetG + 0.65
+				raiseLimit(feetG, root.AssemblyLinearVelocity.Y)
+				guard.lastLegal = root.CFrame
+			elseif feetG > (guard.top :: number) + 0.02 then
+				local vel = root.AssemblyLinearVelocity
+				if groundedG and guard.lastLegal then
+					-- standing somewhere it couldn't have got to: back to the last legal spot
+					root.CFrame = guard.lastLegal :: CFrame
+					root.AssemblyLinearVelocity = Vector3.new(0, math.min(vel.Y, 0), 0)
+					sim.active = false
+				else
+					-- rising past the jump's peak (sliding up an edge): hold it at the peak
+					root.CFrame -= Vector3.new(0, (feetG - (guard.top :: number)) * BS, 0)
+					root.AssemblyLinearVelocity = Vector3.new(vel.X, math.min(vel.Y, 0), vel.Z)
+				end
+			else
+				guard.lastLegal = root.CFrame
+				if groundedG and root.AssemblyLinearVelocity.Y <= 1 then
+					guard.top = feetG + 0.65 -- standing: a step up to 0.6 is the most it can rise
+				end
+			end
+			guard.lastPos = root.Position / BS
 		end
 
 		-- Java terminal velocity

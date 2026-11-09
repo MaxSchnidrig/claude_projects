@@ -14,6 +14,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local SneakPose = require(Shared.Gameplay.SneakPose)
 local TorchRules = require(Shared.Blocks.TorchRules)
 local Placement = require(Shared.Blocks.Placement)
+local Shapes = require(Shared.Blocks.Shapes)
 local Config = require(Shared.Config)
 local Remotes = require(Shared.Net.Remotes)
 local BlockRegistry = require(Shared.Blocks.BlockRegistry)
@@ -102,18 +103,31 @@ local SAMPLES = {
 	Vector3.new(0.5, 0.02, 0.5), Vector3.new(0.5, 0.98, 0.5),
 	Vector3.new(0.5, 0.5, 0.02), Vector3.new(0.5, 0.5, 0.98),
 }
+local rayShape = Shapes.rayShapeFn(function(x: number, y: number, z: number): number?
+	return WorldService.getBlock(x, y, z)
+end)
 local function canReach(eye: Vector3, x: number, y: number, z: number, forPlace: boolean): (boolean, string)
 	local center = Vector3.new(x + 0.5, y + 0.5, z + 0.5)
 	local maxDist = Config.REACH + Config.REACH_TOLERANCE
 	if (center - eye).Magnitude > maxDist + 0.87 then -- 0.87 = half the cube diagonal
 		return false, "out of reach"
 	end
-	for _, o in SAMPLES do
+	-- sample points: the cell's centre and face centres, plus the centre of every box of a
+	-- shaped block (a thin door panel or a fence post may miss them all otherwise)
+	local samples = table.clone(SAMPLES)
+	local id = WorldService.getBlock(x, y, z)
+	if id ~= AIR and BlockRegistry.isBoxShape[id + 1] then
+		for _, b in Shapes.at(getBlock, x, y, z, false) do
+			table.insert(samples, Vector3.new((b[1] + b[4]) / 2, (b[2] + b[5]) / 2, (b[3] + b[6]) / 2))
+		end
+	end
+	for _, o in samples do
 		local target = Vector3.new(x, y, z) + o
 		local dir = target - eye
 		local dist = dir.Magnitude
 		if dist <= maxDist then
-			local hit = VoxelRaycast.cast(getBlock, eye.X, eye.Y, eye.Z, dir.X, dir.Y, dir.Z, dist + 0.01, stopsRay)
+			-- real block shapes: an open door, a fence or a slab's empty half don't block the view
+			local hit = VoxelRaycast.cast(getBlock, eye.X, eye.Y, eye.Z, dir.X, dir.Y, dir.Z, dist + 0.01, stopsRay, rayShape)
 			if forPlace then
 				if not hit or (hit.x == x and hit.y == y and hit.z == z) or hit.distance >= dist - 0.05 then
 					return true, ""

@@ -57,6 +57,10 @@ are fine.
   glow item frames; sprint FOV x1.15 like Java.
   Left for later: vines spreading (random ticks, phase 9); hanging sign recipe (chains and
   stripped logs, phase 12); glow ink sacs (glow squid, phase 14); gates lowering in walls.
+- 0.8.6: server reach uses block shapes (open doors no longer block clicks); held jump re-jumps
+  on the landing tick; ladders climb by walking into them, Shift holds still; a height guard
+  stops the Roblox body sliding up edges (fences, walls, 1.5 and 2+ block ledges); glass panes
+  without inner lines.
 
 ## Phase 8 – Survival foundations (XL)
 

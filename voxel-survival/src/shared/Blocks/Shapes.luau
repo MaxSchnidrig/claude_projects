@@ -326,6 +326,26 @@ end
 -- Glass panes and iron bars: a thin post and arms toward connections; bars are rods.
 local function paneBoxes(st: { [string]: any }, get: Getter, collision: boolean): { Box }
 	local bars = st.bars == true and not collision
+	if st.bars ~= true and not collision then
+		-- glass: boxes that don't overlap, so no inner faces show through the glass. One box
+		-- along x (post included), the z arms beside it.
+		local con = {}
+		for _, dir in { "north", "east", "south", "west" } do
+			local v = DIR[dir]
+			con[dir] = paneConnects(get(v[1], 0, v[2]))
+		end
+		local out: { Box } = {}
+		local x0 = if con.west then 0 else 7
+		local x1 = if con.east then 16 else 9
+		table.insert(out, px(x0, 0, 7, x1, 16, 9))
+		if con.north then
+			table.insert(out, px(7, 0, 0, 9, 16, 7))
+		end
+		if con.south then
+			table.insert(out, px(7, 0, 9, 9, 16, 16))
+		end
+		return out
+	end
 	local out: { Box } = { px(7, 0, 7, 9, 16, 9) }
 	for _, dir in { "north", "east", "south", "west" } do
 		local v = DIR[dir]
