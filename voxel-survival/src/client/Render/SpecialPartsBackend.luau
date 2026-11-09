@@ -82,9 +82,59 @@ end
 
 -- `groups`: texture -> quad list (GreedyMesher format), special textures only.
 -- `padded` is the section's padded buffer (SectionSampler) the quads were meshed from.
+-- Shaped faces (glass panes) come one per block; side by side as separate see-through parts
+-- they show a line at every seam. Merge touching faces of the same plane and size into one
+-- (along u, then along v). Whole-block quads pass through unchanged (already greedy-merged).
+local function mergeFractional(quads: { number }): { number }
+	local Q = GreedyMesher.QUAD
+	local whole, frac = {}, {}
+	for q = 1, #quads, Q do
+		local e = table.move(quads, q, q + Q - 1, 1, {})
+		local isFrac = e[2] % 1 ~= 0 or e[3] % 1 ~= 0 or e[4] % 1 ~= 0 or e[5] % 1 ~= 0 or e[6] % 1 ~= 0
+		table.insert(if isFrac then frac else whole, e)
+	end
+	if #frac < 2 then
+		return quads
+	end
+	local function pass(list: { { number } }, along: number): { { number } }
+		-- along = 3 (i, width 5) or 4 (j, height 6); the other pair must match exactly
+		local other, otherSize = if along == 3 then 4 else 3, if along == 3 then 6 else 5
+		local size = along + 2
+		table.sort(list, function(a, b)
+			for _, f in { 1, 2, other, otherSize, along } do
+				if a[f] ~= b[f] then
+					return a[f] < b[f]
+				end
+			end
+			return false
+		end)
+		local out = {}
+		for _, e in list do
+			local last = out[#out]
+			if last and last[1] == e[1] and last[2] == e[2] and last[other] == e[other]
+				and last[otherSize] == e[otherSize] and math.abs(last[along] + last[size] - e[along]) < 1e-6
+			then
+				last[size] += e[size]
+			else
+				table.insert(out, e)
+			end
+		end
+		return out
+	end
+	frac = pass(pass(frac, 3), 4)
+	local result = {}
+	for _, list in { whole, frac } do
+		for _, e in list do
+			table.move(e, 1, #e, #result + 1, result)
+		end
+	end
+	return result
+end
+
 function Backend.build(groups: { [number]: { number } }, padded: buffer, originStuds: Vector3, folder: Instance): Handle?
 	local handle: Handle = { parts = {} }
-	for tex, quads in groups do
+	for tex, rawQuads in groups do
+		local quads = mergeFractional(rawQuads)
 		local style = RenderStyle.forTexture(tex)
 		for q = 1, #quads, GreedyMesher.QUAD do
 			local d, k, i, j, w, h = quads[q], quads[q + 1], quads[q + 2], quads[q + 3], quads[q + 4], quads[q + 5]

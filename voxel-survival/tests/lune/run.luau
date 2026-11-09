@@ -788,6 +788,17 @@ test("save format: regions round trip diffs and containers", function()
 	eq(encoded.v, 3)
 	local back = SaveFormat.decodeRegion(encoded)
 	eq(back.chunks[key][40000], 3000) -- u16 ids
+	-- sign text and item frames survive a save
+	local withSign = SaveFormat.encodeRegion({ chunks = {}, entities = {
+		{ kind = "sign", x = 1, y = 70, z = 2, slots = {}, burn = 0, burnMax = 0, progress = 0,
+			data = { front = { "hi", "", "", "" }, back = { "", "b", "", "" } } },
+		{ kind = "item_frame", x = 1, y = 71, z = 2, slots = { [1] = { item = "stick", count = 1 } }, burn = 0, burnMax = 0, progress = 0,
+			data = { facing = "north", rot = 3, glow = true } },
+	} })
+	local signBack = SaveFormat.decodeRegion(withSign)
+	eq(signBack.entities[1].data.front[1], "hi"); eq(signBack.entities[1].data.back[2], "b")
+	eq(signBack.entities[2].data.rot, 3); eq(signBack.entities[2].data.glow, true)
+	eq(signBack.entities[2].slots[1].item, "stick")
 	-- a version-2 save (1-byte ids) still loads
 	local v2 = { v = 2, chunks = { ["-3,5"] = Base64.encode(string.pack("<I3B", 77, 13) .. string.pack("<I3B", 99, 200)) }, entities = {} }
 	local old = SaveFormat.decodeRegion(v2)

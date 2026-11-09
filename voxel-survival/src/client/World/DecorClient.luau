@@ -321,7 +321,8 @@ function DecorClient.init()
 	DecorClient.signChanged.Event:Connect(function(x: number, y: number, z: number)
 		TorchRenderer.refreshSign(x, y, z, ClientWorld.getBlock(x, y, z))
 	end)
-	Remotes.get("Decor").OnClientEvent:Connect(function(m: any)
+	local decorRemote = Remotes.get("Decor")
+	decorRemote.OnClientEvent:Connect(function(m: any)
 		if typeof(m) ~= "table" then
 			return
 		end
@@ -358,6 +359,8 @@ function DecorClient.init()
 			end
 		end
 	end)
+	-- everything the server already knows (signs restored before we were listening)
+	decorRemote:FireServer({ type = "sync" })
 end
 
 return DecorClient

@@ -58,6 +58,7 @@ local touchSneak = false
 -- client's collision boxes): resets on every touch of the ground, step or edge.
 local peakFeetY: number? = nil
 local ladderHoldY: number? = nil -- sneaking on a ladder: the height to hold
+local noLandWhileRising = false
 -- Height guard: the highest the feet may legally get (blocks). Java can't jump higher than
 -- 1.2522 blocks or step more than 0.6; a Roblox body could slide up block edges and climb onto
 -- fences, walls or two-block ledges. See the end of the Heartbeat.
@@ -387,6 +388,15 @@ function MovementController.init()
 			and state ~= Enum.HumanoidStateType.Jumping and state ~= Enum.HumanoidStateType.Freefall
 		then
 			humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+		end
+		-- Java keeps rising to the top of the jump even when the feet pass a ledge; a Humanoid
+		-- would "land" on the ledge as soon as it is under it and end the jump early. No landing
+		-- while still going up.
+		local rising = root.AssemblyLinearVelocity.Y > 2 and not MovementController.onLadder
+		if rising ~= noLandWhileRising then
+			noLandWhileRising = rising
+			humanoid:SetStateEnabled(Enum.HumanoidStateType.Landed, not rising)
+			humanoid:SetStateEnabled(Enum.HumanoidStateType.Running, not rising)
 		end
 
 		if root.Anchored or humanoid.Health <= 0 or MovementController.inLiquid then
@@ -769,8 +779,12 @@ function MovementController.init()
 				end
 			else
 				guard.lastLegal = root.CFrame
-				if groundedG and root.AssemblyLinearVelocity.Y <= 1 then
-					guard.top = feetG + 0.65 -- standing: a step up to 0.6 is the most it can rise
+				-- standing for real (a block right under the feet, not a wall the body brushes in
+				-- mid-air): a step up to 0.6 is the most it can rise from here
+				local pbG = root.Position / BS
+				local standing = solidIn(pbG.X - 0.15, feetG - 0.15, pbG.Z - 0.15, pbG.X + 0.15, feetG + 0.02, pbG.Z + 0.15)
+				if groundedG and standing and root.AssemblyLinearVelocity.Y <= 1 then
+					guard.top = feetG + 0.65
 				end
 			end
 			guard.lastPos = root.Position / BS

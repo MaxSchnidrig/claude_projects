@@ -342,16 +342,17 @@ function DecorService.init()
 			remote():FireAllClients(frameMessage(e))
 		end
 	end)
-	-- joining players get every sign and frame the server knows
-	Players.PlayerAdded:Connect(function(p)
-		task.wait(2)
+	-- a client that just started asks for every sign and frame the server knows (a PlayerAdded
+	-- push could be missed: the player may join before this service starts, or before the
+	-- client listens)
+	local function sendAll(p: Player)
 		for _, e in BlockEntityService.ofKind("sign") do
 			remote():FireClient(p, signMessage(e))
 		end
 		for _, e in BlockEntityService.ofKind("item_frame") do
 			remote():FireClient(p, frameMessage(e))
 		end
-	end)
+	end
 
 	local last: { [Player]: number } = {}
 	Players.PlayerRemoving:Connect(function(p)
@@ -359,6 +360,10 @@ function DecorService.init()
 	end)
 	remote().OnServerEvent:Connect(function(player: Player, m: any)
 		if typeof(m) ~= "table" then
+			return
+		end
+		if m.type == "sync" then
+			sendAll(player)
 			return
 		end
 		local now = os.clock()

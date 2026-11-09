@@ -207,7 +207,7 @@ function SaveFormat.decodeRegion(record: any): Region
 	end
 	if typeof(record.entities) == "table" then
 		for _, e in record.entities do
-			if typeof(e) == "table" and (e.k == "chest" or e.k == "furnace" or e.k == "campfire")
+			if typeof(e) == "table" and (e.k == "chest" or e.k == "furnace" or e.k == "campfire" or e.k == "sign" or e.k == "item_frame")
 				and typeof(e.x) == "number" and typeof(e.y) == "number" and typeof(e.z) == "number"
 			then
 				table.insert(out.entities, {
@@ -215,7 +215,9 @@ function SaveFormat.decodeRegion(record: any): Region
 					x = e.x,
 					y = e.y + dy,
 					z = e.z,
-					slots = SaveFormat.decodeStacks(e.s, if e.k == "chest" then 27 elseif e.k == "campfire" then 4 else 3),
+					slots = SaveFormat.decodeStacks(e.s, if e.k == "chest" then 27 elseif e.k == "campfire" then 4
+						elseif e.k == "item_frame" then 1 elseif e.k == "sign" then 0 else 3),
+					data = SaveFormat.decodeData(e.k, e.d),
 					burn = if typeof(e.b) == "number" then e.b else 0,
 					burnMax = if typeof(e.bm) == "number" then e.bm else 0,
 					progress = if typeof(e.p) == "number" then e.p else 0,
