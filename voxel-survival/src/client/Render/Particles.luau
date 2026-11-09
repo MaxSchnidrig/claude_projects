@@ -12,6 +12,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local BlockRegistry = require(Shared.Blocks.BlockRegistry)
 local TextureAtlas = require(script.Parent.TextureAtlas)
+local Shapes = require(Shared.Blocks.Shapes)
 
 local BS = Config.BLOCK_SIZE
 local GRAVITY = 0.04 * 20 * 20 * BS -- Java particle gravity 0.04 blocks/tick^2, in studs/s^2
@@ -65,13 +66,26 @@ local function texOf(id: number, dir: number?): number
 	return if def then def.faceTexture[dir or BlockRegistry.Dir.TOP] else 0
 end
 
+-- The part of the cell a block fills (a slab's half, a fence's post and rails...). The block
+-- may already be gone (break effects run after it), so `id` is passed in.
+local function boundsOf(x: number, y: number, z: number, id: number): (Vector3, Vector3)
+	if not BlockRegistry.isBoxShape[id + 1] then
+		return Vector3.zero, Vector3.one
+	end
+	local gb = getBlock
+	return Shapes.bounds(Shapes.boxes(id, function(dx, dy, dz)
+		return if gb then gb(x + dx, y + dy, z + dz) else 0
+	end, false))
+end
+
 function Particles.breakBlock(x: number, y: number, z: number, id: number)
 	local tex = texOf(id, BlockRegistry.Dir.EAST)
+	local lo, hi = boundsOf(x, y, z, id)
 	for i = 0, 2 do
 		for j = 0, 2 do
 			for k = 0, 2 do
 				local local3 = Vector3.new((i + 0.5) / 3, (j + 0.5) / 3, (k + 0.5) / 3)
-				local pos = (Vector3.new(x, y, z) + local3) * BS
+				local pos = (Vector3.new(x, y, z) + lo + (hi - lo) * local3) * BS
 				local out = (local3 - Vector3.new(0.5, 0.5, 0.5)) * 2
 				local vel = (out * 0.08 + Vector3.new((math.random() - 0.5) * 0.08, math.random() * 0.1, (math.random() - 0.5) * 0.08)) * 20 * BS
 				emit(pos, vel, TextureAtlas.randomColor(tex), BS * (0.08 + math.random() * 0.06), 0.5 + math.random() * 0.7)
@@ -83,12 +97,13 @@ end
 -- Flecks from the mined face: `normal` points out of the face towards the player.
 function Particles.dig(x: number, y: number, z: number, id: number, normal: Vector3)
 	local tex = texOf(id, BlockRegistry.Dir.EAST)
+	local lo, hi = boundsOf(x, y, z, id)
 	for _ = 1, 2 do
-		local r = Vector3.new(math.random(), math.random(), math.random())
+		local r = lo + (hi - lo) * Vector3.new(math.random(), math.random(), math.random())
 		local p = Vector3.new(
-			if normal.X ~= 0 then (if normal.X > 0 then 1.02 else -0.02) else r.X,
-			if normal.Y ~= 0 then (if normal.Y > 0 then 1.02 else -0.02) else r.Y,
-			if normal.Z ~= 0 then (if normal.Z > 0 then 1.02 else -0.02) else r.Z
+			if normal.X ~= 0 then (if normal.X > 0 then hi.X + 0.02 else lo.X - 0.02) else r.X,
+			if normal.Y ~= 0 then (if normal.Y > 0 then hi.Y + 0.02 else lo.Y - 0.02) else r.Y,
+			if normal.Z ~= 0 then (if normal.Z > 0 then hi.Z + 0.02 else lo.Z - 0.02) else r.Z
 		)
 		local pos = (Vector3.new(x, y, z) + p) * BS
 		local vel = (normal * 0.05 + Vector3.new((math.random() - 0.5) * 0.04, math.random() * 0.06, (math.random() - 0.5) * 0.04)) * 20 * BS

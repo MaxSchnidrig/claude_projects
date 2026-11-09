@@ -107,7 +107,7 @@ local function update(dt: number)
 		root.CFrame = CFrame.new(root.Position) * CFrame.Angles(0, yaw, 0)
 	end
 
-	local eye = root.Position + Vector3.new(0, MovementController.eyeHeight, 0)
+	local eye = root.Position + Vector3.new(0, MovementController.eyeHeight + MovementController.stepOffset, 0)
 	local look = rot.LookVector
 	local mode = CameraController.mode
 	if mode == "first" then

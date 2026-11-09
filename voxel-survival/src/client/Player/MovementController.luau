@@ -44,6 +44,7 @@ local MovementController = {}
 MovementController.sprinting = false
 MovementController.inLiquid = false
 MovementController.onLadder = false
+MovementController.stepOffset = 0 -- studs; the camera lags behind a step-up and glides after it
 MovementController.sneaking = false -- crouched (Shift held, or no room to stand)
 MovementController.usingItem = false -- set by BlockInteraction while eating
 MovementController.eyeHeight = Config.EYE_HEIGHT -- studs above the root, eases when sneaking
@@ -418,6 +419,20 @@ function MovementController.init()
 			ticked = true
 		end
 		if ticked then
+			-- Java's body is a 0.6 x 1.8 box down to the feet; a Roblox character's legs don't
+			-- collide, so in the air it could slide over things only the legs would hit (a 1.5
+			-- block fence, a slab on a block). Stop any horizontal step the full body can't take.
+			local stuck = bodyBlocked(pb.X, feetB, pb.Z, 0, 0, h) -- already touching: never freeze
+			if not stuck and dx ~= 0 and bodyBlocked(pb.X, feetB, pb.Z, dx + math.sign(dx) * 0.02, 0, h) then
+				dx, sim.sx = 0, 0
+			end
+			if not stuck and dz ~= 0 and bodyBlocked(pb.X, feetB, pb.Z, dx, dz + math.sign(dz) * 0.02, h) then
+				dz, sim.sz = 0, 0
+			end
+			if not grounded then
+				local rv = root.AssemblyLinearVelocity
+				root.AssemblyLinearVelocity = Vector3.new(if dx == 0 then 0 else rv.X, rv.Y, if dz == 0 then 0 else rv.Z)
+			end
 			local v = Vector3.new(dx, 0, dz) * 20 * BS
 			sim.lastCmd = v
 			if v.Magnitude > 0.05 then
@@ -600,31 +615,41 @@ function MovementController.init()
 		end
 
 		-- Step up (Java step height 0.6): walking into a slab, a stair step or anything up to 0.6
-		-- blocks high lifts you onto it instead of stopping you.
+		-- blocks high lifts you onto it. Only real ledges count (more than 0.1 block above the
+		-- feet), so standing on flat ground never triggers it; the camera glides up instead of
+		-- jumping (MovementController.stepOffset).
 		if not root.Anchored and humanoid.Health > 0 and not inLiquid and humanoid.FloorMaterial ~= Enum.Material.Air
-			and not MovementController.spectating
+			and not MovementController.spectating and not MovementController.onLadder
 		then
-			local hv = Vector3.new(root.AssemblyLinearVelocity.X, 0, root.AssemblyLinearVelocity.Z)
-			local dirv = if inputDir.Magnitude > 0.1 then Vector3.new(inputDir.X, 0, inputDir.Z) else hv
-			if dirv.Magnitude > 0.05 then
+			local dirv = Vector3.new(inputDir.X, 0, inputDir.Z)
+			if dirv.Magnitude > 0.1 then
 				dirv = dirv.Unit
-				local px0, pz0 = root.Position.X / BS + dirv.X * 0.12, root.Position.Z / BS + dirv.Z * 0.12
+				local px0, pz0 = root.Position.X / BS + dirv.X * 0.1, root.Position.Z / BS + dirv.Z * 0.1
 				local feet0 = (root.Position.Y - FEET_BELOW_ROOT) / BS
-				local function blockedAt(h: number): boolean
-					return solidIn(px0 - HALF, feet0 + h + 0.01, pz0 - HALF, px0 + HALF, feet0 + h + 1.75, pz0 + HALF)
+				local function clearAt(h: number): boolean
+					return not solidIn(px0 - HALF, feet0 + h, pz0 - HALF, px0 + HALF, feet0 + h + 1.75, pz0 + HALF)
 				end
-				if blockedAt(0) then
-					for i = 1, 10 do
+				if not clearAt(0.1) then
+					for i = 2, 10 do
 						local h = i * 0.0625
-						if not blockedAt(h) then
+						if clearAt(h) then
 							if roomToStand(root.Position.X / BS, feet0 + h, root.Position.Z / BS) then
-								root.CFrame += Vector3.new(0, h * BS + 0.02, 0)
+								local lift = h * BS + 0.05
+								root.CFrame += Vector3.new(0, lift, 0)
+								local v = root.AssemblyLinearVelocity
+								root.AssemblyLinearVelocity = Vector3.new(v.X, math.max(v.Y, 0), v.Z)
+								MovementController.stepOffset -= lift
 							end
 							break
 						end
 					end
 				end
 			end
+		end
+		-- camera glide after a step: back to 0 in about 0.15 s
+		MovementController.stepOffset *= 0.5 ^ (dt * 30)
+		if math.abs(MovementController.stepOffset) < 0.01 then
+			MovementController.stepOffset = 0
 		end
 
 		-- Sneak edge guard (after physics, whatever moved us: walking, the movement simulation,

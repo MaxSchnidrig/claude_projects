@@ -283,27 +283,38 @@ end
 
 local function place(player: Player, x: number, y: number, z: number, retry: boolean?, face: { number }?, extra: { number }?): boolean
 	local f = face or { 0, 1, 0 }
+	-- a refused placement: undo every cell the client may have predicted (the target, a door's
+	-- top half above it, a slab merged into the clicked block)
+	local function reject(why: string)
+		correct(player, x, y, z, why)
+		local remote = Remotes.get("BlockChanged")
+		for _, c in { { x, y + 1, z }, { x - f[1], y - f[2], z - f[3] } } do
+			if c[2] >= 0 and c[2] < H then
+				remote:FireClient(player, c[1], c[2], c[3], WorldService.getBlock(c[1], c[2], c[3]))
+			end
+		end
+	end
 	local eye = eyeOf(player)
 	if not eye then
-		correct(player, x, y, z, "no character")
+		reject("no character")
 		return true
 	end
 	local stack = InventoryService.selectedStack(player)
 	local item = stack and ItemRegistry.get(stack.item)
 	if not item or not item.block then
-		correct(player, x, y, z, "not holding a block")
+		reject("not holding a block")
 		return true
 	end
 	-- must be placed against an existing block (the clicked one)
 	local hx, hy, hz = x - f[1], y - f[2], z - f[3]
 	local clicked = WorldService.getBlock(hx, hy, hz)
 	if clicked == AIR or isLiquid[clicked + 1] then
-		correct(player, x, y, z, "nothing to place against")
+		reject("nothing to place against")
 		return true
 	end
 	local ok, why = canReach(eye, x, y, z, true)
 	if not ok then
-		correct(player, x, y, z, why)
+		reject(why)
 		return true
 	end
 	-- the exact click point and look direction (slab halves, stair / door facing, door hinge)
@@ -318,12 +329,12 @@ local function place(player: Player, x: number, y: number, z: number, retry: boo
 		hx = hx, hy = hy, hz = hz, nx = f[1], ny = f[2], nz = f[3], px = px, py = py, pz = pz, lx = lx, lz = lz,
 	}, WorldService.getBlock)
 	if not changes then
-		correct(player, x, y, z, reason or "can't place here")
+		reject(reason or "can't place here")
 		return true
 	end
 	for _, c in changes do
 		if c.y < 0 or c.y >= H then
-			correct(player, x, y, z, "out of the world")
+			reject("out of the world")
 			return true
 		end
 		if BlockRegistry.isSolid[c.id + 1] then
@@ -333,19 +344,19 @@ local function place(player: Player, x: number, y: number, z: number, retry: boo
 					if #deferred < 64 then
 						table.insert(deferred, { player = player, x = x, y = y, z = z, untilT = os.clock() + DEFER_SECONDS, face = f, extra = extra })
 					else
-						correct(player, x, y, z, "too many pending placements")
+						reject("too many pending placements")
 					end
 					return true
 				elseif not byOther and retry then
 					return false -- still waiting (the caller times out)
 				end
-				correct(player, x, y, z, "would overlap a player")
+				reject("would overlap a player")
 				return true
 			end
 		end
 	end
 	if not InventoryService.consumeSelected(player, 1) then
-		correct(player, x, y, z, "no item")
+		reject("no item")
 		return true
 	end
 	for _, c in changes do
@@ -457,6 +468,9 @@ function BlockActionService.init()
 			elseif now > d.untilT then
 				table.remove(deferred, i)
 				correct(d.player, d.x, d.y, d.z, "would overlap a player")
+				if d.y + 1 < H then -- a predicted door top half
+					Remotes.get("BlockChanged"):FireClient(d.player, d.x, d.y + 1, d.z, WorldService.getBlock(d.x, d.y + 1, d.z))
+				end
 			end
 		end
 	end)

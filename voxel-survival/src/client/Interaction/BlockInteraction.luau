@@ -151,6 +151,10 @@ local USE_ITEMS = { bucket = true, water_bucket = true, lava_bucket = true, flin
 
 -- Right-click "use": buckets, flint and steel, shovel / raw food on campfires. Returns true if the
 -- click was used up here (no placing / eating).
+local function send(action: string, x: number, y: number, z: number, nx: number?, ny: number?, nz: number?, extra: { number }?)
+	Remotes.get("BlockAction"):FireServer(action, x, y, z, nx, ny, nz, extra)
+end
+
 -- Right-click on something that reacts: item frames, wooden doors, signs; placing an item frame.
 -- Returns true if the click was used. Sneaking skips doors and signs (place against them).
 local function tryInteract(shift: boolean): boolean
@@ -233,9 +237,6 @@ local function tryUse(): boolean
 	return false
 end
 
-local function send(action: string, x: number, y: number, z: number, nx: number?, ny: number?, nz: number?, extra: { number }?)
-	Remotes.get("BlockAction"):FireServer(action, x, y, z, nx, ny, nz, extra)
-end
 
 local function makeVisuals()
 	highlightPart = Instance.new("Part")
@@ -462,7 +463,13 @@ local function update(dt: number)
 				BlockInteraction.broken:Fire(cur.x, cur.y, cur.z, brokenId)
 			else
 				local stage = math.floor(cur.progress * 10) -- 0..9
-				crackPart.CFrame = blockCFrame(cur.x, cur.y, cur.z)
+				-- cracks cover only the block's shape (a slab's half, a fence post...)
+				local lo, hi = Vector3.zero, Vector3.one
+				if BlockRegistry.isBoxShape[hit.id + 1] then
+					lo, hi = Shapes.bounds(Shapes.at(blockAt, cur.x, cur.y, cur.z, false))
+				end
+				crackPart.Size = (hi - lo) * BS + Vector3.one * 0.04
+				crackPart.CFrame = CFrame.new((Vector3.new(cur.x, cur.y, cur.z) + (lo + hi) / 2) * BS)
 				setCrack(stage)
 				if now - lastDigSound >= 0.2 then
 					lastDigSound = now

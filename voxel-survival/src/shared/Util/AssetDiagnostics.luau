@@ -153,23 +153,6 @@ local function search(id: string): { string }
 	return found
 end
 
-local function resolve(id: string)
-	if reported[id] then
-		return
-	end
-	local found = search(id)
-	local side = if RunService:IsServer() then "server" else "client"
-	if #found > 0 then
-		reported[id] = true
-		unresolved[id] = nil
-		for _, where in found do
-			warn(`[AssetDiagnostics:{side}] rbxassetid://{id} -> {where}{describePhase(id)}`)
-		end
-	else
-		unresolved[id] = true
-	end
-end
-
 local function describePhase(id: string): string
 	local p = phaseOf[id]
 	local text = if p then `; it was logged during: {p}` else "; it was not logged during any tagged step"
@@ -195,6 +178,24 @@ local function describePhase(id: string): string
 	end
 	return text
 end
+
+local function resolve(id: string)
+	if reported[id] then
+		return
+	end
+	local found = search(id)
+	local side = if RunService:IsServer() then "server" else "client"
+	if #found > 0 then
+		reported[id] = true
+		unresolved[id] = nil
+		for _, where in found do
+			warn(`[AssetDiagnostics:{side}] rbxassetid://{id} -> {where}{describePhase(id)}`)
+		end
+	else
+		unresolved[id] = true
+	end
+end
+
 
 local function onMessage(message: string, timestamp: number?)
 	if string.find(message, "AssetDiagnostics", 1, true) then
