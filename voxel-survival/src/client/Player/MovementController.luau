@@ -309,20 +309,33 @@ function MovementController.init()
 		if not humanoid or not root or not m then
 			return
 		end
-		-- movement input from the control script, relative to where the player faces
-		local mv = Vector3.zero
-		local ok, controls = pcall(function()
-			local pm = require((Players.LocalPlayer :: any).PlayerScripts:WaitForChild("PlayerModule") :: any)
-			return pm:GetControls()
-		end)
-		if ok and controls then
-			mv = controls:GetMoveVector() -- x = right, z = back (camera-relative input)
-		end
+		-- movement input, relative to where the player faces: keys, else the gamepad stick, else
+		-- the Humanoid's move direction (set by Roblox's touch controls on phones). Nothing here
+		-- may wait: this runs every frame.
 		local look = root.CFrame.LookVector
 		local fwd = Vector3.new(look.X, 0, look.Z)
 		fwd = if fwd.Magnitude > 1e-3 then fwd.Unit else Vector3.new(0, 0, -1)
 		local right = Vector3.new(-fwd.Z, 0, fwd.X)
-		inputDir = if InventoryClient.uiOpen or SurvivalClient.dead then Vector3.zero else (fwd * -mv.Z + right * mv.X)
+		local kf = (if UserInputService:IsKeyDown(Enum.KeyCode.W) or UserInputService:IsKeyDown(Enum.KeyCode.Up) then 1 else 0)
+			- (if UserInputService:IsKeyDown(Enum.KeyCode.S) or UserInputService:IsKeyDown(Enum.KeyCode.Down) then 1 else 0)
+		local kr = (if UserInputService:IsKeyDown(Enum.KeyCode.D) or UserInputService:IsKeyDown(Enum.KeyCode.Right) then 1 else 0)
+			- (if UserInputService:IsKeyDown(Enum.KeyCode.A) or UserInputService:IsKeyDown(Enum.KeyCode.Left) then 1 else 0)
+		local dir = fwd * kf + right * kr
+		if dir.Magnitude < 0.01 then
+			for _, st in UserInputService:GetGamepadState(Enum.UserInputType.Gamepad1) do
+				if st.KeyCode == Enum.KeyCode.Thumbstick1 and st.Position.Magnitude > 0.2 then
+					dir = fwd * st.Position.Y + right * st.Position.X
+				end
+			end
+		end
+		if dir.Magnitude < 0.01 then
+			local md = humanoid.MoveDirection -- touch thumbstick (world space)
+			dir = Vector3.new(md.X, 0, md.Z)
+		end
+		if dir.Magnitude > 1 then
+			dir = dir.Unit
+		end
+		inputDir = if InventoryClient.uiOpen or SurvivalClient.dead then Vector3.zero else dir
 		local jumpHeld = (UserInputService:IsKeyDown(Enum.KeyCode.Space) or humanoid.Jump)
 			and not InventoryClient.uiOpen and not SurvivalClient.dead
 
