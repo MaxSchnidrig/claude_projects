@@ -196,17 +196,19 @@ local function configure(humanoid: Humanoid)
 	end
 	humanoid:ChangeState(Enum.HumanoidStateType.Physics)
 	SneakPose.remember(character)
-	-- the body doesn't collide: our box does the colliding
-	for _, d in character:GetDescendants() do
+	-- the body never collides (our box does the colliding). The ghost collision group collides
+	-- with nothing, and unlike CanCollide the Humanoid doesn't switch it back on for the torso
+	-- and head, which made Roblox push the body out of walls (spectator) and jitter at walls.
+	local function ghost(d: Instance)
 		if d:IsA("BasePart") then
 			d.CanCollide = false
+			d.CollisionGroup = SneakPose.GHOST_GROUP
 		end
 	end
-	character.DescendantAdded:Connect(function(d)
-		if d:IsA("BasePart") then
-			d.CanCollide = false
-		end
-	end)
+	for _, d in character:GetDescendants() do
+		ghost(d)
+	end
+	character.DescendantAdded:Connect(ghost)
 	loadAnimations(character, humanoid)
 	MovementController.sneaking = false
 	MovementController.eyeHeight = Config.EYE_HEIGHT
@@ -339,6 +341,16 @@ function MovementController.init()
 		local jumpHeld = (UserInputService:IsKeyDown(Enum.KeyCode.Space) or humanoid.Jump)
 			and not InventoryClient.uiOpen and not SurvivalClient.dead
 
+		-- sprint latch: needs forward movement, food > 6, not sneaking or using an item
+		local forward = inputDir:Dot(fwd) > 0.5
+		if not forward or not canStartSprint() then
+			sprintLatch = false
+		end
+		if sprintLatch ~= MovementController.sprinting then
+			MovementController.sprinting = sprintLatch
+			SurvivalClient.setSprinting(sprintLatch) -- the server charges sprint exhaustion
+		end
+
 		-- spectating: fly freely (no collision)
 		if MovementController.spectating then
 			local up = (if UserInputService:IsKeyDown(Enum.KeyCode.Space) then 1 else 0)
@@ -379,16 +391,6 @@ function MovementController.init()
 			MovementController.sneaking = crouch
 			SneakPose.apply(character :: Model, crouch)
 			SurvivalClient.setSneaking(crouch)
-		end
-
-		-- sprint latch: needs forward movement, food > 6, not sneaking or using an item
-		local forward = inputDir:Dot(fwd) > 0.5
-		if not forward or not canStartSprint() then
-			sprintLatch = false
-		end
-		if sprintLatch ~= MovementController.sprinting then
-			MovementController.sprinting = sprintLatch
-			SurvivalClient.setSprinting(sprintLatch) -- the server charges sprint exhaustion
 		end
 
 		-- fixed 20 Hz ticks
