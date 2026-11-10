@@ -60,8 +60,8 @@ function SurvivalClient.setSneaking(on: boolean)
 	send({ type = "sneak", on = on })
 end
 
-function SurvivalClient.eatStart()
-	send({ type = "eatStart" })
+function SurvivalClient.eatStart(offhand: boolean?)
+	send({ type = "eatStart", hand = if offhand then "off" else "main" })
 end
 
 function SurvivalClient.eatFinish()

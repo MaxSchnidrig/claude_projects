@@ -165,7 +165,9 @@ local function emitShapes(padded: buffer, light: buffer?, groups: { [number]: { 
 							local visible = true
 							if onEdge then
 								local n = buffer.readu16(padded, (p + nOff) * 2)
-								if n ~= 0 and (Shapes.coversFace(n, OPP[d]) or (n == b and glassPane[b])) then
+								-- glass panes: no faces against each other or against a solid full block
+								-- (glass included), or they'd show as lines through the glass
+								if n ~= 0 and (Shapes.coversFace(n, OPP[d]) or (glassPane[b] and (n == b or Shapes.sturdyCube(n)))) then
 									visible = false -- (glass panes in a row / stack: no seams between them)
 								end
 							end

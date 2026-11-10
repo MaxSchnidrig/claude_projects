@@ -31,6 +31,9 @@ local model: Model
 local arm: Part
 local held: Model? = nil
 local heldKey: string? = nil
+local offHeld: Model? = nil -- the off-hand item, lower left (Java shows it without an arm)
+local offKey: string? = nil
+local offEquipT = 1
 local swingStart = -math.huge
 local SWING = 6 / 20
 local equipT = 1
@@ -165,9 +168,10 @@ function ViewModel.init(swingEvent: BindableEvent)
 		end
 
 		-- view bobbing (Java): distance walked drives the phase, speed the amount
-		local v = root.AssemblyLinearVelocity
-		local horiz = Vector3.new(v.X, 0, v.Z).Magnitude / BS / 20 -- blocks/tick
-		local grounded = humanoid.FloorMaterial ~= Enum.Material.Air
+		local MovementController = require(script.Parent.MovementController) :: any
+		local v = MovementController.velocity -- blocks/tick (the motor moves the body)
+		local horiz = Vector3.new(v.X, 0, v.Z).Magnitude
+		local grounded = MovementController.onGround
 		local target = if grounded then math.min(0.1, horiz) else 0
 		bobAmount += (target - bobAmount) * (1 - 0.6 ^ (dt * 20))
 		walkDist += horiz * 0.6 * dt * 20
@@ -203,6 +207,35 @@ function ViewModel.init(swingEvent: BindableEvent)
 			* CFrame.new(1.1 - sq * 0.25, -1.05 - (1 - equipT) * 0.9 + sw * 0.15, -1.6 - sw * 0.35)
 			* CFrame.Angles(math.rad(-sw * 70), math.rad(-sq * 20 + 8), math.rad(-sq * 15))
 		arm.CFrame = base * CFrame.new(0, 0, 0.35)
+		-- off hand: the item mirrored at the lower left; a raised shield comes up toward the middle
+		local ok = InventoryClient.offhand()
+		local okKey = ok and ok.item
+		if okKey ~= offKey then
+			offKey = okKey
+			if offHeld then
+				(offHeld :: Model):Destroy()
+			end
+			offHeld = buildHeld(okKey)
+			if offHeld then
+				(offHeld :: Model).Parent = model
+			end
+			offEquipT = 0
+		end
+		offEquipT = math.min(1, offEquipT + dt * 4)
+		local oh = offHeld
+		if oh then
+			local main = oh:FindFirstChild("Main") :: BasePart?
+			if main then
+				local raised = okKey == "shield" and MovementController.usingItem and heldKey ~= "shield"
+				local isCard = main.Size.Z < 0.1
+				local at = cam.CFrame * CFrame.new(if raised then -0.55 else -1.05, (if raised then -0.55 else -0.75) - (1 - offEquipT) * 0.9, -1.9)
+				main.CFrame = at * (if isCard then CFrame.Angles(0, math.rad(-80), math.rad(20)) else CFrame.Angles(0, math.rad(-45), 0))
+				local tip = oh:FindFirstChild("Tip") :: BasePart?
+				if tip then
+					tip.CFrame = main.CFrame * CFrame.new(0, 0.38, 0)
+				end
+			end
+		end
 		local h = held
 		if h then
 			local main = h:FindFirstChild("Main") :: BasePart?

@@ -72,6 +72,11 @@ are fine.
   Left for later: coloured wool / dyes (only the white bed is craftable), phantoms (the rest
   counter is kept), axes disabling shields (needs attacking players or axe mobs), multishot and
   other enchantments (phase 10), leather dyeing, thunderstorm sleeping (weather, phase 9).
+- 0.8.8: our own player physics. The Roblox Humanoid no longer moves the player (it kept
+  snapping onto ledges, cutting jumps short and stopping at ceilings); Gameplay/PlayerMotor runs
+  Java's player tick on a 0.6 x 1.8 box against the real block shapes, tested headless for the
+  reported cases. Off-hand items are used (blocks, food) and shown; glass panes connect to glass
+  and hide faces against it.
 
 ## Phase 8 – Survival foundations (XL)
 
@@ -473,6 +478,7 @@ A consistent, polished look for everything, all our own original designs:
 | Dimensions | One server holds all dimensions (friends stay together); memory limits per-dimension view radius |
 | Light through slabs and stairs | Light passes through slabs and stairs as if they were open (Java blocks it by shape); a slab roof doesn't darken a room |
 | Item frames | Show the item as a flat icon, not a 3D model |
+| Player movement | The Humanoid only animates the body; Java physics runs in our own motor (Roblox's built-in walking, jumping and climbing are off) |
 | Vines | Drawn as a thin leafy sheet without see-through gaps (the terrain mesh has no cut-out transparency) |
 | Text | Every player-written text (signs, books, chat, names) uses Roblox filtering; commands only for the owner and players they trust |
 | Maps | EditableImage memory budget caps the number of maps visible at once |

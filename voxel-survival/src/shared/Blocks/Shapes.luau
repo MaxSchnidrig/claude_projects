@@ -138,6 +138,16 @@ end
 
 -- Fences --------------------------------------------------------------------------------------
 
+-- Java "sturdy face" for connections: a solid full cube, glass included, leaves excluded.
+local function sturdyCube(id: number): boolean
+	if not (isSolid[id + 1] and isCube[id + 1]) or BlockRegistry.isLiquid[id + 1] then
+		return false
+	end
+	local d = byId[id]
+	return d ~= nil and string.find(d.key, "leaves", 1, true) == nil
+end
+Shapes.sturdyCube = sturdyCube
+
 -- Does a fence connect toward a block with this id?
 function Shapes.fenceConnects(id: number?): boolean
 	if id == nil or id == 0 then
@@ -147,8 +157,8 @@ function Shapes.fenceConnects(id: number?): boolean
 	if d and d.shape == "fence" then
 		return true
 	end
-	-- Java: full sturdy faces (not leaves; ours are not opaque anyway)
-	return isOpaque[id + 1] and isCube[id + 1]
+	-- Java: full sturdy faces (glass too; not leaves)
+	return sturdyCube(id)
 end
 
 -- Fences, walls and panes join a fence gate whose span runs across the joining direction.
@@ -166,7 +176,7 @@ local function wallConnects(id: number?, dir: string): boolean
 	if d and (d.shape == "wall" or d.shape == "pane") then
 		return true
 	end
-	return gateJoins(id, dir) or (isOpaque[id + 1] and isCube[id + 1])
+	return gateJoins(id, dir) or sturdyCube(id)
 end
 
 -- Panes and iron bars join each other, walls and full solid blocks (Java IronBarsBlock).
@@ -178,7 +188,7 @@ local function paneConnects(id: number?): boolean
 	if d and (d.shape == "pane" or d.shape == "wall") then
 		return true
 	end
-	return isOpaque[id + 1] and isCube[id + 1]
+	return sturdyCube(id)
 end
 
 local function fenceBoxes(get: Getter, collision: boolean): { Box }

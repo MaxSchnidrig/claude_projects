@@ -148,6 +148,7 @@ function AudioClient.init(deps: { [string]: any })
 	-- footsteps, landing, eating
 	local walked = 0
 	local wasGrounded = true
+	local lastVy = 0
 	local eatAcc = 0
 	RunService.Heartbeat:Connect(function(dt)
 		local c = Players.LocalPlayer.Character
@@ -156,8 +157,8 @@ function AudioClient.init(deps: { [string]: any })
 		if not h or not root or h.Health <= 0 then
 			return
 		end
-		local grounded = h.FloorMaterial ~= Enum.Material.Air
-		local v = root.AssemblyLinearVelocity
+		local grounded = MovementController.onGround
+		local v = MovementController.velocity * 20 * BS -- studs/s
 		local feet = root.Position - Vector3.new(0, 3, 0)
 		if grounded and not MovementController.inLiquid and not MovementController.sneaking then
 			walked += Vector3.new(v.X, 0, v.Z).Magnitude * dt / BS
@@ -167,10 +168,12 @@ function AudioClient.init(deps: { [string]: any })
 				playMaterial("step", id, feet, "step.default")
 			end
 		end
-		if grounded and not wasGrounded and v.Y < -40 then
-			AudioClient.play(if v.Y < -70 then "fall.big" else "fall.small", feet)
+		-- landing: judged by the speed just before touching down
+		if grounded and not wasGrounded and lastVy < -40 then
+			AudioClient.play(if lastVy < -70 then "fall.big" else "fall.small", feet)
 		end
 		wasGrounded = grounded
+		lastVy = v.Y
 		if MovementController.usingItem then
 			eatAcc += dt
 			if eatAcc >= 0.2 then

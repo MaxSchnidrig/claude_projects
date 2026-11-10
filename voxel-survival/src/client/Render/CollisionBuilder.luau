@@ -72,15 +72,7 @@ function CollisionBuilder.build(padded: buffer, originStuds: Vector3, folder: In
 					local function get(dx: number, dy: number, dz: number): number?
 						return buffer.readu16(padded, (p + dx + dz * P + dy * P2) * 2)
 					end
-					local tall = BlockRegistry.byId[id].shape
-					tall = (tall == "fence" or tall == "wall" or tall == "fence_gate") and tall or nil
 					for _, b in Shapes.boxes(id, get, true) do
-						if tall and b[5] > 1 then
-							-- a Roblox body's legs don't collide: its torso starts 2/3 of a block up and
-							-- would clear a 1.5 fence at the top of a jump. Up to 2 blocks for the body;
-							-- the Java 1.5 stays for feet and mobs (Shapes, MovementController).
-							b = { b[1], b[2], b[3], b[4], 2, b[6] }
-						end
 						addBox(x, y, z, b)
 					end
 				end

@@ -1420,6 +1420,143 @@ test("8c: armour maths, shield direction, bow power, beds", function()
 	eq(back.bed.Y, 70); eq(back.sinceRest, 1234); eq(back.slots[38].item, "iron_chestplate")
 end)
 
+test("player motor: Java movement, no ledge climbing, full jumps, low ceilings, ladders", function()
+	local PlayerMotor = Loader.require("src/shared/Gameplay/PlayerMotor")
+	local V3 = Loader.globals.Vector3
+	local id = BlockRegistry.id
+	local function makeWorld(cells: { [string]: number })
+		return PlayerMotor.world(function(x: number, y: number, z: number): number?
+			return cells[`{x},{y},{z}`] or (if y < 0 then 1 else 0)
+		end)
+	end
+	local function run(w: any, st: any, n: number, input: any): number
+		local top = st.pos.Y
+		for _ = 1, n do
+			PlayerMotor.tick(st, input, w)
+			top = math.max(top, st.pos.Y)
+		end
+		return top
+	end
+	local function inp(mx: number, jump: boolean, sprint: boolean?, sneak: boolean?)
+		return { moveX = mx, moveZ = 0, jump = jump, sneak = sneak == true, sprint = sprint == true, usingItem = false, lookX = 1, lookZ = 0 }
+	end
+	-- flat ground: walking 4.317 b/s, sprinting 5.612 b/s, jump peak 1.2522
+	local flat = makeWorld({})
+	local st = PlayerMotor.new(V3.new(0.5, 0, 0.5))
+	run(flat, st, 40, inp(1, false))
+	local x0 = st.pos.X
+	run(flat, st, 20, inp(1, false))
+	eq(math.floor((st.pos.X - x0) * 1000 + 0.5) / 1000, 4.317)
+	st = PlayerMotor.new(V3.new(0.5, 0, 0.5))
+	run(flat, st, 40, inp(1, false, true))
+	x0 = st.pos.X
+	run(flat, st, 20, inp(1, false, true))
+	eq(math.floor((st.pos.X - x0) * 1000 + 0.5) / 1000, 5.612)
+	-- held sprint-jumping: ~7.1 b/s on average (re-jumps on the landing tick, no slowdown)
+	run(flat, st, 40, inp(1, true, true))
+	x0 = st.pos.X
+	run(flat, st, 200, inp(1, true, true))
+	local avg = (st.pos.X - x0) / 10
+	assert(avg > 6.9 and avg < 7.3, `sprint-jump speed {avg}`)
+	st = PlayerMotor.new(V3.new(0.5, 0, 0.5))
+	run(flat, st, 2, inp(0, false))
+	local peak = run(flat, st, 20, inp(0, true))
+	eq(math.floor(peak * 1000 + 0.5) / 1000, 1.252)
+
+	-- against a 1-block wall: jumping while pushing goes all the way up (not cut at 1.0), lands on top
+	local cells = {}
+	for z = -3, 3 do
+		cells[`3,0,{z}`] = id("stone")
+	end
+	local wall1 = makeWorld(cells)
+	st = PlayerMotor.new(V3.new(1.5, 0, 0.5))
+	run(wall1, st, 20, inp(1, false)) -- run into it
+	assert(st.pos.X < 2.71 and st.pos.Y < 0.01, "stopped by the block")
+	peak = run(wall1, st, 30, inp(1, true))
+	assert(peak > 1.2, `full jump against a block (peak {peak})`)
+	assert(st.pos.Y >= 0.99 and st.pos.X > 3, "ends on top of the block")
+
+	-- fence, wall, gate, slab-on-block, 2-block wall: never over, however long you push and jump
+	local function neverOver(build: (any) -> (), label: string)
+		local c = {}
+		build(c)
+		local w = makeWorld(c)
+		local s2 = PlayerMotor.new(V3.new(1.5, 0, 0.5))
+		for _ = 1, 10 do
+			run(w, s2, 15, inp(1, false, true)) -- sprint into it
+			run(w, s2, 40, inp(1, true, true)) -- hold jump
+		end
+		assert(s2.pos.X < 3.4, `{label}: got over (x {s2.pos.X}, y {s2.pos.Y})`)
+	end
+	neverOver(function(c)
+		for z = -3, 3 do
+			c[`3,0,{z}`] = id("oak_fence")
+		end
+	end, "fence")
+	neverOver(function(c)
+		for z = -3, 3 do
+			c[`3,0,{z}`] = id("cobblestone_wall")
+		end
+	end, "wall")
+	neverOver(function(c)
+		for z = -3, 3 do
+			c[`3,0,{z}`] = id("stone")
+			c[`3,1,{z}`] = id("stone_slab")
+		end
+	end, "slab on a block")
+	neverOver(function(c)
+		for z = -3, 3 do
+			c[`3,0,{z}`] = id("stone")
+			c[`3,1,{z}`] = id("stone")
+		end
+	end, "2-block wall")
+
+	-- a 3-block-high tunnel: jumping while sprinting bumps the head, forward motion continues
+	local tunnel = {}
+	for x = -2, 40 do
+		tunnel[`{x},3,0`] = id("stone")
+	end
+	local tw = makeWorld(tunnel)
+	local a = PlayerMotor.new(V3.new(0.5, 0, 0.5))
+	local b = PlayerMotor.new(V3.new(0.5, 0, 0.5))
+	run(tw, a, 30, inp(1, true, true))
+	run(flat, b, 30, inp(1, true, true))
+	assert(a.pos.X > b.pos.X * 0.8, `forward motion continues under a ceiling ({a.pos.X} vs {b.pos.X})`)
+
+	-- step onto a slab without jumping
+	local sl = makeWorld({ ["3,0,0"] = id("stone_slab") })
+	st = PlayerMotor.new(V3.new(1.5, 0, 0.5))
+	local slabTop = run(sl, st, 12, inp(1, false))
+	assert(slabTop > 0.49 and st.pos.X > 3, `stepped onto the slab (top {slabTop})`)
+
+	-- sneaking at an edge: you stay on the block
+	local ledge = {}
+	for x = -2, 2 do
+		ledge[`{x},0,0`] = id("stone")
+	end
+	local lw = PlayerMotor.world(function(x: number, y: number, z: number): number?
+		return ledge[`{x},{y},{z}`] or 0 -- nothing below: a deep drop past the edge
+	end)
+	st = PlayerMotor.new(V3.new(1.5, 1, 0.5))
+	st.onGround = true
+	run(lw, st, 60, inp(1, false, false, true))
+	assert(st.pos.Y > 0.99 and st.pos.X < 3.31, `stayed on the edge (x {st.pos.X})`)
+
+	-- ladder: walking into it climbs; sneaking holds
+	local lad = {}
+	for y = 0, 6 do
+		lad[`3,{y},0`] = id("stone")
+		lad[`2,{y},0`] = id("ladder_west") -- faces west, wall to the east
+	end
+	local ldw = makeWorld(lad)
+	st = PlayerMotor.new(V3.new(2.5, 0, 0.5))
+	run(ldw, st, 20, inp(1, false))
+	assert(st.pos.Y > 1.5, `climbed by walking into the ladder (y {st.pos.Y})`)
+	local y1 = st.pos.Y
+	run(ldw, st, 20, inp(0, false, false, true))
+	assert(math.abs(st.pos.Y - y1) < 0.2, "sneaking holds on the ladder")
+end)
+
 print(`\n{passed} passed, {failed} failed`)
 if failed > 0 then
 	process.exit(1)

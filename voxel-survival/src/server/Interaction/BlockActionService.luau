@@ -313,7 +313,10 @@ local function place(player: Player, x: number, y: number, z: number, retry: boo
 		reject("no character")
 		return true
 	end
-	local stack = InventoryService.selectedStack(player)
+	-- the off hand places when the client says so (its main hand can't place)
+	local useOff = extra ~= nil and extra[6] == 1
+	local slot = if useOff then Config.OFFHAND_SLOT else InventoryService.selectedSlot(player)
+	local stack = InventoryService.getSlot(player, slot)
 	local item = stack and ItemRegistry.get(stack.item)
 	if not item or not item.block then
 		reject("not holding a block")
@@ -369,10 +372,13 @@ local function place(player: Player, x: number, y: number, z: number, retry: boo
 			end
 		end
 	end
-	if not InventoryService.consumeSelected(player, 1) then
+	local st = stack :: InventoryService.Stack
+	if st.count < 1 then
 		reject("no item")
 		return true
 	end
+	st.count -= 1
+	InventoryService.setSlot(player, slot, if st.count > 0 then st else nil)
 	for _, c in changes do
 		local key = WorldService.setBlock(c.x, c.y, c.z, c.id)
 		local kind = BlockEntityService.kindOf(c.id)
@@ -457,7 +463,7 @@ function BlockActionService.init()
 			local ex: { number }? = nil
 			if typeof(extra) == "table" then
 				local list = {}
-				for i = 1, 5 do
+				for i = 1, 6 do
 					local v = extra[i]
 					list[i] = if typeof(v) == "number" and v == v and math.abs(v) < 2 ^ 24 then v else nil
 				end

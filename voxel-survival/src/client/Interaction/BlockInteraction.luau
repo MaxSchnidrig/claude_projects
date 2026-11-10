@@ -124,8 +124,8 @@ local function attackMob(id: number)
 	if humanoid and root then
 		crit = Combat.isCrit({
 			charge = charge,
-			falling = root.AssemblyLinearVelocity.Y < 0,
-			onGround = humanoid.FloorMaterial ~= Enum.Material.Air,
+			falling = MovementController.velocity.Y < 0,
+			onGround = MovementController.onGround,
 			sprinting = MovementController.sprinting,
 			inLiquid = MovementController.inLiquid,
 		})
@@ -350,7 +350,7 @@ local function modifiers(): Mining.Modifiers
 		inWater = id ~= nil and isLiquid[id + 1]
 	end
 	return {
-		airborne = humanoid ~= nil and humanoid.FloorMaterial == Enum.Material.Air,
+		airborne = humanoid ~= nil and not MovementController.onGround,
 		inWater = inWater,
 	}
 end
@@ -364,17 +364,30 @@ local function stopEating()
 end
 
 -- Hold right mouse with food: eat over 1.6 s (only when not full), repeat while held.
+-- The food to eat: the main hand's, else the off hand's (Java: main hand first). Slot or nil.
+local function foodSlot(): number?
+	local main = ItemRegistry.get(InventoryClient.heldItem())
+	if main and main.food then
+		return InventoryClient.selected
+	end
+	local off = InventoryClient.offhand()
+	local od = off and ItemRegistry.get(off.item)
+	if (not main or (not main.block and not main.tool)) and od and od.food then
+		return Config.OFFHAND_SLOT
+	end
+	return nil
+end
+
 local function updateEating(dt: number)
-	local item = ItemRegistry.get(InventoryClient.heldItem())
-	local canEat = useHeld and item ~= nil and item.food ~= nil
-		and SurvivalClient.food < SurvivalRules.MAX_FOOD and not SurvivalClient.dead
-	if not canEat or (eating and eating.slot ~= InventoryClient.selected) then
+	local slot = foodSlot()
+	local canEat = useHeld and slot ~= nil and SurvivalClient.food < SurvivalRules.MAX_FOOD and not SurvivalClient.dead
+	if not canEat or (eating and eating.slot ~= slot) then
 		stopEating()
 		return
 	end
 	if not eating then
-		eating = { progress = 0, slot = InventoryClient.selected }
-		SurvivalClient.eatStart()
+		eating = { progress = 0, slot = slot :: number }
+		SurvivalClient.eatStart(slot == Config.OFFHAND_SLOT)
 	end
 	local e = eating :: { progress: number, slot: number }
 	e.progress += dt / EAT_SECONDS
@@ -629,6 +642,15 @@ local function update(dt: number)
 	-- Placing
 	if placeHeld and hit and now >= nextPlaceAt and (hit.nx ~= 0 or hit.ny ~= 0 or hit.nz ~= 0) then
 		local item = ItemRegistry.get(InventoryClient.heldItem())
+		local fromOffhand = false
+		if not (item and item.block) and not (item and item.food) then
+			-- Java: a main hand that can't place lets the off hand place its block (torches)
+			local off = InventoryClient.offhand()
+			local od = off and ItemRegistry.get(off.item)
+			if od and od.block then
+				item, fromOffhand = od, true
+			end
+		end
 		if item and item.block then
 			local x, y, z = hit.x + hit.nx, hit.y + hit.ny, hit.z + hit.nz
 			local _, look = CameraController.getEyeAndLook()
@@ -646,7 +668,7 @@ local function update(dt: number)
 				end
 			end
 			if changes and not blocked then
-				send("place", x, y, z, hit.nx, hit.ny, hit.nz, { hit.px, hit.py, hit.pz, lx, lz })
+				send("place", x, y, z, hit.nx, hit.ny, hit.nz, { hit.px, hit.py, hit.pz, lx, lz, if fromOffhand then 1 else 0 })
 				for _, c in changes do
 					ClientWorld.setBlock(c.x, c.y, c.z, c.id, true) -- instant prediction
 				end
@@ -713,8 +735,7 @@ local function makeTouchButtons()
 		if tryUse() then
 			return
 		end
-		local held = ItemRegistry.get(InventoryClient.heldItem())
-		if held and held.food then
+		if foodSlot() then
 			useHeld = true
 			return
 		end
@@ -763,8 +784,8 @@ function BlockInteraction.init()
 				-- armour worn
 			elseif startGear(hit ~= nil) then
 				-- bow / crossbow / shield
-			elseif held and held.food then
-				useHeld = true -- eat
+			elseif foodSlot() then
+				useHeld = true -- eat (main hand, else the off hand)
 			else
 				placeHeld = true
 				nextPlaceAt = 0 -- first placement is immediate

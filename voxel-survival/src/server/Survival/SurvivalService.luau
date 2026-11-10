@@ -371,7 +371,8 @@ local function onAction(p: Player, a: any)
 		end
 	elseif t == "eatStart" then
 		s.eatingSince = os.clock()
-		s.eatingSlot = InventoryService.selectedSlot(p)
+		-- the off hand eats when the main hand has no food (Java: main hand first)
+		s.eatingSlot = if a.hand == "off" then Config.OFFHAND_SLOT else InventoryService.selectedSlot(p)
 	elseif t == "eatCancel" then
 		s.eatingSince = nil
 	elseif t == "eatFinish" then
@@ -380,16 +381,20 @@ local function onAction(p: Player, a: any)
 		if not since or os.clock() - since < EAT_SECONDS - 0.15 or s.dead then
 			return
 		end
-		if InventoryService.selectedSlot(p) ~= s.eatingSlot then
+		local slot = s.eatingSlot
+		if slot ~= Config.OFFHAND_SLOT and InventoryService.selectedSlot(p) ~= slot then
 			return
 		end
-		local stack = InventoryService.selectedStack(p)
+		local stack = InventoryService.getSlot(p, slot)
 		local def = stack and ItemRegistry.get(stack.item)
 		local food = def and def.food
-		if not food or s.hunger.food >= SurvivalRules.MAX_FOOD then
+		if not stack or not food or s.hunger.food >= SurvivalRules.MAX_FOOD then
 			return
 		end
-		if InventoryService.consumeSelected(p, 1) then
+		local st = stack :: InventoryService.Stack
+		st.count -= 1
+		InventoryService.setSlot(p, slot, if st.count > 0 then st else nil)
+		do
 			SurvivalRules.eat(s.hunger, food.hunger, food.saturation)
 			sync(p)
 		end
