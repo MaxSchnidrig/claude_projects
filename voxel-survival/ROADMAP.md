@@ -91,6 +91,10 @@ are fine.
   as thinner sheets that overlap a hair, so nothing shows at a seam. Verified against a
   brute-force outer-face check on 60 random pane / block / wall / slab layouts, and the real
   SpecialPartsBackend is run in the fake Roblox (a 3 x 2 window must be exactly 6 Parts).
+- 0.8.13: off-hand food is eaten whenever the main hand does nothing with the click (Java:
+  a sword or tool in the main hand no longer blocks it; only a block being placed at a target
+  does); if the server's Animator never arrives the client makes its own, so animations can't
+  silently stay off.
 
 ## Phase 8 – Survival foundations (XL)
 

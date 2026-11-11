@@ -235,8 +235,14 @@ local function loadAnimations(character: Model, humanoid: Humanoid)
 	task.spawn(function()
 		local animator = humanoid:WaitForChild("Animator", 5)
 		local animate = character:WaitForChild("Animate", 5)
-		if not animator or not animator:IsA("Animator") or Players.LocalPlayer.Character ~= character then
+		if Players.LocalPlayer.Character ~= character then
 			return
+		end
+		if not animator or not animator:IsA("Animator") then
+			-- the server's Animator never arrived: make our own (it works the same locally)
+			local a = Instance.new("Animator")
+			a.Parent = humanoid
+			animator = a
 		end
 		local mine: { [AnimationTrack]: boolean } = {}
 		if animate and animate:IsA("LocalScript") then

@@ -364,22 +364,27 @@ local function stopEating()
 end
 
 -- Hold right mouse with food: eat over 1.6 s (only when not full), repeat while held.
--- The food to eat: the main hand's, else the off hand's (Java: main hand first). Slot or nil.
-local function foodSlot(): number?
+-- The food to eat: the main hand's, else the off hand's (Java: the main hand is tried first,
+-- and only a main hand that does something with the click - a block being placed at a target -
+-- keeps the off hand's food from being eaten; a sword or tool does not). Slot or nil.
+local function foodSlot(aimingAtBlock: boolean): number?
 	local main = ItemRegistry.get(InventoryClient.heldItem())
 	if main and main.food then
 		return InventoryClient.selected
 	end
+	if main and main.block and aimingAtBlock then
+		return nil -- the main hand places its block instead
+	end
 	local off = InventoryClient.offhand()
 	local od = off and ItemRegistry.get(off.item)
-	if (not main or (not main.block and not main.tool)) and od and od.food then
+	if od and od.food then
 		return Config.OFFHAND_SLOT
 	end
 	return nil
 end
 
 local function updateEating(dt: number)
-	local slot = foodSlot()
+	local slot = foodSlot(if eating then false else BlockInteraction.target ~= nil)
 	local canEat = useHeld and slot ~= nil and SurvivalClient.food < SurvivalRules.MAX_FOOD and not SurvivalClient.dead
 	if not canEat or (eating and eating.slot ~= slot) then
 		stopEating()
@@ -735,7 +740,7 @@ local function makeTouchButtons()
 		if tryUse() then
 			return
 		end
-		if foodSlot() then
+		if foodSlot(hit ~= nil) then
 			useHeld = true
 			return
 		end
@@ -784,7 +789,7 @@ function BlockInteraction.init()
 				-- armour worn
 			elseif startGear(hit ~= nil) then
 				-- bow / crossbow / shield
-			elseif foodSlot() then
+			elseif foodSlot(hit ~= nil) then
 				useHeld = true -- eat (main hand, else the off hand)
 			else
 				placeHeld = true
