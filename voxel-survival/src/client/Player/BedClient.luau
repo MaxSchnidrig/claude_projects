@@ -93,6 +93,9 @@ function BedClient.init()
 			setSleeping(true)
 		elseif m.type == "wake" then
 			setSleeping(false)
+			if typeof(m.pos) == "Vector3" then
+				MovementController.teleport(m.pos) -- stand up next to the bed
+			end
 		elseif m.type == "message" and typeof(m.text) == "string" then
 			BedClient.message(m.text)
 		end

@@ -30,6 +30,7 @@ local MobClient = require(script.Parent.Parent.Mobs.MobClient)
 local BlockInteraction = require(script.Parent.Parent.Interaction.BlockInteraction)
 local InventoryClient = require(script.Parent.Parent.Player.InventoryClient)
 local CameraController = require(script.Parent.Parent.Player.CameraController)
+local MovementController = require(script.Parent.Parent.Player.MovementController)
 local BlockRegistry = require(Shared.Blocks.BlockRegistry)
 local ItemRegistry = require(Shared.Items.ItemRegistry)
 local Mining = require(Shared.Gameplay.Mining)
@@ -57,6 +58,27 @@ end
 
 local function yes(b: boolean): string
 	return if b then "yes" else "NO"
+end
+
+-- The player's own physics (MovementController): for movement bug reports.
+local function motorLine(): string
+	local feet = MovementController.feet()
+	if not feet then
+		return "motor: no character"
+	end
+	local ms = MovementController.stats
+	local v = MovementController.velocity
+	local flag = function(b: boolean): string
+		return if b then "yes" else "no"
+	end
+	return string.format(
+		"motor: feet %.2f %.2f %.2f   speed %.2f b/s   ground %s  sprint %s  sneak %s  ladder %s  liquid %s   ticks %d%s%s%s",
+		feet.X, feet.Y - Config.Y_OFFSET, feet.Z, math.sqrt(v.X * v.X + v.Z * v.Z) * 20,
+		flag(MovementController.onGround), flag(MovementController.sprinting), flag(MovementController.sneaking),
+		flag(MovementController.onLadder), flag(MovementController.inLiquid), ms.ticks,
+		if ms.held then "   HELD BY SERVER" else "",
+		if ms.waitingForChunk then "   WAITING FOR CHUNK" else "",
+		if MovementController.spectating then "   SPECTATOR" else "")
 end
 
 -- Hotbar diagnostics (startup steps, where the GUI is, whether it's on screen).
@@ -230,6 +252,7 @@ function DebugOverlay.init()
 		label.Text = table.concat({
 			`{GameInfo.TITLE} {GameInfo.VERSION}   {string.format("%.0f", fps)} fps   [F3 hide, F4 backend, F6 keep live edits, J +6h, K hurt, L spawn mob, G torches, F7 sky mode (Studio)]`,
 			`pos {posText}   biome {biomeText}   camera {CameraController.mode}`,
+			motorLine(),
 			targetLine() .. (if BlockInteraction.mobTarget then `   aiming at mob #{BlockInteraction.mobTarget}` else ""),
 			string.format("mobs: known %d, with visible model %d   snapshot packets %d   model build errors %d%s",
 				MobClient.stats.known, MobClient.stats.visible, MobClient.stats.packets, MobClient.stats.buildErrors,

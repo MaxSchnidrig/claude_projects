@@ -69,7 +69,6 @@ local function applyFog(rd: number)
 	Lighting.FogEnd = edge
 	Lighting.FogStart = edge * 0.55 -- fog colour follows the time of day (DayNightClient)
 end
-local anchoredByUs = false
 
 -- Chunk offsets sorted by distance, covering the largest radius we ever need.
 local offsets: { { dx: number, dz: number, d2: number } } = {}
@@ -541,37 +540,6 @@ local function onDiffs(list: any)
 	end
 end
 
--- Keep the character frozen while there is no collision under it (e.g. right after a respawn
--- far away), so it can't fall through not-yet-built terrain.
-local function safetyAnchor()
-	local character = Players.LocalPlayer.Character
-	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if not root or Players.LocalPlayer:GetAttribute("Spectating") then
-		return -- spectator mode anchors and moves the body itself
-	end
-	local p = root.Position / BS
-	local bx, by, bz = math.floor(p.X), math.floor(p.Y), math.floor(p.Z)
-	local cx, cz = bx // CS, bz // CS
-	local rec = chunks[ChunkData.key(cx, cz)]
-	local ready = rec ~= nil and rec.data ~= nil
-	if ready and rec then
-		local sy = math.clamp(by // SS, 0, NSEC - 1)
-		for s = math.max(0, sy - 1), sy do
-			local sec = rec.sections[s + 1]
-			if sec.collisionDirty or sec.collision == nil then
-				ready = false
-			end
-		end
-	end
-	if not ready and not root.Anchored then
-		root.Anchored = true
-		anchoredByUs = true
-	elseif ready and anchoredByUs then
-		root.Anchored = false
-		anchoredByUs = false
-	end
-end
-
 local function checkWorldReady()
 	if worldReadySent then
 		return
@@ -665,7 +633,6 @@ function ClientWorld.init()
 		scheduler:step()
 		local t2 = os.clock()
 		ChunkRenderer.pump()
-		safetyAnchor()
 		checkWorldReady()
 		local t3 = os.clock()
 		-- exponential moving averages (ms) for the F3 overlay

@@ -14,6 +14,9 @@ Loader.globals = {} :: { [string]: any }
 
 local cache: { [string]: any } = {}
 local codegen = false
+-- Stand-ins for modules that can't run headless, by file path ("src/client/World/ClientWorld.luau"):
+-- requiring that path returns the stub instead of loading the file.
+Loader.stubs = {} :: { [string]: any }
 
 function Loader.setCodegen(enabled: boolean)
 	codegen = enabled
@@ -68,6 +71,10 @@ end
 local function requireNode(node: any): any
 	local path = rawget(node, "__path")
 	assert(path and not rawget(node, "__isDir"), "Loader: require() expects a module node")
+	local stub = Loader.stubs[path]
+	if stub ~= nil then
+		return stub
+	end
 	local hit = cache[path]
 	if hit ~= nil then
 		return hit
@@ -85,6 +92,22 @@ local function requireNode(node: any): any
 	return result
 end
 
+
+-- A directory as an Instance-like node (e.g. what ReplicatedStorage:WaitForChild("Shared") returns
+-- in a fake DataModel): Loader.node("src/shared").
+function Loader.node(path: string): any
+	indexTree(string.match(path, "^([^/]+)") or ".")
+	return makeNode(path, true, dirname(path))
+end
+
+-- Forget loaded modules whose path starts with `prefix` (they hold state between test scenarios).
+function Loader.forget(prefix: string)
+	for path in cache do
+		if string.sub(path, 1, #prefix) == prefix then
+			cache[path] = nil
+		end
+	end
+end
 
 -- Require a module by filesystem path, e.g. Loader.require("src/shared/World/TerrainGen")
 function Loader.require(path: string): any

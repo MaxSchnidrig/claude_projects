@@ -95,6 +95,7 @@ local function update(dt: number)
 		pitch += gamepadLook.Y * math.rad(180) * dt
 	end
 	pitch = math.clamp(pitch, -MAX_PITCH, MAX_PITCH)
+	MovementController.lookYaw = yaw -- the movement code walks where we look
 
 	local character = Players.LocalPlayer.Character
 	local root = rootPart()
@@ -160,6 +161,7 @@ function CameraController.init()
 		local root = character:WaitForChild("HumanoidRootPart") :: BasePart
 		local _, ry, _ = root.CFrame:ToEulerAnglesYXZ()
 		yaw, pitch = ry, 0
+		MovementController.lookYaw = yaw
 	end)
 
 	RunService:BindToRenderStep("RocraftCamera", Enum.RenderPriority.Camera.Value + 1, update)

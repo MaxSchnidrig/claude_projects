@@ -107,12 +107,14 @@ local function wake(p: Player, reason: string?)
 	end
 	sleeping[p] = nil
 	local root = rootOf(p)
+	local spot = standUpSpot(s.head) or s.head + Vector3.new(0.5, 1, 0.5)
 	if root then
-		local spot = standUpSpot(s.head) or s.head + Vector3.new(0.5, 1, 0.5)
-		root.Anchored = false
+		-- move it while we still hold it, then let go; the client's movement code is also told
+		-- the spot (it never reads the body's position back on its own)
 		root.CFrame = CFrame.new(spot.X * BS, spot.Y * BS + 3.05, spot.Z * BS)
+		root.Anchored = false
 	end
-	remote():FireClient(p, { type = "wake", reason = reason })
+	remote():FireClient(p, { type = "wake", reason = reason, pos = spot + Vector3.new(0, 0.05 / BS, 0) })
 end
 
 local function tryUse(p: Player, x: number, y: number, z: number)

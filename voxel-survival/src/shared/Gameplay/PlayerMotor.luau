@@ -1,22 +1,32 @@
 --!strict
 -- Java Edition player physics, one 20 Hz tick (pure: no Roblox instances; tested headless).
 -- MovementController runs it for the local player and places the body where the box is.
--- Units: blocks and ticks. `pos` is the centre of the feet; the box is 0.6 wide and 1.8 tall
--- (1.5 while sneaking).
 --
--- Per tick (LivingEntity.aiStep / travel):
---   jump      held + on the ground + noJumpDelay 0: vy = 0.42, sprinting adds 0.2 along the
---             facing; noJumpDelay = 10 (released: 0). In a fluid: vy += 0.04 instead.
---   input     length <= 1, x 0.98, sneaking x 0.3, using an item x 0.2; acceleration 0.1 / 0.13
---             (sprint) on the ground (also on the jump tick), 0.02 / 0.026 in the air
---   climbing  ladders / vines: horizontal clamp 0.15, falling at most 0.15, sneaking holds; after
---             moving, pushing into something or holding jump sets vy = 0.2
---   sneaking  on the ground: the move is cut back so the box keeps support within 0.6 below
---   move      against block shapes (MobPhysics), step up 0.6 when on the ground or landing
---   after     vy = (vy - 0.08) x 0.98; horizontal x 0.546 on the ground, x 0.91 in the air
---   water     accel 0.02, current 0.014, then x 0.8 (0.9 sprinting), vy - 0.005;
---   lava      accel 0.02, then x 0.5, vy - 0.02; in both, swimming into a ledge with room
---             0.6 higher sets vy = 0.3
+-- Units: blocks and ticks. (x, y, z) is the centre of the feet; the box is 0.6 wide and 1.8
+-- tall (1.5 while sneaking). Position and velocity are plain Lua numbers (doubles) on purpose:
+-- a Roblox Vector3 holds 32-bit floats, and a position rounded to one no longer touches a wall
+-- exactly but sits a hair inside it, where the wall stops counting (see MobPhysics).
+--
+-- One tick, in Java's order (Entity.baseTick, LivingEntity.aiStep / travel, Entity.move):
+--   fluids    how high water / lava reaches above the feet; a current pushes 0.014 (lava
+--             0.00233); water resets the fall distance, lava halves it
+--   velocity  components under 0.003 are dropped
+--   jump      held, on the ground and noJumpDelay 0: vy = 0.42, sprinting adds 0.2 along the
+--             facing, noJumpDelay = 10 (released: 0). In fluid deeper than 0.4 (or off the
+--             ground): vy += 0.04 instead.
+--   input     forward / strafe x 0.98, sneaking x 0.3, using an item x 0.2, cut to length 1,
+--             turned to the facing. Acceleration 0.1 (sprint 0.13) on the ground, scaled by
+--             the block's slipperiness (ice); 0.02 (0.026) in the air; 0.02 in fluids.
+--   climbing  feet in a ladder / vine: sideways speed at most 0.15, falling at most 0.15,
+--             sneaking holds; after moving, pushing into something or holding jump: vy = 0.2
+--   sneaking  on the ground the move is cut back so the box keeps support within 0.6 below
+--   move      Java Entity.collide against block shapes with a 0.6 step-up; a blocked axis
+--             loses its speed; landing on a bed bounces 66 % (not while sneaking)
+--   after     land: vy = (vy - 0.08) x 0.98, sideways x 0.546 on the ground (slipperiness
+--             x 0.91), x 0.91 in the air.  water: x 0.8 (0.9 sprinting), vy - 0.005.
+--             lava: x 0.5, vy - 0.02.  Swimming into a ledge with free air 0.6 up: vy = 0.3.
+--   falls     the fall distance adds up the downward movement while in the air; it is
+--             reported on landing (damage = distance - 3, rounded up, by the server)
 
 local BlockRegistry = require(script.Parent.Parent.Blocks.BlockRegistry)
 local Shapes = require(script.Parent.Parent.Blocks.Shapes)
@@ -27,39 +37,55 @@ local Fluids = require(script.Parent.Parent.World.Fluids)
 local PlayerMotor = {}
 
 local HALF = 0.3
-local WIDTH = 0.6
 local STEP = 0.6
-local TICK = 0.05
 PlayerMotor.HALF = HALF
 PlayerMotor.STEP = STEP
+PlayerMotor.TICK = 0.05
+PlayerMotor.HEIGHT = 1.8
+PlayerMotor.SNEAK_HEIGHT = 1.5
 
 local isLiquid = BlockRegistry.isLiquid
+local byId = BlockRegistry.byId
+
+-- Java Block.getFriction: 0.6 for everything but these.
+local SLIPPERINESS: { [number]: number } = {}
+do
+	local ice = BlockRegistry.byKey["ice"]
+	if ice then
+		SLIPPERINESS[ice.id] = 0.98
+	end
+end
 
 export type State = {
-	pos: Vector3,
-	vel: Vector3, -- blocks/tick
+	x: number,
+	y: number,
+	z: number,
+	vx: number, -- blocks/tick (Java deltaMovement)
+	vy: number,
+	vz: number,
 	onGround: boolean,
 	noJumpDelay: number,
-	peak: number?, -- highest feet height since leaving the ground
+	fallDistance: number,
 }
 
 export type Input = {
-	moveX: number, -- world-space movement input (length <= 1)
-	moveZ: number,
+	forward: number, -- -1..1, forward positive (W)
+	strafe: number, -- -1..1, right positive (D)
+	lookX: number, -- horizontal facing (any length)
+	lookZ: number,
 	jump: boolean,
 	sneak: boolean,
 	sprint: boolean,
 	usingItem: boolean,
-	lookX: number, -- facing (sprint-jump boost)
-	lookZ: number,
 }
 
 export type Result = {
-	fall: number?, -- landed after falling this far (blocks, > 3 = damage)
-	stepUp: number, -- risen by a step this tick
-	hitWall: boolean,
+	fall: number?, -- landed this tick after falling this far (blocks)
+	stepUp: number, -- rose this much by stepping onto something (the camera smooths it)
+	hitWall: boolean, -- Java horizontalCollision
+	minorWall: boolean, -- ... and it was a glancing one (sprinting survives it)
 	onLadder: boolean,
-	fluid: string?,
+	fluid: string?, -- "water" | "lava" when in it
 	jumped: boolean,
 	bounced: boolean,
 }
@@ -69,8 +95,8 @@ export type World = {
 	solid: (number, number, number) -> any, -- Shapes.physicsFn
 }
 
-function PlayerMotor.new(pos: Vector3): State
-	return { pos = pos, vel = Vector3.zero, onGround = false, noJumpDelay = 0, peak = nil }
+function PlayerMotor.new(x: number, y: number, z: number): State
+	return { x = x, y = y, z = z, vx = 0, vy = 0, vz = 0, onGround = false, noJumpDelay = 0, fallDistance = 0 }
 end
 
 function PlayerMotor.world(getBlock: (number, number, number) -> number?): World
@@ -79,203 +105,365 @@ end
 
 -- Any collision box inside this box (block units)? Unloaded counts as solid.
 function PlayerMotor.solidIn(w: World, x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): boolean
-	for x = math.floor(x0), math.ceil(x1) - 1 do
-		for y = math.floor(y0) - 1, math.ceil(y1) - 1 do
-			for z = math.floor(z0), math.ceil(z1) - 1 do
-				local s = w.solid(x, y, z)
-				if s == true then
-					if y >= math.floor(y0) then
-						return true
-					end
-				elseif s then
-					for _, b in s do
-						if x + b[4] > x0 and x + b[1] < x1 and y + b[5] > y0 and y + b[2] < y1 and z + b[6] > z0 and z + b[3] < z1 then
-							return true
-						end
-					end
+	return #MobPhysics.gather(w.solid, x0, y0, z0, x1, y1, z1) > 0
+end
+local solidIn = PlayerMotor.solidIn
+
+-- Room for the standing box at this state's position?
+function PlayerMotor.roomToStand(w: World, st: State): boolean
+	return not solidIn(w, st.x - HALF + 1e-3, st.y + 0.01, st.z - HALF + 1e-3, st.x + HALF - 1e-3, st.y + 1.8, st.z + HALF - 1e-3)
+end
+
+-- Is the chunk the box stands in loaded? (Unloaded blocks count as solid; the caller should
+-- hold the player still rather than simulate inside them.)
+function PlayerMotor.loaded(w: World, st: State): boolean
+	return w.getBlock(math.floor(st.x), math.floor(st.y), math.floor(st.z)) ~= nil
+end
+
+-- How far the surface of water and of lava reaches above the feet (0 = not touching), in the
+-- column at the centre of the box (Java updateFluidHeightAndDoFluidPushing), and the lowest
+-- cell of each in that column (for the current).
+local function fluids(w: World, st: State, h: number): (number, number, number?, number?)
+	local bx, bz = math.floor(st.x), math.floor(st.z)
+	local lo, hi = st.y + 0.001, st.y + h - 0.001
+	local water, lava = 0, 0
+	local waterCell: number?, lavaCell: number? = nil, nil
+	for cy = math.floor(lo), math.ceil(hi) - 1 do
+		local id = w.getBlock(bx, cy, bz)
+		if id and isLiquid[id + 1] then
+			local kind, level = Fluids.info(id)
+			local above = w.getBlock(bx, cy + 1, bz)
+			local sameAbove = above ~= nil and isLiquid[above + 1] and (Fluids.info(above)) == kind
+			local surface = cy + (if sameAbove then 1 else Fluids.height(level))
+			if surface >= lo then
+				if kind == "water" then
+					water = math.max(water, surface - lo)
+					waterCell = waterCell or cy
+				elseif kind == "lava" then
+					lava = math.max(lava, surface - lo)
+					lavaCell = lavaCell or cy
 				end
 			end
 		end
 	end
-	return false
-end
-local solidIn = PlayerMotor.solidIn
-
-function PlayerMotor.roomToStand(w: World, p: Vector3): boolean
-	return not solidIn(w, p.X - HALF + 1e-3, p.Y + 0.01, p.Z - HALF + 1e-3, p.X + HALF - 1e-3, p.Y + 1.8, p.Z + HALF - 1e-3)
+	return water, lava, waterCell, lavaCell
 end
 
-local function fluidAt(w: World, p: Vector3, h: number): string?
-	local bx, bz = math.floor(p.X), math.floor(p.Z)
-	local fid = w.getBlock(bx, math.floor(p.Y + 0.1), bz)
-	local bid = w.getBlock(bx, math.floor(p.Y + h * 0.6), bz)
-	if fid and isLiquid[fid + 1] then
-		return (Fluids.info(fid))
-	elseif bid and isLiquid[bid + 1] then
-		return (Fluids.info(bid))
+-- Java Entity.isFree: the box moved by (dx, dy, dz) touches no block and no liquid.
+local function isFree(w: World, st: State, h: number, dx: number, dy: number, dz: number): boolean
+	local x0, y0, z0 = st.x - HALF + dx, st.y + dy, st.z - HALF + dz
+	local x1, y1, z1 = st.x + HALF + dx, st.y + h + dy, st.z + HALF + dz
+	if solidIn(w, x0, y0, z0, x1, y1, z1) then
+		return false
 	end
-	return nil
+	for cx = math.floor(x0), math.ceil(x1) - 1 do
+		for cy = math.floor(y0), math.ceil(y1) - 1 do
+			for cz = math.floor(z0), math.ceil(z1) - 1 do
+				local id = w.getBlock(cx, cy, cz)
+				if id == nil or isLiquid[id + 1] then
+					return false
+				end
+			end
+		end
+	end
+	return true
 end
 
--- Java maybeBackOffFromEdge.
-local function backOffFromEdge(w: World, p: Vector3, dx: number, dz: number, h: number): (number, number)
-	local function supportedAt(ox: number, oz: number): boolean
-		return solidIn(w, p.X + ox - HALF + 1e-3, p.Y - STEP, p.Z + oz - HALF + 1e-3, p.X + ox + HALF - 1e-3, p.Y + h - STEP, p.Z + oz + HALF - 1e-3)
+-- Java Player.maybeBackOffFromEdge: shrink a sneaking move in 0.05 steps until the box, moved
+-- by it, still has something within 0.6 below.
+local function backOffFromEdge(w: World, st: State, dx: number, dz: number, h: number): (number, number)
+	-- (a hair narrower than the box: a wall the box merely touches is not something to stand on)
+	local function supported(ox: number, oz: number): boolean
+		return solidIn(w, st.x + ox - HALF + 1e-3, st.y - STEP, st.z + oz - HALF + 1e-3,
+			st.x + ox + HALF - 1e-3, st.y + h - STEP, st.z + oz + HALF - 1e-3)
 	end
-	local s = 0.05
 	local function shrink(v: number): number
-		return if math.abs(v) < s then 0 elseif v > 0 then v - s else v + s
+		return if v < 0.05 and v >= -0.05 then 0 elseif v > 0 then v - 0.05 else v + 0.05
 	end
-	while dx ~= 0 and not supportedAt(dx, 0) do
+	while dx ~= 0 and not supported(dx, 0) do
 		dx = shrink(dx)
 	end
-	while dz ~= 0 and not supportedAt(0, dz) do
+	while dz ~= 0 and not supported(0, dz) do
 		dz = shrink(dz)
 	end
-	while dx ~= 0 and dz ~= 0 and not supportedAt(dx, dz) do
+	while dx ~= 0 and dz ~= 0 and not supported(dx, dz) do
 		dx, dz = shrink(dx), shrink(dz)
 	end
 	return dx, dz
 end
 
+-- Java LivingEntity.onClimbable: the block the feet are in.
+local function onClimbable(w: World, st: State): boolean
+	local bx, by, bz = math.floor(st.x), math.floor(st.y), math.floor(st.z)
+	return Shapes.climbable(w.getBlock(bx, by, bz), w.getBlock(bx, by - 1, bz))
+end
+
 function PlayerMotor.tick(st: State, input: Input, w: World): Result
-	local res: Result = { fall = nil, stepUp = 0, hitWall = false, onLadder = false, fluid = nil, jumped = false, bounced = false }
-	local crouch = input.sneak
-	local h = if crouch then 1.5 else 1.8
-	local p = st.pos
-	local vx, vy, vz = st.vel.X, st.vel.Y, st.vel.Z
-	local fluid = fluidAt(w, p, h)
-	res.fluid = fluid
+	local res: Result = {
+		fall = nil, stepUp = 0, hitWall = false, minorWall = false, onLadder = false, fluid = nil, jumped = false, bounced = false,
+	}
+	local sneak = input.sneak
+	local h = if sneak then 1.5 else 1.8
+	-- facing (unit) and the direction to its right
+	local lx, lz = input.lookX, input.lookZ
+	local ll = math.sqrt(lx * lx + lz * lz)
+	if ll < 1e-6 then
+		lx, lz = 0, -1
+	else
+		lx, lz = lx / ll, lz / ll
+	end
+	local rx, rz = -lz, lx
 
-	local bx, bz = math.floor(p.X), math.floor(p.Z)
-	local fy, by = math.floor(p.Y + 0.05), math.floor(p.Y + 1)
-	local onLadder = Shapes.climbable(w.getBlock(bx, fy, bz), w.getBlock(bx, fy - 1, bz))
-		or Shapes.climbable(w.getBlock(bx, by, bz), w.getBlock(bx, by - 1, bz))
-	res.onLadder = onLadder
+	-- fluids (Entity.baseTick)
+	local waterH, lavaH, waterCell, lavaCell = fluids(w, st, h)
+	local inWater, inLava = waterH > 0, lavaH > 0
+	if inWater then
+		st.fallDistance = 0
+		local fx, fz = Fluids.flow(w.getBlock, math.floor(st.x), waterCell :: number, math.floor(st.z))
+		st.vx += fx * 0.014
+		st.vz += fz * 0.014
+	end
+	if inLava then
+		st.fallDistance *= 0.5
+		local fx, fz = Fluids.flow(w.getBlock, math.floor(st.x), lavaCell :: number, math.floor(st.z))
+		st.vx += fx * 0.0023333333333333335
+		st.vz += fz * 0.0023333333333333335
+	end
+	res.fluid = if inWater then "water" elseif inLava then "lava" else nil
 
-	-- jumping
+	-- LivingEntity.aiStep
 	if st.noJumpDelay > 0 then
 		st.noJumpDelay -= 1
 	end
-	local jumped = false
+	local vx, vy, vz = st.vx, st.vy, st.vz
+	if math.abs(vx) < 0.003 then
+		vx = 0
+	end
+	if math.abs(vy) < 0.003 then
+		vy = 0
+	end
+	if math.abs(vz) < 0.003 then
+		vz = 0
+	end
 	if input.jump then
-		if fluid then
-			vy += 0.04
-		elseif st.onGround and st.noJumpDelay == 0 then
-			vy = PlayerPhysics.JUMP_VELOCITY
-			if input.sprint then
-				local bxv, bzv = PlayerPhysics.jumpBoost(input.lookX, input.lookZ)
-				vx += bxv
-				vz += bzv
+		local depth = if inLava then lavaH else waterH
+		local swimming = inWater and depth > 0
+		local shallow = st.onGround and not (depth > 0.4)
+		if not swimming or shallow then
+			if not inLava or shallow then
+				if (st.onGround or (swimming and depth <= 0.4)) and st.noJumpDelay == 0 then
+					-- jumpFromGround
+					vy = PlayerPhysics.JUMP_VELOCITY
+					if input.sprint then
+						vx += lx * PlayerPhysics.SPRINT_JUMP_BOOST
+						vz += lz * PlayerPhysics.SPRINT_JUMP_BOOST
+					end
+					st.noJumpDelay = PlayerPhysics.JUMP_DELAY_TICKS
+					res.jumped = true
+				end
+			else
+				vy += 0.04
 			end
-			st.noJumpDelay = PlayerPhysics.JUMP_DELAY_TICKS
-			jumped = true
+		else
+			vy += 0.04
 		end
 	else
 		st.noJumpDelay = 0
 	end
-	res.jumped = jumped
 
-	-- input
-	local ix, iz = input.moveX, input.moveZ
-	local len = math.sqrt(ix * ix + iz * iz)
-	if len > 1 then
-		ix, iz = ix / len, iz / len
-	end
+	-- the input, in world space (Input.tick, aiStep damping, Entity.getInputVector)
 	local scale = PlayerPhysics.INPUT_DAMPING
-	if crouch then
+	if sneak then
 		scale *= 0.3
 	end
 	if input.usingItem then
 		scale *= 0.2
 	end
-	ix, iz = ix * scale, iz * scale
-
-	local landedNow = false
-	if fluid then
-		vx += ix * 0.02
-		vz += iz * 0.02
-		local cx, cz = Fluids.flow(w.getBlock, math.floor(p.X), math.floor(p.Y + 0.1), math.floor(p.Z))
-		vx += cx * 0.014
-		vz += cz * 0.014
-		local nx, ny, nz, rvx, rvy, rvz, onGround, wall = MobPhysics.move(w.solid, p.X, p.Y, p.Z, vx * 20, vy * 20, vz * 20, WIDTH, h, TICK, nil)
-		st.pos = Vector3.new(nx, ny, nz)
-		st.onGround = onGround
-		res.hitWall = wall
-		vx, vy, vz = rvx / 20, rvy / 20, rvz / 20
-		if fluid == "lava" then
-			vx, vy, vz = vx * 0.5, vy * 0.5 - 0.02, vz * 0.5
-		else
-			local f = if input.sprint then 0.9 else 0.8
-			vx, vy, vz = vx * f, vy * 0.8 - 0.005, vz * f
+	local f, s = input.forward * scale, input.strafe * scale
+	local len2 = f * f + s * s
+	local wx, wz = 0, 0
+	if len2 >= 1e-7 then
+		if len2 > 1 then
+			local l = math.sqrt(len2)
+			f, s = f / l, s / l
 		end
-		if wall and not solidIn(w, nx - HALF, ny + 0.6, nz - HALF, nx + HALF, ny + 0.6 + h, nz + HALF) then
+		wx, wz = lx * f + rx * s, lz * f + rz * s
+	end
+
+	-- Entity.move for our own movement: returns the velocity left after collisions
+	local function move(mvx: number, mvy: number, mvz: number): (number, number, number)
+		local dx, dz = mvx, mvz
+		if sneak and mvy <= 0 and st.onGround then
+			dx, dz = backOffFromEdge(w, st, dx, dz, h)
+		end
+		local e = { st.x - HALF, st.y, st.z - HALF, st.x + HALF, st.y + h, st.z + HALF }
+		local ax, ay, az = MobPhysics.collide(w.solid, e, dx, mvy, dz, STEP, st.onGround)
+		if ax * ax + ay * ay + az * az > 1e-7 then
+			st.x += ax
+			st.y += ay
+			st.z += az
+		end
+		local hitX, hitZ = math.abs(dx - ax) >= 1e-5, math.abs(dz - az) >= 1e-5
+		local hitY = mvy ~= ay
+		res.hitWall = hitX or hitZ
+		if res.hitWall then
+			-- Java isHorizontalCollisionMinor: the actual move is within 8 degrees of the input
+			local d4, d5 = wx * wx + wz * wz, ax * ax + az * az
+			if d4 >= 1e-5 and d5 >= 1e-5 then
+				local c = math.clamp((wx * ax + wz * az) / math.sqrt(d4 * d5), -1, 1)
+				res.minorWall = math.acos(c) < 0.13962634
+			end
+		end
+		if st.onGround and ay > 0 and mvy <= 0 then
+			res.stepUp = ay
+		end
+		st.onGround = hitY and mvy < 0
+		-- checkFallDamage. Java looks for water again at the new position first: falling into
+		-- water, even one block deep, breaks the fall on the tick you touch the bottom.
+		if not inWater and st.fallDistance > 0 and (fluids(w, st, h)) > 0 then
+			st.fallDistance = 0
+		end
+		if st.onGround then
+			if st.fallDistance > 0 then
+				res.fall = st.fallDistance
+			end
+			st.fallDistance = 0
+		elseif ay < 0 then
+			st.fallDistance -= ay
+		end
+		local nvx = if hitX then 0 else mvx
+		local nvz = if hitZ then 0 else mvz
+		local nvy = mvy
+		if hitY then
+			-- Block.updateEntityAfterFallOn of the block under the feet: beds bounce, the rest stop you
+			local on = w.getBlock(math.floor(st.x), math.floor(st.y - 0.2), math.floor(st.z))
+			local def = on and byId[on]
+			if def and def.shape == "bed" and not sneak then
+				if nvy < 0 then
+					nvy = -nvy * 0.66
+					res.bounced = true
+				end
+			else
+				nvy = 0
+			end
+		end
+		return nvx, nvy, nvz
+	end
+
+	if inWater then
+		local y0 = st.y
+		vx += wx * 0.02
+		vz += wz * 0.02
+		vx, vy, vz = move(vx, vy, vz)
+		if res.hitWall and onClimbable(w, st) then
+			vy = 0.2
+		end
+		local drag = if input.sprint then 0.9 else 0.8
+		vx, vy, vz = vx * drag, vy * 0.8, vz * drag
+		if not input.sprint then
+			vy -= 0.005 -- gravity / 16
+		end
+		if res.hitWall and isFree(w, st, h, vx, vy + 0.6 - st.y + y0, vz) then
 			vy = 0.3 -- swim up out onto the ledge
 		end
+	elseif inLava then
+		local y0 = st.y
+		vx += wx * 0.02
+		vz += wz * 0.02
+		vx, vy, vz = move(vx, vy, vz)
+		if lavaH <= 0.4 then
+			vx, vy, vz = vx * 0.5, vy * 0.8, vz * 0.5
+			if not input.sprint then
+				vy -= 0.005
+			end
+		else
+			vx, vy, vz = vx * 0.5, vy * 0.5, vz * 0.5
+		end
+		vy -= 0.02 -- gravity / 4
+		if res.hitWall and isFree(w, st, h, vx, vy + 0.6 - st.y + y0, vz) then
+			vy = 0.3
+		end
 	else
-		local groundish = st.onGround or jumped
-		local accel = if groundish then (if input.sprint then PlayerPhysics.SPRINT else PlayerPhysics.WALK)
-			else (if input.sprint then PlayerPhysics.AIR_SPRINT else PlayerPhysics.AIR)
-		vx += ix * accel
-		vz += iz * accel
-		if onLadder then
+		-- the block 0.5 below the feet decides how slippery the ground is
+		local under = w.getBlock(math.floor(st.x), math.floor(st.y - 0.5000001), math.floor(st.z))
+		local slip = (under and SLIPPERINESS[under]) or 0.6
+		local friction = if st.onGround then slip * 0.91 else 0.91
+		local accel
+		if st.onGround then
+			accel = (if input.sprint then PlayerPhysics.SPRINT else PlayerPhysics.WALK) * (0.21600002 / (slip * slip * slip))
+		else
+			accel = if input.sprint then PlayerPhysics.AIR_SPRINT else PlayerPhysics.AIR
+		end
+		vx += wx * accel
+		vz += wz * accel
+		if onClimbable(w, st) then
+			st.fallDistance = 0
 			vx = math.clamp(vx, -0.15, 0.15)
 			vz = math.clamp(vz, -0.15, 0.15)
 			vy = math.max(vy, -0.15)
-			if crouch and vy < 0 then
-				vy = 0
+			if vy < 0 and sneak then
+				vy = 0 -- sneaking holds you on the ladder
 			end
 		end
-		if crouch and st.onGround and vy <= 0 then
-			vx, vz = backOffFromEdge(w, p, vx, vz, h)
-		end
-		local nx, ny, nz, rvx, rvy, rvz, onGround, wall = MobPhysics.move(w.solid, p.X, p.Y, p.Z, vx * 20, vy * 20, vz * 20, WIDTH, h, TICK,
-			if groundish or vy < 0 then STEP else nil)
-		landedNow = onGround and not st.onGround
-		st.pos = Vector3.new(nx, ny, nz)
-		if groundish and onGround and ny - p.Y > 0.05 then
-			res.stepUp = ny - p.Y
-		end
-		st.onGround = onGround
-		res.hitWall = wall
-		vx, vy, vz = rvx / 20, rvy / 20, rvz / 20
-		local mlen = math.sqrt(input.moveX * input.moveX + input.moveZ * input.moveZ)
-		local pushing = wall or (mlen > 0.1 and solidIn(w, nx + input.moveX / mlen * 0.05 - HALF, ny + 0.05,
-			nz + input.moveZ / mlen * 0.05 - HALF, nx + input.moveX / mlen * 0.05 + HALF, ny + h - 0.05,
-			nz + input.moveZ / mlen * 0.05 + HALF))
-		if onLadder and (pushing or input.jump) then
+		vx, vy, vz = move(vx, vy, vz)
+		if (res.hitWall or input.jump) and onClimbable(w, st) then
 			vy = 0.2
 		end
-		-- Java decides friction (like acceleration) from the ground state before the move
-		local friction = if groundish then PlayerPhysics.GROUND_FRICTION else PlayerPhysics.AIR_FRICTION
 		vy = (vy - 0.08) * 0.98
 		vx *= friction
 		vz *= friction
 	end
+	res.onLadder = onClimbable(w, st)
+	st.vx, st.vy, st.vz = vx, vy, vz
+	return res
+end
 
-	-- falls
-	if fluid or onLadder then
-		st.peak = nil
-	elseif st.onGround then
-		local peak = st.peak
-		if peak and peak - st.pos.Y > 0 then
-			res.fall = peak - st.pos.Y
+-- After taking a position from outside (a spawn, a teleport: 32-bit floats, a few millimetres
+-- off): if the box overlaps something by a little, push it out the short way, so it rests
+-- against it instead of sitting inside it.
+function PlayerMotor.settle(st: State, w: World, sneak: boolean?)
+	local h = if sneak then 1.5 else 1.8
+	local LIMIT = 0.25
+	for _ = 1, 6 do
+		local boxes = MobPhysics.gather(w.solid, st.x - HALF, st.y, st.z - HALF, st.x + HALF, st.y + h, st.z + HALF)
+		if #boxes == 0 then
+			return
 		end
-		st.peak = nil
-		if landedNow and peak then
-			local under = w.getBlock(math.floor(st.pos.X), math.floor(st.pos.Y - 0.1), math.floor(st.pos.Z))
-			local ud = under and BlockRegistry.byId[under]
-			if ud and ud.shape == "bed" and not crouch and peak - st.pos.Y > 0.3 then
-				vy = math.sqrt(2 * 0.08 * (peak - st.pos.Y)) * 0.66 -- beds bounce at 66 %
-				st.onGround = false
-				res.bounced = true
+		-- the overlap that is cheapest to leave
+		local best, bx, by, bz = math.huge, 0, 0, 0
+		for i = 1, #boxes, 6 do
+			local up = boxes[i + 4] - st.y
+			local down = (st.y + h) - boxes[i + 1]
+			local east = boxes[i + 3] - (st.x - HALF)
+			local west = (st.x + HALF) - boxes[i]
+			local south = boxes[i + 5] - (st.z - HALF)
+			local north = (st.z + HALF) - boxes[i + 2]
+			local m = math.min(up, down, east, west, south, north)
+			if m < best then
+				best = m
+				bx, by, bz = 0, 0, 0
+				if m == up then
+					by = up
+				elseif m == east then
+					bx = east
+				elseif m == west then
+					bx = -west
+				elseif m == south then
+					bz = south
+				elseif m == north then
+					bz = -north
+				else
+					by = -down
+				end
 			end
 		end
-	else
-		st.peak = math.max(st.peak or st.pos.Y, st.pos.Y)
+		if best > LIMIT then
+			return -- really inside a block: leave it (you can walk out, like Java)
+		end
+		st.x += bx
+		st.y += by
+		st.z += bz
 	end
-	st.vel = Vector3.new(vx, vy, vz)
-	return res
 end
 
 return PlayerMotor

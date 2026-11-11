@@ -2,48 +2,52 @@
 -- The local player's movement: Java Edition physics, run by us (the client simulates its own
 -- character; the server checks positions, falls and reach).
 --
--- Since 0.8.8 the Roblox Humanoid no longer moves the player. It stays in its "Physics" state
--- (no walking, jumping, landing or ledge snapping of its own) and only carries the body and its
--- animations. Every 20 Hz tick this module runs Java's player physics on a 0.6 x 1.8 block box
--- (1.5 while sneaking) against the real block shapes (Blocks/Shapes, MobPhysics), and the body is
--- placed where the box is, interpolated between ticks. That gives Java's behaviour exactly:
+-- The Roblox Humanoid does not move the player. It stays in its "Physics" state (no walking,
+-- jumping, landing or ledge snapping of its own) and only carries the body and its animations.
+-- Every 20 Hz tick Gameplay/PlayerMotor runs Java's player physics on a 0.6 x 1.8 block box
+-- (1.5 while sneaking) against the real block shapes; every frame the body is put where the box
+-- is, between the last two ticks.
 --
---   walk 4.317 b/s, sprint 5.612 b/s, held sprint-jump ~7.1 b/s, jump 1.2522 blocks
---   gravity 0.08 / tick, air drag 0.98, ground friction 0.546, air friction 0.91
---   step up 0.6 blocks (slabs, stairs) while on the ground; never higher, no ledge climbing
---   fences, walls and gates are 1.5 blocks: you can't jump over them
---   a ceiling only stops upward motion (forward motion in a low tunnel continues)
---   holding jump re-jumps on the landing tick, then every 10 ticks at most (noJumpDelay)
---   sprint: double-tap W (7 ticks) or the gamepad stick click; ends on W release, a head-on
---           wall, hunger, sneaking or using an item
---   sneak:  input x 0.3, eyes 1.27 blocks, body 1.5 blocks; on the ground you can't walk off an
---           edge with a drop of more than 0.6 (Java maybeBackOffFromEdge)
---   item use (eating, bow, crossbow, shield): input x 0.2
---   ladders and vines: falling capped at 0.15 / tick, climbing at 0.2 when pushing into
---           something or holding jump, sneaking holds you in place
---   water: acceleration 0.02, drag 0.8, sinking 0.005 / tick, jump swims up 0.04 / tick, a
---           current pushes 0.014 / tick, and swimming into a ledge lifts you out (0.3)
---   lava: the same with drag 0.5 and sinking 0.02
---   falls: reported on landing (the server checks them); beds bounce you at 66 %
+-- Rules this file keeps (each one was a bug once):
+--   * The motor's own numbers are the truth. The body's position is never read back, except
+--     when a character spawns and when the server lets go of it after holding it (a bed).
+--     Reading it back loses precision (a Vector3 is 32-bit: the box ends up a hair inside the
+--     wall it touched and walks through it) and picks up whatever Roblox physics did to the
+--     body in between (a long frame drops it through the floor).
+--   * The body collides with nothing (ghost collision group) and has no weight (a force
+--     cancels gravity), so Roblox physics leaves it where we put it.
+--   * Nothing in the per-frame code may wait (WaitForChild and friends).
+--   * The server moves the player by telling us (MovementController.teleport), not by moving
+--     the body under us.
+--
+--   walk 4.317 b/s, sprint 5.612 b/s, held sprint-jump about 7.1 b/s, jump 1.2522 blocks
+--   step up 0.6 blocks (slabs, stairs); fences, walls and gates are 1.5: no jumping over them
+--   sprint: double-tap W (7 ticks) or the gamepad stick click; ends on W release, a real
+--           collision with a wall (Java: more than 8 degrees off your input), wading in water,
+--           hunger, sneaking or using an item
+--   sneak:  Left Shift; slower, 1.5 blocks tall, no walking off edges; you stay crouched while
+--           there is no room to stand
+--   ladders, vines, water, lava, ice, beds, falls: see PlayerMotor
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local BlockRegistry = require(Shared.Blocks.BlockRegistry)
-local Shapes = require(Shared.Blocks.Shapes)
 local SurvivalClient = require(script.Parent.Parent.Survival.SurvivalClient)
 local ClientWorld = require(script.Parent.Parent.World.ClientWorld)
 local InventoryClient = require(script.Parent.Parent.Player.InventoryClient)
 local SneakPose = require(Shared.Gameplay.SneakPose)
-local PlayerPhysics = require(Shared.Gameplay.PlayerPhysics)
 local PlayerMotor = require(Shared.Gameplay.PlayerMotor)
+local Combat = require(Shared.Gameplay.Combat)
+local Remotes = require(Shared.Net.Remotes)
 
 local BS = Config.BLOCK_SIZE
-local TICK = 0.05
+local TICK = PlayerMotor.TICK
 local FEET_BELOW_ROOT = 3 -- studs from the HumanoidRootPart centre down to the feet
 local BASE_FOV = 70
 
@@ -59,20 +63,29 @@ MovementController.sneaking = false -- crouched (Shift held, or no room to stand
 MovementController.usingItem = false -- eating / bow / crossbow / shield (BlockInteraction)
 MovementController.eyeHeight = Config.EYE_HEIGHT -- studs above the root, eases when sneaking
 MovementController.spectating = false -- Studio test tool (Java spectator mode comes in phase 21)
-MovementController.velocity = Vector3.zero -- blocks/tick (crits, sounds)
+MovementController.velocity = Vector3.zero -- blocks/tick (crits, sounds, view bobbing)
+MovementController.lookYaw = 0 -- where the player looks (radians); CameraController sets it
+-- Diagnostics for the F3 overlay and the headless tests.
+MovementController.stats = { ticks = 0, held = false, waitingForChunk = false }
 
--- Java state (PlayerMotor), block units. `pos` is the feet centre.
-type Motor = PlayerMotor.State & {
-	prev: Vector3, -- position at the previous tick (for interpolation)
-	acc: number,
-	lastSet: Vector3?, -- where we put the root last frame (studs): detects server teleports
+-- The local player's box: Java state (PlayerMotor, block units, doubles) and what the frame
+-- loop needs around it.
+type Body = {
+	character: Model,
+	st: PlayerMotor.State,
+	px: number, -- position at the previous tick (the body is drawn between the two)
+	py: number,
+	pz: number,
+	acc: number, -- time not yet turned into ticks
+	held: boolean, -- the server holds the body (anchored: asleep in a bed, frozen after death)
+	force: VectorForce?, -- cancels gravity on the body
 }
-local motor: Motor? = nil
+local body: Body? = nil
+local pendingTeleport: Vector3? = nil
 
 local sprintLatch = false
 local sprintTriggerUntil = -math.huge
 local touchSneak = false
-local inputDir = Vector3.zero -- world-space movement input, length <= 1
 
 -- Animations: the default R6 animations, played by us (the Animate script follows Humanoid
 -- states, which no longer change).
@@ -93,6 +106,18 @@ function MovementController.toggleSneak()
 	touchSneak = not touchSneak
 end
 
+-- The server moved the player (waking up next to a bed, later: commands, portals). `feet` is
+-- the new feet position in blocks.
+function MovementController.teleport(feet: Vector3)
+	pendingTeleport = feet
+end
+
+-- Feet position in blocks (the motor's own, exact), or nil without a character.
+function MovementController.feet(): Vector3?
+	local b = body
+	return if b then Vector3.new(b.st.x, b.st.y, b.st.z) else nil
+end
+
 local function canStartSprint(): boolean
 	if MovementController.spectating then
 		return true -- spectators sprint-fly regardless of hunger
@@ -101,67 +126,141 @@ local function canStartSprint(): boolean
 		and not MovementController.usingItem
 end
 
--- One Java tick of the local player, with its side effects.
-local function tick(m: Motor, root: BasePart, jumpHeld: boolean)
-	m.prev = m.pos
-	local look = root.CFrame.LookVector
-	local from = m.pos
-	local r = PlayerMotor.tick(m, {
-		moveX = inputDir.X, moveZ = inputDir.Z, jump = jumpHeld, sneak = MovementController.sneaking,
-		sprint = MovementController.sprinting, usingItem = MovementController.usingItem,
-		lookX = look.X, lookZ = look.Z,
+-- Put the box at a position that came from outside (a spawn, the server): no speed, and
+-- nudged out of anything it overlaps by a rounding error.
+local function resync(b: Body, feet: Vector3)
+	local st = b.st
+	st.x, st.y, st.z = feet.X, feet.Y, feet.Z
+	st.vx, st.vy, st.vz = 0, 0, 0
+	st.onGround = false
+	st.fallDistance = 0
+	st.noJumpDelay = 0
+	if PlayerMotor.loaded(world, st) then
+		PlayerMotor.settle(st, world, MovementController.sneaking)
+	end
+	b.px, b.py, b.pz = st.x, st.y, st.z
+	b.acc = 0
+end
+
+local function feetOf(root: BasePart): Vector3
+	return (root.Position - Vector3.new(0, FEET_BELOW_ROOT, 0)) / BS
+end
+
+-- Put the body at a feet position (blocks), facing `yaw`, with the speed it is moving at
+-- (studs/s; the server and other players' views read it).
+local function place(b: Body, root: BasePart, x: number, y: number, z: number, yaw: number, velocity: Vector3)
+	root.CFrame = CFrame.new(x * BS, y * BS + FEET_BELOW_ROOT, z * BS) * CFrame.Angles(0, yaw, 0)
+	root.AssemblyLinearVelocity = velocity
+	root.AssemblyAngularVelocity = Vector3.zero
+	local force = b.force
+	if force then
+		force.Force = Vector3.new(0, root.AssemblyMass * workspace.Gravity, 0)
+	end
+end
+
+-- Movement keys, the gamepad stick or the touch thumbstick: forward and strafe (-1..1, relative
+-- to where the player looks) and whether jump is held. (fx, fz) is the horizontal look direction.
+local function readInput(humanoid: Humanoid, fx: number, fz: number): (number, number, boolean)
+	if InventoryClient.uiOpen or SurvivalClient.dead or GuiService.MenuIsOpen then
+		return 0, 0, false
+	end
+	local forward, strafe, jump = 0, 0, false
+	if UserInputService:GetFocusedTextBox() == nil then -- (typing must not move you)
+		forward = (if UserInputService:IsKeyDown(Enum.KeyCode.W) then 1 else 0) - (if UserInputService:IsKeyDown(Enum.KeyCode.S) then 1 else 0)
+		strafe = (if UserInputService:IsKeyDown(Enum.KeyCode.D) then 1 else 0) - (if UserInputService:IsKeyDown(Enum.KeyCode.A) then 1 else 0)
+		jump = UserInputService:IsKeyDown(Enum.KeyCode.Space)
+	end
+	if forward == 0 and strafe == 0 and UserInputService.GamepadEnabled then
+		for _, state in UserInputService:GetGamepadState(Enum.UserInputType.Gamepad1) do
+			if state.KeyCode == Enum.KeyCode.Thumbstick1 and state.Position.Magnitude > 0.2 then
+				forward, strafe = state.Position.Y, state.Position.X
+			elseif state.KeyCode == Enum.KeyCode.ButtonA and state.UserInputState == Enum.UserInputState.Begin then
+				jump = true
+			end
+		end
+	end
+	if UserInputService.TouchEnabled then
+		-- Roblox's touch controls: the thumbstick's direction (world space) arrives in the
+		-- Humanoid's move direction, the jump button in its Jump flag
+		if forward == 0 and strafe == 0 then
+			local md = humanoid.MoveDirection
+			if md.Magnitude > 0.05 then
+				forward = md.X * fx + md.Z * fz
+				strafe = md.X * -fz + md.Z * fx
+			end
+		end
+		jump = jump or humanoid.Jump
+	end
+	return math.clamp(forward, -1, 1), math.clamp(strafe, -1, 1), jump
+end
+
+-- One Java tick of the local player, and what follows from it.
+local function tick(b: Body, forward: number, strafe: number, jumpHeld: boolean, fx: number, fz: number)
+	local st = b.st
+	b.px, b.py, b.pz = st.x, st.y, st.z
+	local r = PlayerMotor.tick(st, {
+		forward = forward, strafe = strafe, lookX = fx, lookZ = fz, jump = jumpHeld,
+		sneak = MovementController.sneaking, sprint = MovementController.sprinting,
+		usingItem = MovementController.usingItem,
 	}, world)
+	MovementController.stats.ticks += 1
 	MovementController.inLiquid = r.fluid ~= nil
 	MovementController.onLadder = r.onLadder
-	MovementController.onGround = m.onGround
-	MovementController.velocity = m.vel
+	MovementController.onGround = st.onGround
+	MovementController.velocity = Vector3.new(st.vx, st.vy, st.vz)
 	if r.stepUp > 0 then
 		MovementController.stepOffset -= r.stepUp * BS -- the camera glides up the step
 	end
 	if r.fall and r.fall > 3 then
 		SurvivalClient.reportFall(r.fall) -- the server checks it (and halves it on a bed)
 	end
-	-- sprint ends on a head-on wall (Java: a horizontal collision that isn't minor)
-	if MovementController.sprinting and r.hitWall then
-		local moved = Vector3.new(m.pos.X - from.X, 0, m.pos.Z - from.Z)
-		if moved:Dot(Vector3.new(look.X, 0, look.Z)) < 0.02 then
+	if MovementController.sprinting then
+		-- Java: a real collision ends the sprint (a glancing one doesn't), and so does wading
+		if r.hitWall and not r.minorWall then
 			sprintLatch = false
+		elseif r.fluid == "water" then
+			local eyes = st.y + (if MovementController.sneaking then 1.27 else 1.62)
+			local id = ClientWorld.getBlock(math.floor(st.x), math.floor(eyes), math.floor(st.z))
+			if not (id and BlockRegistry.isLiquid[id + 1]) then
+				sprintLatch = false -- head above the water
+			end
 		end
-	end
-end
-
--- Knockback from hits / explosions replaces the stored velocity (Combat.knockback).
-local function addVelocity(v: Vector3)
-	local m = motor
-	if m then
-		m.vel = v
-		m.onGround = false
 	end
 end
 
 local function loadAnimations(character: Model, humanoid: Humanoid)
 	table.clear(tracks)
 	playing = nil
-	local animate = character:FindFirstChild("Animate")
-	local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator", humanoid)
-	if animate and animate:IsA("LocalScript") then
-		animate.Enabled = false
-		for _, name in { "idle", "walk", "run", "jump", "fall", "climb" } do
-			local v = animate:FindFirstChild(name)
-			local a = v and v:FindFirstChildOfClass("Animation")
-			if a then
-				local ok, track = pcall(function()
-					return animator:LoadAnimation(a)
-				end)
-				if ok and track then
-					tracks[name] = track
+	-- in its own thread: these wait for the server's copies, and the frame loop must not
+	task.spawn(function()
+		local animator = humanoid:WaitForChild("Animator", 5)
+		local animate = character:WaitForChild("Animate", 5)
+		if not animator or not animator:IsA("Animator") or Players.LocalPlayer.Character ~= character then
+			return
+		end
+		local mine: { [AnimationTrack]: boolean } = {}
+		if animate and animate:IsA("LocalScript") then
+			animate.Enabled = false
+			for _, name in { "idle", "walk", "run", "jump", "fall", "climb" } do
+				local holder = animate:FindFirstChild(name)
+				local animation = holder and holder:FindFirstChildOfClass("Animation")
+				if animation then
+					local ok, track = pcall(function()
+						return animator:LoadAnimation(animation)
+					end)
+					if ok and track then
+						tracks[name] = track
+						mine[track] = true
+					end
 				end
 			end
 		end
-	end
-	for _, t in animator:GetPlayingAnimationTracks() do
-		t:Stop(0)
-	end
+		for _, t in animator:GetPlayingAnimationTracks() do
+			if not mine[t] then
+				t:Stop(0) -- whatever the Animate script had started
+			end
+		end
+	end)
 end
 
 local function playAnim(name: string, speed: number)
@@ -180,47 +279,240 @@ local function playAnim(name: string, speed: number)
 	t:AdjustSpeed(speed)
 end
 
+-- A new character: hand its movement over to the motor.
 local function configure(humanoid: Humanoid)
 	local character = humanoid.Parent :: Model
+	local root = character:WaitForChild("HumanoidRootPart", 10) :: BasePart?
+	if not root or Players.LocalPlayer.Character ~= character then
+		return
+	end
 	humanoid.UseJumpPower = false
-	humanoid.JumpHeight = Config.JUMP_HEIGHT -- keeps the touch jump button
+	humanoid.JumpHeight = Config.JUMP_HEIGHT -- (keeps Roblox's touch jump button visible)
 	humanoid.AutoRotate = false
 	humanoid.WalkSpeed = 0
-	for _, st in {
-		Enum.HumanoidStateType.Running, Enum.HumanoidStateType.RunningNoPhysics, Enum.HumanoidStateType.Freefall,
-		Enum.HumanoidStateType.Landed, Enum.HumanoidStateType.Climbing, Enum.HumanoidStateType.GettingUp,
-		Enum.HumanoidStateType.FallingDown, Enum.HumanoidStateType.Ragdoll, Enum.HumanoidStateType.Swimming,
-		Enum.HumanoidStateType.Seated, Enum.HumanoidStateType.StrafingNoPhysics, Enum.HumanoidStateType.Flying,
+	for _, state in {
+		Enum.HumanoidStateType.Climbing, Enum.HumanoidStateType.GettingUp, Enum.HumanoidStateType.FallingDown,
+		Enum.HumanoidStateType.Ragdoll, Enum.HumanoidStateType.Swimming, Enum.HumanoidStateType.Seated,
 	} do
-		humanoid:SetStateEnabled(st, false)
+		humanoid:SetStateEnabled(state, false)
 	end
 	humanoid:ChangeState(Enum.HumanoidStateType.Physics)
 	SneakPose.remember(character)
-	-- the body never collides (our box does the colliding). The ghost collision group collides
+	-- The body never collides: our box does the colliding. The ghost collision group collides
 	-- with nothing, and unlike CanCollide the Humanoid doesn't switch it back on for the torso
-	-- and head, which made Roblox push the body out of walls (spectator) and jitter at walls.
+	-- and head (which made Roblox push the body out of walls).
 	local function ghost(d: Instance)
 		if d:IsA("BasePart") then
 			d.CanCollide = false
-			d.CollisionGroup = SneakPose.GHOST_GROUP
+			pcall(function()
+				d.CollisionGroup = SneakPose.GHOST_GROUP
+			end)
 		end
 	end
 	for _, d in character:GetDescendants() do
 		ghost(d)
 	end
 	character.DescendantAdded:Connect(ghost)
+	-- ... and it has no weight: without this it would fall between our frames (it has nothing
+	-- to stand on), far in a long frame
+	local attachment = Instance.new("Attachment")
+	attachment.Name = "MotorAttachment"
+	attachment.Parent = root
+	local force = Instance.new("VectorForce")
+	force.Name = "MotorAntiGravity"
+	force.Attachment0 = attachment
+	force.RelativeTo = Enum.ActuatorRelativeTo.World
+	force.ApplyAtCenterOfMass = true
+	force.Force = Vector3.new(0, root.AssemblyMass * workspace.Gravity, 0)
+	force.Parent = root
+
 	loadAnimations(character, humanoid)
 	MovementController.sneaking = false
 	MovementController.eyeHeight = Config.EYE_HEIGHT
-	local root = character:WaitForChild("HumanoidRootPart", 10) :: BasePart?
-	if root then
-		local feet = (root.Position - Vector3.new(0, FEET_BELOW_ROOT, 0)) / BS
-		motor = { pos = feet, prev = feet, vel = Vector3.zero, onGround = false, noJumpDelay = 0, acc = 0, peak = nil, lastSet = nil }
+	MovementController.stepOffset = 0
+	MovementController.velocity = Vector3.zero
+	local feet = feetOf(root)
+	local b: Body = {
+		character = character,
+		st = PlayerMotor.new(feet.X, feet.Y, feet.Z),
+		px = feet.X, py = feet.Y, pz = feet.Z,
+		acc = 0,
+		held = false,
+		force = force,
+	}
+	resync(b, feet)
+	pendingTeleport = nil
+	body = b
+end
+
+local function setSpectating(on: boolean)
+	local b = body
+	if not b then
+		return
+	end
+	MovementController.spectating = on
+	Players.LocalPlayer:SetAttribute("Spectating", on)
+	sprintLatch = false
+	local st = b.st
+	st.vx, st.vy, st.vz = 0, 0, 0
+	st.onGround = false
+	st.fallDistance = 0
+	b.px, b.py, b.pz = st.x, st.y, st.z
+	b.acc = 0
+	print(`[Spectator] {if on then "on (N to leave)" else "off"}`)
+end
+
+-- Every frame, before the camera: read the input, run the ticks, place the body.
+local function step(dt: number)
+	local character = Players.LocalPlayer.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local b = body
+	if not character or not humanoid or not root or not b or b.character ~= character then
+		return
+	end
+	local st = b.st
+	local yaw = MovementController.lookYaw
+	local fx, fz = -math.sin(yaw), -math.cos(yaw)
+	local forward, strafe, jumpHeld = readInput(humanoid, fx, fz)
+
+	-- sprint latch: needs forward movement, food > 6, not sneaking or using an item
+	if forward <= 1e-5 or not canStartSprint() then
+		sprintLatch = false
+	end
+	if sprintLatch ~= MovementController.sprinting then
+		MovementController.sprinting = sprintLatch
+		if not MovementController.spectating then
+			SurvivalClient.setSprinting(sprintLatch) -- the server charges sprint exhaustion
+		end
+	end
+
+	-- eye height eases toward its target (half the difference per tick); a step up glides
+	local targetEye = if MovementController.sleeping then 0.3 * BS
+		elseif MovementController.sneaking then Config.EYE_HEIGHT_SNEAK else Config.EYE_HEIGHT
+	MovementController.eyeHeight += (targetEye - MovementController.eyeHeight) * (1 - 0.5 ^ (dt * 20))
+	MovementController.stepOffset *= 0.5 ^ (dt * 30)
+	if math.abs(MovementController.stepOffset) < 0.01 then
+		MovementController.stepOffset = 0
+	end
+	-- FOV: Java x (speed / walking speed + 1) / 2, so sprinting is x1.15 (70 -> 80.5); a drawn
+	-- bow zooms in by up to 15 %; eased by half the remaining gap per tick
+	local camera = workspace.CurrentCamera
+	if camera then
+		local targetFov = (if MovementController.sprinting then BASE_FOV * 1.15 else BASE_FOV) * (1 - MovementController.bowPull * 0.15)
+		camera.FieldOfView += (targetFov - camera.FieldOfView) * (1 - 0.5 ^ (dt * 20))
+	end
+
+	-- The server holds the body (asleep in a bed, frozen after death): hands off.
+	if root.Anchored then
+		b.held = true
+		MovementController.stats.held = true
+		MovementController.velocity = Vector3.zero
+		return
+	end
+	if b.held then
+		-- let go: start from where it left the body, unless it named the spot
+		b.held = false
+		MovementController.stats.held = false
+		resync(b, feetOf(root))
+	end
+	local target = pendingTeleport
+	if target then
+		pendingTeleport = nil
+		resync(b, target)
+	end
+	if humanoid:GetState() ~= Enum.HumanoidStateType.Physics and humanoid.Health > 0 then
+		humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+	end
+
+	if humanoid.Health <= 0 or SurvivalClient.dead then
+		-- dead: stay where we died until the server freezes the body
+		MovementController.velocity = Vector3.zero
+		place(b, root, st.x, st.y, st.z, yaw, Vector3.zero)
+		return
+	end
+
+	if MovementController.spectating then
+		-- fly freely, through blocks; Space up, Shift down, sprint doubles the speed
+		local up = (if UserInputService:IsKeyDown(Enum.KeyCode.Space) then 1 else 0)
+			- (if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then 1 else 0)
+		if InventoryClient.uiOpen or UserInputService:GetFocusedTextBox() ~= nil then
+			up = 0
+		end
+		local speed = Config.SPECTATOR_SPEED * (if MovementController.sprinting then 2 else 1) -- blocks/s
+		local wx, wz = fx * forward - fz * strafe, fz * forward + fx * strafe
+		local len = math.sqrt(wx * wx + wz * wz)
+		if len > 1 then
+			wx, wz = wx / len, wz / len
+		end
+		st.x += wx * speed * dt
+		st.y += up * speed * dt
+		st.z += wz * speed * dt
+		st.vx, st.vy, st.vz = 0, 0, 0
+		st.onGround = false
+		st.fallDistance = 0
+		b.px, b.py, b.pz = st.x, st.y, st.z
+		b.acc = 0
+		MovementController.onGround = false
+		MovementController.inLiquid = false
+		MovementController.onLadder = false
+		MovementController.velocity = Vector3.new(wx, up, wz) * (speed / 20)
+		place(b, root, st.x, st.y, st.z, yaw, Vector3.new(wx, up, wz) * (speed * BS))
+		playAnim("idle", 1)
+		return
+	end
+
+	-- The chunk we stand in isn't here yet (just respawned far away): wait, don't simulate
+	-- inside unknown blocks.
+	if not PlayerMotor.loaded(world, st) then
+		MovementController.stats.waitingForChunk = true
+		MovementController.velocity = Vector3.zero
+		b.acc = 0
+		place(b, root, st.x, st.y, st.z, yaw, Vector3.zero)
+		return
+	end
+	MovementController.stats.waitingForChunk = false
+
+	-- sneaking: Shift held (not in a window), or forced while there's no room to stand
+	local keySneak = (Enum.KeyCode :: any)[Config.KEY_SNEAK]
+	local wantSneak = ((UserInputService:IsKeyDown(keySneak) and UserInputService:GetFocusedTextBox() == nil) or touchSneak)
+		and not InventoryClient.uiOpen
+	local crouch = wantSneak or (MovementController.sneaking and not PlayerMotor.roomToStand(world, st))
+	if crouch ~= MovementController.sneaking then
+		MovementController.sneaking = crouch
+		SneakPose.apply(character, crouch)
+		SurvivalClient.setSneaking(crouch)
+	end
+
+	-- fixed 20 Hz ticks (at most 5 per frame: a long frame slows the game down instead of
+	-- running away)
+	b.acc = math.min(b.acc + dt, 0.25)
+	while b.acc >= TICK do
+		b.acc -= TICK
+		tick(b, forward, strafe, jumpHeld, fx, fz)
+	end
+	-- the body goes between the last two ticks, moving at the speed that takes it there
+	local alpha = b.acc / TICK
+	local x = b.px + (st.x - b.px) * alpha
+	local y = b.py + (st.y - b.py) * alpha
+	local z = b.pz + (st.z - b.pz) * alpha
+	local rate = BS / TICK
+	place(b, root, x, y, z, yaw, Vector3.new((st.x - b.px) * rate, (st.y - b.py) * rate, (st.z - b.pz) * rate))
+
+	-- animations
+	local hs = math.sqrt(st.vx * st.vx + st.vz * st.vz) * 20 * BS -- studs/s
+	if MovementController.onLadder and math.abs(st.y - b.py) > 0.01 then
+		playAnim("climb", 1)
+	elseif not st.onGround and not MovementController.inLiquid then
+		playAnim(if st.vy > 0 then "jump" else "fall", 1)
+	elseif hs > 0.5 then
+		playAnim("walk", math.clamp(hs / 14, 0.3, 1.6))
+	else
+		playAnim("idle", 1)
 	end
 end
 
 function MovementController.init()
-	workspace.Gravity = Config.GRAVITY -- Java gravity (the server sets it too; items still use it)
 	UserInputService.InputBegan:Connect(function(input, processed)
 		if processed then
 			return
@@ -239,8 +531,11 @@ function MovementController.init()
 			end
 		elseif input.KeyCode == Enum.KeyCode.ButtonL3 then
 			if canStartSprint() then
-				sprintLatch = true -- gamepad: left stick click; needs forward movement below
+				sprintLatch = true -- gamepad: left stick click; needs forward movement
 			end
+		elseif input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_SPECTATOR] and RunService:IsStudio() then
+			-- Spectator mode (Studio only): fly through blocks, no collision, no interaction
+			setSpectating(not MovementController.spectating)
 		end
 	end)
 	UserInputService.InputEnded:Connect(function(input)
@@ -249,194 +544,37 @@ function MovementController.init()
 		end
 	end)
 
-	-- Spectator mode (Studio only, key N): fly through blocks, no collision, no interaction.
-	local function setSpectating(on: boolean)
-		local character = Players.LocalPlayer.Character
-		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-		if not root then
-			return
-		end
-		MovementController.spectating = on
-		Players.LocalPlayer:SetAttribute("Spectating", on)
-		sprintLatch = false
-		local m = motor
-		if m then
-			local feet = (root.Position - Vector3.new(0, FEET_BELOW_ROOT, 0)) / BS
-			m.pos, m.prev, m.vel, m.peak = feet, feet, Vector3.zero, nil
-		end
-		print(`[Spectator] {if on then "on (N to leave)" else "off"}`)
-	end
-	UserInputService.InputBegan:Connect(function(input, processed)
-		if processed or not RunService:IsStudio() then
-			return
-		end
-		if input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_SPECTATOR] then
-			setSpectating(not MovementController.spectating)
-		end
-	end)
-
-	-- Knockback (Java Combat.knockback on our own velocity, or an explosion push).
-	local Remotes = require(Shared.Net.Remotes)
-	local Combat = require(Shared.Gameplay.Combat)
+	-- Knockback: Java's formula on our own velocity (hits), or a push added to it (explosions).
 	Remotes.get("Knockback").OnClientEvent:Connect(function(kb: any)
-		local m = motor
-		if typeof(kb) ~= "table" or not m or MovementController.spectating then
+		local b = body
+		if typeof(kb) ~= "table" or not b or b.held or MovementController.spectating then
 			return
 		end
-		local v = m.vel
+		local st = b.st
 		if typeof(kb.dir) == "Vector3" and typeof(kb.strength) == "number" then
-			local x, y, z = Combat.knockback(v.X, v.Y, v.Z, kb.dir.X, kb.dir.Z, kb.strength, m.onGround)
-			addVelocity(Vector3.new(x, y, z))
+			st.vx, st.vy, st.vz = Combat.knockback(st.vx, st.vy, st.vz, kb.dir.X, kb.dir.Z, kb.strength, st.onGround)
 		elseif typeof(kb.add) == "Vector3" then
-			addVelocity(v + kb.add)
+			st.vx += kb.add.X
+			st.vy += kb.add.Y
+			st.vz += kb.add.Z
 		end
 	end)
 
 	Players.LocalPlayer.CharacterAdded:Connect(function(character)
-		configure(character:WaitForChild("Humanoid") :: Humanoid)
+		local humanoid = character:WaitForChild("Humanoid", 10)
+		if humanoid and humanoid:IsA("Humanoid") then
+			configure(humanoid)
+		end
 	end)
-	if Players.LocalPlayer.Character then
-		local h = Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+	local existing = Players.LocalPlayer.Character
+	if existing then
+		local h = existing:FindFirstChildOfClass("Humanoid")
 		if h then
 			task.spawn(configure, h)
 		end
 	end
 
-	-- Before the camera (Input + 1): read input, run the ticks, place the body.
-	RunService:BindToRenderStep("RocraftMotor", Enum.RenderPriority.Input.Value + 1, function(dt)
-		local character = Players.LocalPlayer.Character
-		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-		local m = motor
-		if not humanoid or not root or not m then
-			return
-		end
-		-- movement input, relative to where the player faces: keys, else the gamepad stick, else
-		-- the Humanoid's move direction (set by Roblox's touch controls on phones). Nothing here
-		-- may wait: this runs every frame.
-		local look = root.CFrame.LookVector
-		local fwd = Vector3.new(look.X, 0, look.Z)
-		fwd = if fwd.Magnitude > 1e-3 then fwd.Unit else Vector3.new(0, 0, -1)
-		local right = Vector3.new(-fwd.Z, 0, fwd.X)
-		local kf = (if UserInputService:IsKeyDown(Enum.KeyCode.W) or UserInputService:IsKeyDown(Enum.KeyCode.Up) then 1 else 0)
-			- (if UserInputService:IsKeyDown(Enum.KeyCode.S) or UserInputService:IsKeyDown(Enum.KeyCode.Down) then 1 else 0)
-		local kr = (if UserInputService:IsKeyDown(Enum.KeyCode.D) or UserInputService:IsKeyDown(Enum.KeyCode.Right) then 1 else 0)
-			- (if UserInputService:IsKeyDown(Enum.KeyCode.A) or UserInputService:IsKeyDown(Enum.KeyCode.Left) then 1 else 0)
-		local dir = fwd * kf + right * kr
-		if dir.Magnitude < 0.01 then
-			for _, st in UserInputService:GetGamepadState(Enum.UserInputType.Gamepad1) do
-				if st.KeyCode == Enum.KeyCode.Thumbstick1 and st.Position.Magnitude > 0.2 then
-					dir = fwd * st.Position.Y + right * st.Position.X
-				end
-			end
-		end
-		if dir.Magnitude < 0.01 then
-			local md = humanoid.MoveDirection -- touch thumbstick (world space)
-			dir = Vector3.new(md.X, 0, md.Z)
-		end
-		if dir.Magnitude > 1 then
-			dir = dir.Unit
-		end
-		inputDir = if InventoryClient.uiOpen or SurvivalClient.dead then Vector3.zero else dir
-		local jumpHeld = (UserInputService:IsKeyDown(Enum.KeyCode.Space) or humanoid.Jump)
-			and not InventoryClient.uiOpen and not SurvivalClient.dead
-
-		-- sprint latch: needs forward movement, food > 6, not sneaking or using an item
-		local forward = inputDir:Dot(fwd) > 0.5
-		if not forward or not canStartSprint() then
-			sprintLatch = false
-		end
-		if sprintLatch ~= MovementController.sprinting then
-			MovementController.sprinting = sprintLatch
-			SurvivalClient.setSprinting(sprintLatch) -- the server charges sprint exhaustion
-		end
-
-		-- spectating: fly freely (no collision)
-		if MovementController.spectating then
-			local up = (if UserInputService:IsKeyDown(Enum.KeyCode.Space) then 1 else 0)
-				- (if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then 1 else 0)
-			local speed = Config.SPECTATOR_SPEED * BS * (if MovementController.sprinting then 2 else 1)
-			local v = inputDir * speed + Vector3.new(0, up * speed, 0)
-			root.CFrame = CFrame.new(root.Position + v * dt) * root.CFrame.Rotation
-			root.AssemblyLinearVelocity = Vector3.zero
-			m.pos = (root.Position - Vector3.new(0, FEET_BELOW_ROOT, 0)) / BS
-			m.prev = m.pos
-			m.lastSet = root.Position
-			return
-		end
-		-- the server moved us (respawn, bed, teleport) or holds us (sleeping, anchored): follow it.
-		-- Between our frames the body moves on by its velocity; more than 2 studs off that is
-		-- someone else's doing.
-		local last = m.lastSet
-		if root.Anchored or humanoid.Health <= 0 then
-			local feet = (root.Position - Vector3.new(0, FEET_BELOW_ROOT, 0)) / BS
-			m.pos, m.prev, m.vel, m.peak = feet, feet, Vector3.zero, nil
-			m.lastSet = nil
-			return
-		end
-		local expected = if last then last + m.vel * 20 * BS * dt else nil -- physics carried it on by its velocity
-		if not expected or (root.Position - expected).Magnitude > 2 then
-			local feet = (root.Position - Vector3.new(0, FEET_BELOW_ROOT, 0)) / BS
-			m.pos, m.prev, m.vel, m.peak = feet, feet, Vector3.zero, nil
-		end
-		if humanoid:GetState() ~= Enum.HumanoidStateType.Physics then
-			humanoid:ChangeState(Enum.HumanoidStateType.Physics)
-		end
-
-		-- sneaking: Shift held (not in a window), or forced while there's no room to stand
-		local keySneak = (Enum.KeyCode :: any)[Config.KEY_SNEAK]
-		local wantSneak = (UserInputService:IsKeyDown(keySneak) or touchSneak) and not InventoryClient.uiOpen
-		local crouch = wantSneak or (MovementController.sneaking and not PlayerMotor.roomToStand(world, m.pos))
-		if crouch ~= MovementController.sneaking then
-			MovementController.sneaking = crouch
-			SneakPose.apply(character :: Model, crouch)
-			SurvivalClient.setSneaking(crouch)
-		end
-
-		-- fixed 20 Hz ticks
-		m.acc = math.min(m.acc + dt, 0.25)
-		while m.acc >= TICK do
-			m.acc -= TICK
-			tick(m, root, jumpHeld)
-		end
-		-- place the body between the last two ticks
-		local alpha = m.acc / TICK
-		local feet = m.prev:Lerp(m.pos, alpha)
-		local at = feet * BS + Vector3.new(0, FEET_BELOW_ROOT, 0)
-		root.CFrame = CFrame.new(at) * root.CFrame.Rotation
-		-- its real velocity: the server reads it (jump hunger, crits) and other players' views use it
-		root.AssemblyLinearVelocity = m.vel * 20 * BS
-		m.lastSet = at
-
-		-- eye height eases toward its target (half the difference per tick)
-		local targetEye = if MovementController.sleeping then 0.3 * BS
-			elseif crouch then Config.EYE_HEIGHT_SNEAK else Config.EYE_HEIGHT
-		MovementController.eyeHeight += (targetEye - MovementController.eyeHeight) * (1 - 0.5 ^ (dt * 20))
-		MovementController.stepOffset *= 0.5 ^ (dt * 30)
-		if math.abs(MovementController.stepOffset) < 0.01 then
-			MovementController.stepOffset = 0
-		end
-
-		-- animations
-		local hs = Vector3.new(m.vel.X, 0, m.vel.Z).Magnitude * 20 * BS -- studs/s
-		if MovementController.onLadder and math.abs(m.vel.Y) > 0.01 then
-			playAnim("climb", 1)
-		elseif not m.onGround and not MovementController.inLiquid then
-			playAnim(if m.vel.Y > 0 then "jump" else "fall", 1)
-		elseif hs > 0.5 then
-			playAnim("walk", math.clamp(hs / 14, 0.3, 1.6))
-		else
-			playAnim("idle", 1)
-		end
-
-		-- FOV: Java AbstractClientPlayer.getFieldOfViewModifier: x (speed / walking speed + 1) / 2,
-		-- so sprinting is x1.15 (70 -> 80.5); a drawn bow zooms in by up to 15 %. GameRenderer
-		-- eases half the remaining gap per tick.
-		local camera = workspace.CurrentCamera
-		local targetFov = if MovementController.sprinting then BASE_FOV * 1.15 else BASE_FOV
-		targetFov *= 1 - MovementController.bowPull * 0.15
-		camera.FieldOfView += (targetFov - camera.FieldOfView) * (1 - 0.5 ^ (dt * 20))
-	end)
+	RunService:BindToRenderStep("RocraftMotor", Enum.RenderPriority.Input.Value + 1, step)
 end
 
 return MovementController

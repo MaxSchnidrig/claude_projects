@@ -77,6 +77,14 @@ are fine.
   Java's player tick on a 0.6 x 1.8 box against the real block shapes, tested headless for the
   reported cases. Off-hand items are used (blocks, food) and shown; glass panes connect to glass
   and hide faces against it.
+- 0.8.11: the player physics rebuilt for exactness. The box's position is kept in full
+  precision (as a 32-bit Vector3 it ended up a hair inside walls and walked through them away
+  from the world origin), the body's position is never read back (a long frame used to drop the
+  player through the floor; spectators sank), the body has no weight and collides with nothing,
+  and the old "anchor while collision rebuilds" safety net is gone (it froze the motor). Java
+  details added: jump delay, fall distance by accumulation, sneak edge back-off, ladder / vine
+  rules, swimming out of water, ice. tests/lune/FakeRoblox + ClientMovementTests run the real
+  MovementController frame by frame in a simulated Roblox. F3 shows a "motor" line.
 
 ## Phase 8 – Survival foundations (XL)
 
