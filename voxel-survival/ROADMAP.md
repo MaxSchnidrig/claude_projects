@@ -85,6 +85,12 @@ are fine.
   details added: jump delay, fall distance by accumulation, sneak edge back-off, ladder / vine
   rules, swimming out of water, ice. tests/lune/FakeRoblox + ClientMovementTests run the real
   MovementController frame by frame in a simulated Roblox. F3 shows a "motor" line.
+- 0.8.12: glass pane lines gone. A section's panes are meshed as one solid (Meshing/PaneMesher):
+  each cell is cut into 3 x 3 columns, only faces where glass meets non-glass are kept, and they
+  are merged into rectangles, so a window is one sheet per side. The renderer draws pane faces
+  as thinner sheets that overlap a hair, so nothing shows at a seam. Verified against a
+  brute-force outer-face check on 60 random pane / block / wall / slab layouts, and the real
+  SpecialPartsBackend is run in the fake Roblox (a 3 x 2 window must be exactly 6 Parts).
 
 ## Phase 8 – Survival foundations (XL)
 

@@ -19,6 +19,7 @@ local Config = require(Shared.Config)
 local BlockRegistry = require(Shared.Blocks.BlockRegistry)
 local SectionSampler = require(script.Parent.SectionSampler)
 local Shapes = require(Shared.Blocks.Shapes)
+local PaneMesher = require(script.Parent.PaneMesher)
 
 local SS = Config.SECTION_SIZE
 local P = SectionSampler.SIZE
@@ -135,21 +136,23 @@ end
 -- Faces on the cell boundary are hidden when the neighbour covers that whole face. Brightness:
 -- the neighbour cell's light for boundary faces, the block's own cell for inner faces; no AO.
 local OPP = { 2, 1, 4, 3, 6, 5 }
-local glassPane: { [number]: boolean } = {}
-for id, def in BlockRegistry.byId do
-	if def.shape == "pane" and not def.state.bars then
-		glassPane[id] = true
-	end
-end
+-- Glass panes are not meshed box by box: PaneMesher emits the outer faces of all of a section's
+-- panes together (faces between the pieces would show as lines through the glass).
+local glassPane = PaneMesher.isPane
 local CURVE_REF: { number } = {}
 local function emitShapes(padded: buffer, light: buffer?, groups: { [number]: { number } }): (number, number)
 	local quads, faces = 0, 0
+	local panes: { number }? = nil
 	for y = 0, SS - 1 do
 		for z = 0, SS - 1 do
 			for x = 0, SS - 1 do
 				local p = (x + 1) + (z + 1) * P + (y + 1) * P2
 				local b = buffer.readu16(padded, p * 2)
-				if b ~= 0 and isBoxShape[b + 1] then
+				if glassPane[b] then
+					local list = panes or {}
+					panes = list
+					table.insert(list, p)
+				elseif b ~= 0 and isBoxShape[b + 1] then
 					local function get(dx: number, dy: number, dz: number): number?
 						return buffer.readu16(padded, (p + dx + dz * P + dy * P2) * 2)
 					end
@@ -165,10 +168,8 @@ local function emitShapes(padded: buffer, light: buffer?, groups: { [number]: { 
 							local visible = true
 							if onEdge then
 								local n = buffer.readu16(padded, (p + nOff) * 2)
-								-- glass panes: no faces against each other or against a solid full block
-								-- (glass included), or they'd show as lines through the glass
-								if n ~= 0 and (Shapes.coversFace(n, OPP[d]) or (glassPane[b] and (n == b or Shapes.sturdyCube(n)))) then
-									visible = false -- (glass panes in a row / stack: no seams between them)
+								if n ~= 0 and Shapes.coversFace(n, OPP[d]) then
+									visible = false
 								end
 							end
 							if visible then
@@ -207,6 +208,11 @@ local function emitShapes(padded: buffer, light: buffer?, groups: { [number]: { 
 				end
 			end
 		end
+	end
+	if panes then
+		local pq, pf = PaneMesher.emit(padded, panes, groups)
+		quads += pq
+		faces += pf
 	end
 	return quads, faces
 end

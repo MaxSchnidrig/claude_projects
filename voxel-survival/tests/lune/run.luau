@@ -1379,6 +1379,232 @@ test("8b2: trapdoors, fence gates, walls, panes, bars, vines, hanging signs", fu
 	eq(BlockRegistry.byId[c[1].id].key, "oak_wall_hanging_sign_east")
 end)
 
+test("glass panes: only the outer faces of the joined glass, merged into rectangles", function()
+	local Shapes = Loader.require("src/shared/Blocks/Shapes")
+	local id = BlockRegistry.id
+	local PANE, GLASS = id("glass_pane"), id("glass")
+	local P = SectionSampler.SIZE
+	local DIRS = GreedyMesher.DIRS
+	local OPP = { 2, 1, 4, 3, 6, 5 }
+	local Q = GreedyMesher.QUAD
+	local function pidx(x: number, y: number, z: number): number
+		return (x + 1) + (z + 1) * P + (y + 1) * P * P
+	end
+	-- a padded section from cells "x,y,z" (section-local, -1 .. 16: the border is the neighbours)
+	local function build(cells: { [string]: number }): buffer
+		local padded = buffer.create(SectionSampler.BYTES)
+		for key, block in cells do
+			local x, y, z = string.match(key, "^(-?%d+),(-?%d+),(-?%d+)$")
+			buffer.writeu16(padded, pidx(tonumber(x) :: number, tonumber(y) :: number, tonumber(z) :: number) * 2, block)
+		end
+		return padded
+	end
+	local function at(padded: buffer, x: number, y: number, z: number): number
+		if x < -1 or x > 16 or y < -1 or y > 16 or z < -1 or z > 16 then
+			return 0
+		end
+		return buffer.readu16(padded, pidx(x, y, z) * 2)
+	end
+	-- the pane faces the mesher made (glass blocks share the texture: their faces are whole)
+	local function paneQuads(padded: buffer): { { number } }
+		local r = GreedyMesher.mesh(padded)
+		local out = {}
+		local quads = r.groups[BlockRegistry.byId[PANE].faceTexture[1]] or {}
+		for q = 1, #quads, Q do
+			local frac = false
+			for f = 1, 5 do
+				frac = frac or quads[q + f] % 1 ~= 0
+			end
+			if frac then
+				table.insert(out, { quads[q], quads[q + 1], quads[q + 2], quads[q + 3], quads[q + 4], quads[q + 5] })
+			end
+		end
+		-- the lit mesher must give the same faces
+		local light = buffer.create(SectionSampler.VOLUME)
+		buffer.fill(light, 0, 15)
+		local lit = GreedyMesher.meshLit(padded, light, {})
+		local n = 0
+		local lq = lit.groups[BlockRegistry.byId[PANE].faceTexture[1]] or {}
+		for q = 1, #lq, Q do
+			local frac = false
+			for f = 1, 5 do
+				frac = frac or lq[q + f] % 1 ~= 0
+			end
+			if frac then
+				n += 1
+			end
+		end
+		eq(n, #out, "lit mesher pane faces")
+		return out
+	end
+	-- Every 1/16 x 1/16 patch of every face the mesher drew.
+	local function drawn(quads: { { number } }): { [string]: boolean }
+		local out = {}
+		for _, q in quads do
+			local d, k, i, j, w, h = q[1], q[2], q[3], q[4], q[5], q[6]
+			local dir = DIRS[d]
+			local plane = if dir.sign > 0 then k + 1 else k
+			assert(w > 0 and h > 0, "empty quad")
+			for u16 = math.round(i * 16), math.round((i + w) * 16) - 1 do
+				for v16 = math.round(j * 16), math.round((j + h) * 16) - 1 do
+					local key = `{d}:{math.round(plane * 16)}:{u16}:{v16}`
+					assert(not out[key], `two quads cover the same patch {key}`)
+					out[key] = true
+				end
+			end
+		end
+		return out
+	end
+	-- The same by brute force from the panes' real boxes (Shapes.boxes): a patch shows if just
+	-- outside it there is no glass of any pane and no full block.
+	local function expected(padded: buffer): { [string]: boolean }
+		local boxCache: { [number]: { any } } = {}
+		local function boxesOf(x: number, y: number, z: number): { any }
+			local key = pidx(x, y, z)
+			local b = boxCache[key]
+			if not b then
+				b = Shapes.boxes(PANE, function(dx: number, dy: number, dz: number): number?
+					return at(padded, x + dx, y + dy, z + dz)
+				end, false)
+				boxCache[key] = b
+			end
+			return b
+		end
+		local function inGlass(px: number, py: number, pz: number): boolean
+			local cx, cy, cz = math.floor(px), math.floor(py), math.floor(pz)
+			if at(padded, cx, cy, cz) ~= PANE then
+				return false
+			end
+			for _, b in boxesOf(cx, cy, cz) do
+				if px > cx + b[1] and px < cx + b[4] and py > cy + b[2] and py < cy + b[5] and pz > cz + b[3] and pz < cz + b[6] then
+					return true
+				end
+			end
+			return false
+		end
+		local out = {}
+		for y = 0, 15 do
+			for z = 0, 15 do
+				for x = 0, 15 do
+					if at(padded, x, y, z) == PANE then
+						for _, b in boxesOf(x, y, z) do
+							local lo = { x + b[1], y + b[2], z + b[3] }
+							local hi = { x + b[4], y + b[5], z + b[6] }
+							for d = 1, 6 do
+								local dir = DIRS[d]
+								local a, ua, va = dir.axis + 1, dir.u + 1, dir.v + 1
+								local plane = if dir.sign > 0 then hi[a] else lo[a]
+								for u16 = math.round(lo[ua] * 16), math.round(hi[ua] * 16) - 1 do
+									for v16 = math.round(lo[va] * 16), math.round(hi[va] * 16) - 1 do
+										local pt = { 0, 0, 0 }
+										pt[a] = plane + dir.sign / 64
+										pt[ua] = (u16 + 0.5) / 16
+										pt[va] = (v16 + 0.5) / 16
+										local hidden = inGlass(pt[1], pt[2], pt[3])
+										local cx, cy, cz = math.floor(pt[1]), math.floor(pt[2]), math.floor(pt[3])
+										if not hidden and (cx ~= x or cy ~= y or cz ~= z) then
+											local n = at(padded, cx, cy, cz)
+											hidden = n ~= 0 and (Shapes.coversFace(n, OPP[d]) or Shapes.sturdyCube(n))
+										end
+										if not hidden then
+											out[`{d}:{math.round(plane * 16)}:{u16}:{v16}`] = true
+										end
+									end
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+		return out
+	end
+	local function check(cells: { [string]: number }, label: string): { { number } }
+		local padded = build(cells)
+		local quads = paneQuads(padded)
+		local got, want = drawn(quads), expected(padded)
+		for key in want do
+			assert(got[key], `{label}: outer face patch {key} is missing`)
+		end
+		for key in got do
+			assert(want[key], `{label}: patch {key} is drawn but is not an outer face`)
+		end
+		return quads
+	end
+	local function find(quads: { { number } }, d: number): { { number } }
+		local out = {}
+		for _, q in quads do
+			if q[1] == d then
+				table.insert(out, q)
+			end
+		end
+		return out
+	end
+
+	-- a free row of 3 panes along z (the direction that is built from post + arms): one
+	-- rectangle per side, nothing in the middle
+	local q = check({ ["5,4,4"] = PANE, ["5,4,5"] = PANE, ["5,4,6"] = PANE }, "row along z")
+	eq(#q, 6)
+	local east = find(q, 1)[1] -- u = y, v = z
+	eq(east[2], 5 + 9 / 16 - 1); eq(east[3], 4); eq(east[4], 4 + 7 / 16); eq(east[5], 1); eq(east[6], 2 + 2 / 16)
+	-- ... and along x
+	q = check({ ["4,4,5"] = PANE, ["5,4,5"] = PANE, ["6,4,5"] = PANE }, "row along x")
+	eq(#q, 6)
+	-- a 3 x 2 window is still 6 rectangles
+	q = check({
+		["5,4,4"] = PANE, ["5,4,5"] = PANE, ["5,4,6"] = PANE, ["5,5,4"] = PANE, ["5,5,5"] = PANE, ["5,5,6"] = PANE,
+	}, "window")
+	eq(#q, 6)
+	eq(find(q, 2)[1][6], 2) -- west face (u = z, v = y) is 2 high
+	-- a 2 x 2 window in a stone wall: only the two big faces are left
+	local wall: { [string]: number } = {}
+	for x = 4, 7 do
+		for y = 4, 7 do
+			wall[`{x},{y},5`] = if x >= 5 and x <= 6 and y >= 5 and y <= 6 then PANE else STONE
+		end
+	end
+	q = check(wall, "window in a wall")
+	eq(#q, 2)
+	eq(q[1][5] * q[1][6], 4) -- 2 x 2 blocks, reaching the stone on both sides
+	-- a T: the row's face is cut where the branch joins, the branch has no end face there
+	q = check({ ["4,4,5"] = PANE, ["5,4,5"] = PANE, ["6,4,5"] = PANE, ["5,4,6"] = PANE }, "T")
+	eq(#q, 12)
+	eq(#find(q, 5), 3) -- south: the row left and right of the branch, and the branch's end
+	eq(#find(q, 6), 1) -- north: the row's whole back
+	-- against a glass block: the pane reaches it and has no face there
+	q = check({ ["5,5,5"] = PANE, ["6,5,5"] = GLASS }, "pane and glass block")
+	eq(#q, 5)
+	eq(#find(q, 1), 0)
+	-- across a section border: the neighbour's pane continues ours, no face between them
+	q = check({ ["14,5,5"] = PANE, ["15,5,5"] = PANE, ["16,5,5"] = PANE }, "section border")
+	eq(#q, 5)
+	eq(#find(q, 1), 0)
+	local south = find(q, 5)[1] -- u = x, v = y
+	eq(south[3] + south[5], 16) -- right up to the border
+	q = check({ ["5,15,5"] = PANE, ["5,16,5"] = PANE, ["5,14,5"] = PANE }, "section border above")
+	eq(#find(q, 3), 0)
+	-- a pane under a pane with a different shape: the part of the top that sticks out shows
+	q = check({ ["5,5,5"] = PANE, ["6,5,5"] = STONE, ["5,6,5"] = PANE }, "arm under a lone post")
+	eq(#find(q, 3), 2) -- the upper post's top, and the lower arm's top beside it
+
+	-- random glass, blocks, walls, slabs and leaves, also on the borders: exactly the outer faces
+	local others = { GLASS, STONE, id("cobblestone_wall"), id("oak_leaves"), id("stone_slab"), id("oak_fence"), id("iron_bars") }
+	local rng = Hash.newRng(4242)
+	for round = 1, 60 do
+		local cells: { [string]: number } = {}
+		-- a small busy region; every third round it sits on the far borders
+		local ox, oy, oz = -1, -1, -1
+		if round % 3 == 0 then
+			ox, oy, oz = 11, 12, 11
+		end
+		for _ = 1, 90 do
+			local x, y, z = ox + rng:nextInt(0, 5), oy + rng:nextInt(0, 4), oz + rng:nextInt(0, 5)
+			cells[`{x},{y},{z}`] = if rng:nextInt(1, 10) <= 6 then PANE else others[rng:nextInt(1, #others)]
+		end
+		check(cells, `random {round}`)
+	end
+end)
+
 test("8c: armour maths, shield direction, bow power, beds", function()
 	local Combat = Loader.require("src/shared/Gameplay/Combat")
 	local Placement = Loader.require("src/shared/Blocks/Placement")
@@ -1941,6 +2167,7 @@ end
 
 -- The real client movement code, frame by frame, in a fake Roblox.
 require("./ClientMovementTests")(test, eq)
+require("./ClientRenderTests")(test, eq)
 
 print(`\n{passed} passed, {failed} failed`)
 if failed > 0 then

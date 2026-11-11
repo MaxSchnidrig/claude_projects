@@ -190,6 +190,7 @@ local function paneConnects(id: number?): boolean
 	end
 	return sturdyCube(id)
 end
+Shapes.paneConnects = paneConnects
 
 local function fenceBoxes(get: Getter, collision: boolean): { Box }
 	local out: { Box } = {}

@@ -42,6 +42,9 @@ local THICKNESS = 0.02 -- studs; the slab sits just behind the face plane (insid
 -- extends this far into in-plane neighbours with a visible face, so neighbours overlap instead of
 -- leaving a crack. The overlap strip is far thinner than a pixel at normal distances.
 local SEAM_OVERLAP = 0.012
+-- Glass pane sheets (see build).
+local PANE_THICKNESS = 0.004
+local PANE_OVERLAP = 0.004
 
 local faceVisible = GreedyMesher.faceVisible
 local STRIDE = GreedyMesher.STRIDE
@@ -82,78 +85,32 @@ end
 
 -- `groups`: texture -> quad list (GreedyMesher format), special textures only.
 -- `padded` is the section's padded buffer (SectionSampler) the quads were meshed from.
--- Shaped faces (glass panes) come one per block; side by side as separate see-through parts
--- they show a line at every seam. Merge touching faces of the same plane and size into one
--- (along u, then along v). Whole-block quads pass through unchanged (already greedy-merged).
-local function mergeFractional(quads: { number }): { number }
-	local Q = GreedyMesher.QUAD
-	local whole, frac = {}, {}
-	for q = 1, #quads, Q do
-		local e = table.move(quads, q, q + Q - 1, 1, {})
-		local isFrac = e[2] % 1 ~= 0 or e[3] % 1 ~= 0 or e[4] % 1 ~= 0 or e[5] % 1 ~= 0 or e[6] % 1 ~= 0
-		table.insert(if isFrac then frac else whole, e)
-	end
-	if #frac < 2 then
-		return quads
-	end
-	local function pass(list: { { number } }, along: number): { { number } }
-		-- along = 3 (i, width 5) or 4 (j, height 6); the other pair must match exactly
-		local other, otherSize = if along == 3 then 4 else 3, if along == 3 then 6 else 5
-		local size = along + 2
-		table.sort(list, function(a, b)
-			for _, f in { 1, 2, other, otherSize, along } do
-				if a[f] ~= b[f] then
-					return a[f] < b[f]
-				end
-			end
-			return false
-		end)
-		local out = {}
-		for _, e in list do
-			local last = out[#out]
-			if last and last[1] == e[1] and last[2] == e[2] and last[other] == e[other]
-				and last[otherSize] == e[otherSize] and math.abs(last[along] + last[size] - e[along]) < 1e-6
-			then
-				last[size] += e[size]
-			else
-				table.insert(out, e)
-			end
-		end
-		return out
-	end
-	frac = pass(pass(frac, 3), 4)
-	local result = {}
-	for _, list in { whole, frac } do
-		for _, e in list do
-			table.move(e, 1, #e, #result + 1, result)
-		end
-	end
-	return result
-end
-
+-- Glass pane faces arrive already merged into rectangles of outer faces only (PaneMesher).
 function Backend.build(groups: { [number]: { number } }, padded: buffer, originStuds: Vector3, folder: Instance): Handle?
 	local handle: Handle = { parts = {} }
-	for tex, rawQuads in groups do
-		local quads = mergeFractional(rawQuads)
+	for tex, quads in groups do
 		local style = RenderStyle.forTexture(tex)
 		for q = 1, #quads, GreedyMesher.QUAD do
 			local d, k, i, j, w, h = quads[q], quads[q + 1], quads[q + 2], quads[q + 3], quads[q + 4], quads[q + 5]
 			local dir = GreedyMesher.DIRS[d]
 			local size = { 0, 0, 0 }
 			local center = { 0, 0, 0 }
-			-- box-shaped blocks (glass panes) give fractional faces: no seam extension for them
+			-- Glass panes give fractional faces. Their sheets are thinner (a sheet's own edge must
+			-- not show where two of them meet) and always reach a hair past their rectangle: into
+			-- the next sheet of the same plane, or unseen into a block or the pane's own edge.
 			local frac = k % 1 ~= 0 or i % 1 ~= 0 or j % 1 ~= 0 or w % 1 ~= 0 or h % 1 ~= 0
-			local eU0 = if frac then 0 else continues(padded, d, k, i - 1, i - 1, j, j + h - 1)
-			local eU1 = if frac then 0 else continues(padded, d, k, i + w, i + w, j, j + h - 1)
-			local eV0 = if frac then 0 else continues(padded, d, k, i, i + w - 1, j - 1, j - 1)
-			local eV1 = if frac then 0 else continues(padded, d, k, i, i + w - 1, j + h, j + h)
+			local eU0 = if frac then PANE_OVERLAP else continues(padded, d, k, i - 1, i - 1, j, j + h - 1)
+			local eU1 = if frac then PANE_OVERLAP else continues(padded, d, k, i + w, i + w, j, j + h - 1)
+			local eV0 = if frac then PANE_OVERLAP else continues(padded, d, k, i, i + w - 1, j - 1, j - 1)
+			local eV1 = if frac then PANE_OVERLAP else continues(padded, d, k, i, i + w - 1, j + h, j + h)
 			size[dir.u + 1] = w * BS + eU0 + eU1
 			size[dir.v + 1] = h * BS + eV0 + eV1
 			center[dir.u + 1] = (i + w / 2) * BS + (eU1 - eU0) / 2
 			center[dir.v + 1] = (j + h / 2) * BS + (eV1 - eV0) / 2
 			local plane = (if dir.sign > 0 then k + 1 else k) * BS
-			size[dir.axis + 1] = THICKNESS
-			center[dir.axis + 1] = plane - dir.sign * THICKNESS / 2
+			local thickness = if frac then PANE_THICKNESS else THICKNESS
+			size[dir.axis + 1] = thickness
+			center[dir.axis + 1] = plane - dir.sign * thickness / 2
 			local ft = fluidTex[tex]
 			if ft and ft.height < 1 then
 				local drop = (1 - ft.height) * BS
