@@ -32,9 +32,9 @@ function BedClient.message(text: string)
 	toastUntil = os.clock() + 3
 end
 
-local function setSleeping(on: boolean)
+local function setSleeping(on: boolean, head: Vector3?, facing: string?)
 	BedClient.sleeping = on
-	MovementController.sleeping = on
+	MovementController.sleep(if on then head else nil, facing)
 	dim.Visible = on
 	leave.Visible = on
 	InventoryClient.uiOpen = on
@@ -90,7 +90,9 @@ function BedClient.init()
 			return
 		end
 		if m.type == "sleep" then
-			setSleeping(true)
+			local head = if typeof(m.x) == "number" and typeof(m.y) == "number" and typeof(m.z) == "number"
+				then Vector3.new(m.x, m.y, m.z) else nil
+			setSleeping(true, head, if typeof(m.facing) == "string" then m.facing else nil)
 		elseif m.type == "wake" then
 			setSleeping(false)
 			if typeof(m.pos) == "Vector3" then

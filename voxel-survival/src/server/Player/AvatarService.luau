@@ -110,6 +110,22 @@ local function blockify(model: Model)
 	end
 end
 
+-- Hand a new character to its player straight away and tell their client exactly where it
+-- spawns. Terrain collision exists only on the client: while the server simulates the body (until
+-- network ownership moves over) it falls through the world, and the client's movement code must
+-- not start from wherever that left it (it used to start a little inside the floor and fall
+-- through it).
+local function handOver(player: Player, character: Model, cframe: CFrame)
+	local feet = (cframe.Position - Vector3.new(0, 3, 0)) / Config.BLOCK_SIZE
+	character:SetAttribute("SpawnFeet", feet)
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if root and root:IsA("BasePart") then
+		pcall(function()
+			root:SetNetworkOwner(player)
+		end)
+	end
+end
+
 -- Spawn (or respawn) the player's character at `cframe`.
 function AvatarService.spawn(player: Player, cframe: CFrame)
 	if not player.Parent then
@@ -128,6 +144,7 @@ function AvatarService.spawn(player: Player, cframe: CFrame)
 		end)
 		if player.Character then
 			player.Character:PivotTo(cframe)
+			handOver(player, player.Character, cframe)
 		end
 		return
 	end
@@ -140,6 +157,7 @@ function AvatarService.spawn(player: Player, cframe: CFrame)
 	AssetDiagnostics.phase("positioning the character", function()
 		character:PivotTo(cframe)
 	end)
+	character:SetAttribute("SpawnFeet", (cframe.Position - Vector3.new(0, 3, 0)) / Config.BLOCK_SIZE)
 	-- Assigning player.Character manually doesn't clean up the old body (LoadCharacter would).
 	local old = player.Character
 	player.Character = character
@@ -149,6 +167,7 @@ function AvatarService.spawn(player: Player, cframe: CFrame)
 	AssetDiagnostics.phase("parenting the character", function()
 		character.Parent = workspace
 	end)
+	handOver(player, character, cframe)
 end
 
 -- Movement settings applied to every character (server-side defaults; the client's

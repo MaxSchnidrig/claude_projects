@@ -154,9 +154,26 @@ end
 function InventoryService.restore(player: Player, slots: { [number]: Stack }, selected: number)
 	local i = inv(player)
 	table.clear(i.slots)
+	-- stacks bigger than the item's limit (saved before the limit changed, e.g. beds stacked to
+	-- 64 before 0.8.14): keep the limit in the slot and spread the rest into free slots
+	local over: { { idx: number, st: Stack } } = {}
 	for idx, st in slots do
 		if idx >= 1 and idx <= ALL then
 			i.slots[idx] = st
+			local max = SlotLogic.maxStack(st.item)
+			if st.count > max then
+				table.insert(over, { idx = idx, st = SlotLogic.copy(st, st.count - max) })
+				st.count = max
+			end
+		end
+	end
+	table.sort(over, function(a, b)
+		return a.idx < b.idx
+	end)
+	for _, o in over do
+		local left = SlotLogic.insert(i.slots, 1, N, o.st)
+		if left > 0 then
+			(i.slots[o.idx] :: Stack).count += left -- no room: nothing is lost, it stays over the limit
 		end
 	end
 	i.selected = math.clamp(selected, 1, HOTBAR)

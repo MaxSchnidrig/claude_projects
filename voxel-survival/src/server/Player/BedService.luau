@@ -6,8 +6,8 @@
 --     or a monster is within 8 blocks across / 5 up or down of the bed
 --   * when every player in the world sleeps for 100 ticks the night is skipped to the next
 --     morning; sleeping resets the "time since rest" counter (phantoms, phase 14)
---   * respawning goes to the bed if it still exists and has a free spot next to it; otherwise the
---     world spawn and "You have no home bed or charged respawn anchor, or it was obstructed"
+--   * respawning goes onto the bed if it still exists and there's room to stand on it, else to a
+--     free spot next to it (Java's stand-up search); otherwise the world spawn and "You have no home bed or charged respawn anchor, or it was obstructed"
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -94,6 +94,17 @@ local function standUpSpot(head: Vector3): Vector3?
 	end
 	return nil
 end
+
+-- Respawning: on top of the bed when there is room to stand there (feet on the 9/16 high
+-- mattress of the head half), else beside it (standUpSpot). Feet position (block units) or nil.
+local function onBedSpot(head: Vector3): Vector3?
+	if free(head.X, head.Y + 1, head.Z) and free(head.X, head.Y + 2, head.Z) then
+		return Vector3.new(head.X + 0.5, head.Y + 9 / 16, head.Z + 0.5)
+	end
+	return nil
+end
+BedService.onBedSpot = onBedSpot
+BedService.standUpSpot = standUpSpot
 
 local function rootOf(p: Player): BasePart?
 	local c = p.Character
@@ -204,7 +215,7 @@ function BedService.init()
 		if not head then
 			return nil
 		end
-		local spot = if headOf(head.X, head.Y, head.Z) then standUpSpot(head) else nil
+		local spot = if headOf(head.X, head.Y, head.Z) then onBedSpot(head) or standUpSpot(head) else nil
 		if not spot then
 			spawns[p] = nil
 			task.delay(1, message, p, "You have no home bed or charged respawn anchor, or it was obstructed")

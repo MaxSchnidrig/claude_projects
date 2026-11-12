@@ -466,4 +466,29 @@ function PlayerMotor.settle(st: State, w: World, sneak: boolean?)
 	end
 end
 
+-- Still inside something after settle (a spawn that started inside the floor): lift the box onto
+-- the top of what it's in, up to 3 blocks, so it stands on it instead of falling through it.
+-- Returns true if the box is free (or was freed).
+function PlayerMotor.unstick(st: State, w: World, sneak: boolean?): boolean
+	local h = if sneak then 1.5 else 1.8
+	local y0 = st.y
+	for _ = 1, 8 do
+		local boxes = MobPhysics.gather(w.solid, st.x - HALF + 1e-3, st.y + 1e-3, st.z - HALF + 1e-3,
+			st.x + HALF - 1e-3, st.y + h - 1e-3, st.z + HALF - 1e-3)
+		if #boxes == 0 then
+			return true
+		end
+		local top = st.y
+		for i = 1, #boxes, 6 do
+			top = math.max(top, boxes[i + 4])
+		end
+		if top - y0 > 3 then
+			break
+		end
+		st.y = top
+	end
+	st.y = y0
+	return false
+end
+
 return PlayerMotor

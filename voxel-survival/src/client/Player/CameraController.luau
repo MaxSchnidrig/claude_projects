@@ -103,14 +103,21 @@ local function update(dt: number)
 	if not root or not character then
 		return
 	end
-	-- Face the body where we look (yaw only).
-	if not root.Anchored then
+	-- Face the body where we look (yaw only); a sleeping body lies as MovementController put it.
+	if not root.Anchored and not MovementController.sleeping then
 		root.CFrame = CFrame.new(root.Position) * CFrame.Angles(0, yaw, 0)
 	end
 
 	local eye = root.Position + Vector3.new(0, MovementController.eyeHeight + MovementController.stepOffset, 0)
 	local look = rot.LookVector
 	local mode = CameraController.mode
+	local sleepEye, sleepLook = MovementController.sleepView()
+	if sleepEye and sleepLook then
+		-- in bed (Java): the view lies on the pillow looking level toward the foot of the bed;
+		-- the mouse doesn't turn it. Third person still shows the body from behind / in front.
+		eye, look = sleepEye, sleepLook
+		rot = CFrame.lookAt(Vector3.zero, sleepLook)
+	end
 	if mode == "first" then
 		camera.CFrame = CFrame.new(eye) * rot
 		setLocalTransparency(character, 1)

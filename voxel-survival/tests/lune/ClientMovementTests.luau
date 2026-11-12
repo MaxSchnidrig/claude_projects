@@ -472,7 +472,156 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		cleanup()
 	end)
 
-	test("client: waits while the chunk isn't loaded; knockback; touch input; step-up glide; animations", function()
+	test("client: respawning never starts inside the floor (named spawn spot, lift-out)", function()
+		local SLAB = BlockRegistry.id("stone_slab")
+		local T = boot({ [`10,{FLOOR},10`] = SLAB })
+		-- the server names the spot; the body itself already dropped 1.5 studs into the floor
+		-- (the server simulated it before handing it over)
+		local function spawnNamed(x: number, y: number, z: number, dropStuds: number, named: boolean)
+			if T.character then
+				T.character:Destroy()
+			end
+			local character = Fake.newCharacter("Tester", CFrame.new(x * BS, y * BS + 3.05 - dropStuds, z * BS))
+			if named then
+				character:SetAttribute("SpawnFeet", Vector3.new(x, y + 0.05 / BS, z))
+			end
+			character.Parent = T.G.workspace
+			T.character = character
+			T.root = character.HumanoidRootPart
+			T.humanoid = character.Humanoid
+			T.G.player.Character = character
+			T.G.player.CharacterAdded:Fire(character)
+		end
+		spawnNamed(4.5, FLOOR, 4.5, 1.5, true)
+		frames(T, 120)
+		near(feet(T).Y, FLOOR, 1e-6, "stands on the floor at the named spot")
+		near(feet(T).X, 4.5, 1e-6, "at the named x")
+		-- no name (older server / fallback) and 0.6 blocks inside the floor: lifted onto it
+		spawnNamed(6.5, FLOOR, 6.5, 0.6 * BS, false)
+		frames(T, 120)
+		near(feet(T).Y, FLOOR, 1e-6, "lifted out of the floor onto it")
+		-- spawning on a bed-height block (the mattress is 9/16): stands on it
+		spawnNamed(10.5, FLOOR + 0.5, 10.5, 0.3, true)
+		frames(T, 120)
+		near(feet(T).Y, FLOOR + 0.5, 1e-6, "on the slab")
+		-- a chunk that arrives late: when it comes we're lifted out if inside it
+		T.unloaded = function(x: number)
+			return x >= 96
+		end
+		spawnNamed(120.5, FLOOR - 0.4, 0.5, 0, true)
+		frames(T, 30)
+		eq(T.MC.stats.waitingForChunk, true)
+		T.unloaded = nil
+		frames(T, 60)
+		near(feet(T).Y, FLOOR, 1e-6, "lifted onto the floor once the chunk came")
+		cleanup()
+	end)
+
+	test("client: in bed the view lies on the pillow looking to the foot; W does nothing; waking stands up", function()
+		local T = boot()
+		spawn(T, 0.5, FLOOR, 0.5)
+		frames(T, 30)
+		-- a bed facing east: foot at x 2, head at x 3 (the server's sleep message)
+		local head = Vector3.new(3, FLOOR, 0)
+		T.MC.sleep(head, "east")
+		frames(T, 30)
+		eq(T.MC.sleeping, true)
+		local eye, look = T.MC.sleepView()
+		near(eye.X / BS, 3.8, 1e-4, "eye toward the headboard")
+		near(eye.Y / BS, FLOOR + 0.8875, 1e-4, "eye just above the pillow")
+		near(eye.Z / BS, 0.5, 1e-4, "eye in the middle of the bed")
+		near(look.X, -1, 1e-6, "looking toward the foot")
+		near(look.Y, 0, 1e-6, "level")
+		-- the body lies along the bed whether or not the server's anchored pose arrived
+		near(T.root.Position.X / BS, 3, 1e-4, "body in the middle of the bed")
+		near(T.root.Position.Y / BS, FLOOR + 0.6, 1e-4, "on the mattress")
+		near(T.root.CFrame.LookVector.Y, 1, 1e-4, "lying down")
+		T.G.press(Key.W)
+		T.G.press(Key.Space)
+		frames(T, 60)
+		T.G.release(Key.W)
+		T.G.release(Key.Space)
+		near(T.root.Position.X / BS, 3, 1e-4, "W and Space don't move a sleeper")
+		-- the server anchors it too: still fine
+		T.root.Anchored = true
+		frames(T, 30)
+		near(T.root.Position.Y / BS, FLOOR + 0.6, 1e-4, "still lying")
+		-- wake: the server stands us up beside the bed
+		T.MC.sleep(nil)
+		local spot = Vector3.new(3.5, FLOOR, 1.5)
+		T.root.CFrame = CFrame.new(spot.X * BS, spot.Y * BS + 3.05, spot.Z * BS)
+		T.root.Anchored = false
+		T.MC.teleport(spot + Vector3.new(0, 0.05 / BS, 0))
+		frames(T, 60)
+		eq(T.MC.sleeping, false)
+		eq((T.MC.sleepView()), nil)
+		near(feet(T).X, 3.5, 1e-6, "standing beside the bed")
+		near(feet(T).Y, FLOOR, 1e-6, "on the floor")
+		T.G.press(Key.W)
+		frames(T, 30)
+		T.G.release(Key.W)
+		assert(math.abs(feet(T).X - 3.5) + math.abs(feet(T).Z - 1.5) > 0.5, "walks again")
+		-- dying in bed: a new character is never stuck asleep
+		T.MC.sleep(head, "east")
+		frames(T, 5)
+		spawn(T, 0.5, FLOOR, 0.5) -- (no wake message: the new body must not start in the bed)
+		eq(T.MC.sleeping, false)
+		frames(T, 30)
+		near(feet(T).Y, FLOOR, 1e-6, "respawned standing")
+		cleanup()
+	end)
+
+	test("client: walking up slabs and stairs moves the camera smoothly up, never down (any frame rate)", function()
+		local SLAB = BlockRegistry.id("stone_slab")
+		local STAIRS = BlockRegistry.id("oak_stairs_east_bottom") -- steps up toward +x
+		assert(STAIRS, "stairs id")
+		for _, rate in { 60, 144, 30, 0 } do -- 0: uneven frames
+			-- slab, block, slab on block, block + block ... a staircase of half steps along +x,
+			-- then real stairs
+			local cells = {}
+			local function put(x: number, y: number, id: number)
+				for z = -2, 2 do
+					cells[`{x},{y},{z}`] = id
+				end
+			end
+			put(3, FLOOR, SLAB)
+			put(4, FLOOR, STONE)
+			put(5, FLOOR, STONE); put(5, FLOOR + 1, SLAB)
+			put(6, FLOOR, STONE); put(6, FLOOR + 1, STONE)
+			put(7, FLOOR, STONE); put(7, FLOOR + 1, STAIRS)
+			put(8, FLOOR, STONE); put(8, FLOOR + 1, STONE); put(8, FLOOR + 2, STAIRS)
+			for x = 9, 14 do
+				put(x, FLOOR, STONE); put(x, FLOOR + 1, STONE); put(x, FLOOR + 2, STONE)
+			end
+			local T = boot(cells)
+			spawn(T, 0.5, FLOOR, 0.5)
+			T.MC.lookYaw = -math.pi / 2 -- look +x
+			frames(T, 30)
+			T.G.press(Key.W)
+			local last = -math.huge
+			local n = 0
+			for i = 1, 600 do
+				local dt = if rate == 0 then (if i % 3 == 0 then 1 / 25 else 1 / 90) else 1 / rate
+				T.G.frame(dt)
+				local eye = T.seen[2] + (T.MC.eyeHeight + T.MC.stepOffset) / BS
+				if last > -math.huge then
+					assert(eye >= last - 1e-9, `camera dipped at {rate} fps: {last} -> {eye} (x {feet(T).X})`)
+					assert(eye - last <= 0.5 + 1e-6, `camera jumped {eye - last} blocks in one frame at {rate} fps`)
+				end
+				last = eye
+				n += 1
+				if feet(T).X > 11 then
+					break
+				end
+			end
+			T.G.release(Key.W)
+			assert(feet(T).X > 11, `walked up to the top at {rate} fps (x {feet(T).X})`)
+			near(feet(T).Y, FLOOR + 3, 1e-6, `on top at {rate} fps`)
+			cleanup()
+		end
+	end)
+
+	test("client: waits while the chunk isn't loaded; knockback; touch input; step-up; animations", function()
 		local cells = { [`3,{FLOOR},0`] = BlockRegistry.id("stone_slab") }
 		local T = boot(cells)
 		-- respawned somewhere the chunks haven't arrived yet: hold still, then fall into place
@@ -506,20 +655,17 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		T.G.game:GetService("UserInputService").TouchEnabled = true
 		T.humanoid:Move(Vector3.new(1, 0, 0))
 		frames(T, 30)
-		-- walks +X, up onto the slab at x = 3 without jumping; the camera glides
-		local glided = false
+		-- walks +X, up onto the slab at x = 3 without jumping; the camera never dips
 		for _ = 1, 60 do
 			frames(T, 1)
-			glided = glided or T.MC.stepOffset < -0.2
+			eq(T.MC.stepOffset, 0, "no extra camera offset on a step")
 			if feet(T).X > 3.4 then
 				break -- on the slab: stop here
 			end
 		end
 		near(feet(T).Y, FLOOR + 0.5, 1e-6, "stepped onto the slab")
-		assert(glided, "the camera glides up the step")
 		T.humanoid:Move(Vector3.zero)
 		frames(T, 30)
-		near(T.MC.stepOffset, 0, 1e-9, "glide finished")
 		T.humanoid.Jump = true
 		top = 0
 		for _ = 1, 20 do

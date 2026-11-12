@@ -1379,6 +1379,34 @@ test("8b2: trapdoors, fence gates, walls, panes, bars, vines, hanging signs", fu
 	eq(BlockRegistry.byId[c[1].id].key, "oak_wall_hanging_sign_east")
 end)
 
+test("stack sizes match Java (beds 1, signs and hanging signs 16, doors 64, tools 1)", function()
+	local ItemRegistry = Loader.require("src/shared/Items/ItemRegistry")
+	local SlotLogic = Loader.require("src/shared/Items/SlotLogic")
+	local expect = {
+		white_bed = 1, red_bed = 1, oak_sign = 16, oak_hanging_sign = 16, spruce_hanging_sign = 16,
+		oak_door = 64, iron_door = 64, item_frame = 64, glass_pane = 64, torch = 64, campfire = 64,
+		bucket = 16, water_bucket = 1, snowball = 16, iron_sword = 1, shield = 1, bow = 1, arrow = 64,
+		iron_helmet = 1, bread = 64,
+	}
+	for key, n in expect do
+		local def = ItemRegistry.get(key)
+		assert(def, `item {key} exists`)
+		eq(def.stack, n, `stack size of {key}`)
+	end
+	-- 3 beds go into 3 slots, never onto each other
+	local slots = {}
+	eq(SlotLogic.insert(slots, 1, 5, { item = "white_bed", count = 3 }), 0)
+	eq(slots[1].count, 1); eq(slots[2].count, 1); eq(slots[3].count, 1)
+	eq(SlotLogic.insert(slots, 1, 3, { item = "white_bed", count = 1 }), 1, "no room: full slots don't take more")
+	-- clicking a bed onto a bed doesn't stack it
+	local cursor = SlotLogic.leftClick(slots, 1, { item = "white_bed", count = 1 })
+	eq(slots[1].count, 1); eq(cursor and cursor.count, 1)
+	-- an old over-full stack isn't made worse by clicks
+	slots[4] = { item = "white_bed", count = 63 }
+	cursor = SlotLogic.leftClick(slots, 4, { item = "white_bed", count = 1 })
+	eq(slots[4].count, 63); eq(cursor and cursor.count, 1)
+end)
+
 test("glass panes: only the outer faces of the joined glass, merged into rectangles", function()
 	local Shapes = Loader.require("src/shared/Blocks/Shapes")
 	local id = BlockRegistry.id
@@ -2168,6 +2196,7 @@ end
 -- The real client movement code, frame by frame, in a fake Roblox.
 require("./ClientMovementTests")(test, eq)
 require("./ClientRenderTests")(test, eq)
+require("./ServerBedTests")(test, eq)
 
 print(`\n{passed} passed, {failed} failed`)
 if failed > 0 then

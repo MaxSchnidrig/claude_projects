@@ -38,6 +38,7 @@ local GuiService = game:GetService("GuiService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local BlockRegistry = require(Shared.Blocks.BlockRegistry)
+local Shapes = require(Shared.Blocks.Shapes)
 local SurvivalClient = require(script.Parent.Parent.Survival.SurvivalClient)
 local ClientWorld = require(script.Parent.Parent.World.ClientWorld)
 local InventoryClient = require(script.Parent.Parent.Player.InventoryClient)
@@ -58,7 +59,7 @@ MovementController.onLadder = false
 MovementController.onGround = true -- Java onGround (use this, not Humanoid.FloorMaterial)
 MovementController.sleeping = false -- lying in a bed (BedClient): the view drops to the pillow
 MovementController.bowPull = 0 -- 0..1 while drawing a bow (BlockInteraction): FOV zoom
-MovementController.stepOffset = 0 -- studs; the camera glides after a step up instead of jumping
+MovementController.stepOffset = 0 -- studs added to the camera height (kept 0: see tick)
 MovementController.sneaking = false -- crouched (Shift held, or no room to stand)
 MovementController.usingItem = false -- eating / bow / crossbow / shield (BlockInteraction)
 MovementController.eyeHeight = Config.EYE_HEIGHT -- studs above the root, eases when sneaking
@@ -83,6 +84,10 @@ type Body = {
 local body: Body? = nil
 local pendingTeleport: Vector3? = nil
 
+-- Lying in a bed (BedClient): the client itself puts the body on the pillow and holds it
+-- there, so the view is right even before the server's anchored pose replicates.
+local sleepPose: { mid: Vector3, dir: Vector3, eye: Vector3 }? = nil
+
 local sprintLatch = false
 local sprintTriggerUntil = -math.huge
 local touchSneak = false
@@ -99,6 +104,33 @@ end)
 -- Java: a full-strength sprint hit ends the sprint.
 function MovementController.stopSprint()
 	sprintLatch = false
+end
+
+-- Sleeping (BedClient). `head` is the bed's head cell (blocks) and `facing` the bed's facing;
+-- nil wakes up. While asleep the body lies on the bed with the head on the pillow, exactly as
+-- the server posed it, whether or not that pose has replicated.
+function MovementController.sleep(head: Vector3?, facing: string?)
+	local v = facing and (Shapes.DIR :: any)[facing]
+	if head and v then
+		local dir = Vector3.new(v[1], 0, v[2])
+		local mid = (head + Vector3.new(0.5, 0.6, 0.5) - dir * 0.5) * BS
+		-- Java: the sleeper is at the head cell (+0.5, +0.6875, +0.5) with eye height 0.2, and the
+		-- camera looks level toward the foot of the bed, pulled back 0.3 toward the headboard
+		local eye = (head + Vector3.new(0.5, 0.6875 + 0.2, 0.5) + dir * 0.3) * BS
+		sleepPose = { mid = mid, dir = dir, eye = eye }
+	else
+		sleepPose = nil
+	end
+	MovementController.sleeping = sleepPose ~= nil
+end
+
+-- The sleeping view: eye position (studs) and look direction, or nil when awake.
+function MovementController.sleepView(): (Vector3?, Vector3?)
+	local sp = sleepPose
+	if not sp or not MovementController.sleeping then
+		return nil, nil
+	end
+	return sp.eye, -sp.dir
 end
 
 -- Touch button: toggle sneaking.
@@ -137,6 +169,7 @@ local function resync(b: Body, feet: Vector3)
 	st.noJumpDelay = 0
 	if PlayerMotor.loaded(world, st) then
 		PlayerMotor.settle(st, world, MovementController.sneaking)
+		PlayerMotor.unstick(st, world, MovementController.sneaking)
 	end
 	b.px, b.py, b.pz = st.x, st.y, st.z
 	b.acc = 0
@@ -208,9 +241,8 @@ local function tick(b: Body, forward: number, strafe: number, jumpHeld: boolean,
 	MovementController.onLadder = r.onLadder
 	MovementController.onGround = st.onGround
 	MovementController.velocity = Vector3.new(st.vx, st.vy, st.vz)
-	if r.stepUp > 0 then
-		MovementController.stepOffset -= r.stepUp * BS -- the camera glides up the step
-	end
+	-- (a step up needs no camera smoothing of its own: the body already moves smoothly between
+	-- the two ticks, like Java; an extra glide on top made the camera dip on every slab / stair)
 	if r.fall and r.fall > 3 then
 		SurvivalClient.reportFall(r.fall) -- the server checks it (and halves it on a bed)
 	end
@@ -333,11 +365,16 @@ local function configure(humanoid: Humanoid)
 	force.Parent = root
 
 	loadAnimations(character, humanoid)
+	sleepPose = nil -- a new body is never in bed (died while sleeping)
+	MovementController.sleeping = false
 	MovementController.sneaking = false
 	MovementController.eyeHeight = Config.EYE_HEIGHT
 	MovementController.stepOffset = 0
 	MovementController.velocity = Vector3.zero
-	local feet = feetOf(root)
+	-- where the server spawned us (exact; the body itself may have dropped a little while the
+	-- server still simulated it), else the body's position
+	local named = character:GetAttribute("SpawnFeet")
+	local feet = if typeof(named) == "Vector3" then named else feetOf(root)
 	local b: Body = {
 		character = character,
 		st = PlayerMotor.new(feet.X, feet.Y, feet.Z),
@@ -409,6 +446,35 @@ local function step(dt: number)
 		camera.FieldOfView += (targetFov - camera.FieldOfView) * (1 - 0.5 ^ (dt * 20))
 	end
 
+	-- Asleep in a bed: the client holds the body in the lying pose itself (the server's
+	-- anchored pose may not have replicated into a body the client owns), and the camera
+	-- sinks to the pillow through eyeHeight above.
+	local sp = sleepPose
+	if MovementController.sleeping and sp and humanoid.Health > 0 and not SurvivalClient.dead then
+		st.x, st.z = sp.mid.X / BS, sp.mid.Z / BS
+		st.y = sp.mid.Y / BS - 1 -- the root sits one block over the feet
+		st.vx, st.vy, st.vz = 0, 0, 0
+		st.onGround = true
+		st.fallDistance = 0
+		b.px, b.py, b.pz = st.x, st.y, st.z
+		b.acc = 0
+		MovementController.velocity = Vector3.zero
+		MovementController.stats.held = root.Anchored
+		b.held = false
+		-- body along the bed, head on the pillow (the server's exact pose)
+		root.CFrame = CFrame.lookAt(sp.mid, sp.mid + Vector3.yAxis, sp.dir)
+		if not root.Anchored then
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.AssemblyAngularVelocity = Vector3.zero
+			local force = b.force
+			if force then
+				force.Force = Vector3.new(0, root.AssemblyMass * workspace.Gravity, 0)
+			end
+		end
+		playAnim("idle", 1)
+		return
+	end
+
 	-- The server holds the body (asleep in a bed, frozen after death): hands off.
 	if root.Anchored then
 		b.held = true
@@ -477,7 +543,13 @@ local function step(dt: number)
 		place(b, root, st.x, st.y, st.z, yaw, Vector3.zero)
 		return
 	end
-	MovementController.stats.waitingForChunk = false
+	if MovementController.stats.waitingForChunk then
+		-- the chunk just arrived: make sure we don't start inside one of its blocks
+		MovementController.stats.waitingForChunk = false
+		PlayerMotor.settle(st, world, MovementController.sneaking)
+		PlayerMotor.unstick(st, world, MovementController.sneaking)
+		b.px, b.py, b.pz = st.x, st.y, st.z
+	end
 
 	-- sneaking: Shift held (not in a window), or forced while there's no room to stand
 	local keySneak = (Enum.KeyCode :: any)[Config.KEY_SNEAK]

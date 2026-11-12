@@ -154,7 +154,10 @@ function ViewModel.init(swingEvent: BindableEvent)
 		local character = Players.LocalPlayer.Character
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		local MovementController = require(script.Parent.MovementController) :: any
+		-- (Java hides the hand while you sleep)
 		local first = CameraController.mode == "first" and humanoid ~= nil and humanoid.Health > 0
+			and not MovementController.sleeping
 		if model.Parent ~= cam then
 			model.Parent = cam
 		end
@@ -168,7 +171,6 @@ function ViewModel.init(swingEvent: BindableEvent)
 		end
 
 		-- view bobbing (Java): distance walked drives the phase, speed the amount
-		local MovementController = require(script.Parent.MovementController) :: any
 		local v = MovementController.velocity -- blocks/tick (the motor moves the body)
 		local horiz = Vector3.new(v.X, 0, v.Z).Magnitude
 		local grounded = MovementController.onGround

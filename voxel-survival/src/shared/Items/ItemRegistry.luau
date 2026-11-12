@@ -40,7 +40,8 @@ for _, def in BlockRegistry.byId do
 		byKey[def.key] = {
 			key = def.key,
 			name = def.name,
-			stack = if def.shape == "sign" then 16 else 64,
+			-- Java: signs and hanging signs stack to 16, beds don't stack
+			stack = if def.shape == "sign" or def.shape == "hanging_sign" then 16 elseif def.shape == "bed" then 1 else 64,
 			block = def.id,
 			tool = nil,
 			color = BlockRegistry.textureColor(def.faceTexture[BlockRegistry.Dir.TOP]),

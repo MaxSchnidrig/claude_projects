@@ -95,6 +95,15 @@ are fine.
   a sword or tool in the main hand no longer blocks it; only a block being placed at a target
   does); if the server's Animator never arrives the client makes its own, so animations can't
   silently stay off.
+- 0.8.14: in bed the view lies on the pillow looking level toward the foot (Java's sleeping
+  camera; the mouse doesn't turn it, the hand is hidden); the client holds the lying pose
+  itself. Respawn goes onto the bed when there's room to stand on it, else beside it. New
+  characters are handed to their player at once and the client starts from the spawn spot the
+  server names (the server, which has no terrain collision, let the body sink into the floor
+  first and the client then fell through it); a box that starts inside a block is lifted out.
+  The step-up camera glide is gone (it dipped the view on every slab and stair now that the body
+  moves smoothly between ticks). Beds stack to 1 and hanging signs to 16 (Java); over-full
+  stacks from older saves are spread out on load.
 
 ## Phase 8 – Survival foundations (XL)
 
