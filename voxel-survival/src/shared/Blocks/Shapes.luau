@@ -419,6 +419,34 @@ local function bedBoxes(st: { [string]: any }, collision: boolean): { Box }
 	return out
 end
 
+-- Plants (Phase 9a). Drawn as flat sheets (zero-thickness boxes: the mesher draws both sides and
+-- skips the empty edges); no collision. Short grass and flowers: two sheets crossing in the
+-- middle. Crops: four sheets in a # like Java's crop model. Farmland: 15/16 high.
+local FARMLAND: { Box } = { { 0, 0, 0, 1, 15 / 16, 1 } }
+local PLANT_PLANES: { Box } = { { 0.5, 0, 0, 0.5, 1, 1 }, { 0, 0, 0.5, 1, 1, 0.5 } }
+local CROP_PLANES: { Box } = {
+	{ 4 / 16, 0, 0, 4 / 16, 1, 1 }, { 12 / 16, 0, 0, 12 / 16, 1, 1 },
+	{ 0, 0, 4 / 16, 1, 1, 4 / 16 }, { 0, 0, 12 / 16, 1, 1, 12 / 16 },
+}
+
+-- What you aim at and see outlined (Java's outline shapes): for plants and crops a box around
+-- them, not their sheets; everything else as drawn.
+function Shapes.outline(id: number, get: Getter): { Box }
+	local d = byId[id]
+	if d and d.shape == "plant" then
+		if d.state.flower then
+			return { { 5 / 16, 0, 5 / 16, 11 / 16, 10 / 16, 11 / 16 } }
+		end
+		return { { 2 / 16, 0, 2 / 16, 14 / 16, 13 / 16, 14 / 16 } }
+	elseif d and d.shape == "crop" then
+		-- Java: crops grow taller in steps of 2 / 16 (beetroots and 4-stage crops by stage)
+		local st = d.state
+		local h = if st.maxAge == 3 then (st.age + 1) * 4 / 16 else (st.age + 1) * 2 / 16
+		return { { 0, 0, 0, 1, h, 1 } }
+	end
+	return Shapes.boxes(id, get, false)
+end
+
 -- Public --------------------------------------------------------------------------------------
 
 -- Boxes of block `id`. `collision` = the movement shape (else the visual shape). Full cubes
@@ -456,6 +484,12 @@ function Shapes.boxes(id: number, get: Getter, collision: boolean): { Box }
 		return paneBoxes(st, get, collision)
 	elseif shape == "vine" then
 		return if collision then NONE else vineBoxes(st.faces)
+	elseif shape == "farmland" then
+		return FARMLAND
+	elseif shape == "plant" then
+		return if collision then NONE else PLANT_PLANES
+	elseif shape == "crop" then
+		return if collision then NONE else CROP_PLANES
 	elseif shape == "ladder" then
 		if collision then
 			return { rot(LADDER_COLLISION_NORTH, st.facing) }
@@ -509,15 +543,26 @@ function Shapes.at(getBlock: (number, number, number) -> number?, x: number, y: 
 	end, collision)
 end
 
+-- The outline (Shapes.outline) of the block at world (x, y, z): selection box, crack overlay.
+function Shapes.outlineAt(getBlock: (number, number, number) -> number?, x: number, y: number, z: number): { Box }
+	local id = getBlock(x, y, z)
+	if not id then
+		return FULL
+	end
+	return Shapes.outline(id, function(dx, dy, dz)
+		return getBlock(x + dx, y + dy, z + dz)
+	end)
+end
+
 -- For VoxelRaycast.cast's `shapeOf`: visual boxes of box-shaped blocks, nil (whole cell) otherwise.
 function Shapes.rayShapeFn(getBlock: (number, number, number) -> number?): (number, number, number, number) -> { Box }?
 	return function(id: number, x: number, y: number, z: number): { Box }?
 		if not isBoxShape[id + 1] then
 			return nil
 		end
-		return Shapes.boxes(id, function(dx, dy, dz)
+		return Shapes.outline(id, function(dx, dy, dz)
 			return getBlock(x + dx, y + dy, z + dz)
-		end, false)
+		end)
 	end
 end
 

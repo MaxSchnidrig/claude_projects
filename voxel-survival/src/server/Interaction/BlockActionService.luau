@@ -13,6 +13,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local SneakPose = require(Shared.Gameplay.SneakPose)
 local TorchRules = require(Shared.Blocks.TorchRules)
+local Farming = require(Shared.Gameplay.Farming)
 local Placement = require(Shared.Blocks.Placement)
 local Shapes = require(Shared.Blocks.Shapes)
 local Config = require(Shared.Config)
@@ -117,7 +118,7 @@ local function canReach(eye: Vector3, x: number, y: number, z: number, forPlace:
 	local samples = table.clone(SAMPLES)
 	local id = WorldService.getBlock(x, y, z)
 	if id ~= AIR and BlockRegistry.isBoxShape[id + 1] then
-		for _, b in Shapes.at(getBlock, x, y, z, false) do
+		for _, b in Shapes.outlineAt(getBlock, x, y, z) do
 			table.insert(samples, Vector3.new((b[1] + b[4]) / 2, (b[2] + b[5]) / 2, (b[3] + b[6]) / 2))
 		end
 	end
@@ -257,7 +258,16 @@ local function finishBreak(player: Player, st: PState, x: number, y: number, z: 
 	local key = WorldService.setBlock(x, y, z, AIR)
 	local center = Vector3.new(x + 0.5, y + 0.5, z + 0.5) * BS
 	local def = BlockRegistry.get(id)
-	if def and def.drop and Mining.canHarvest(id, item) then
+	-- plants and crops drop by Java's loot rules (seeds, ripe crops, shears for grass)
+	local held = ItemRegistry.get(item)
+	local farmDrops = Farming.drops(id, if held and held.tool then held.tool.kind else nil, math.random)
+	if farmDrops then
+		for _, s in farmDrops do
+			if s.count > 0 then
+				ItemEntityService.spawn({ item = s.item, count = s.count }, center)
+			end
+		end
+	elseif def and def.drop and Mining.canHarvest(id, item) then
 		local count = if def.dropMax > def.dropMin then math.random(def.dropMin, def.dropMax) else def.dropMin
 		local dropItem = def.drop
 		local alt = def.altDrop
@@ -318,7 +328,9 @@ local function place(player: Player, x: number, y: number, z: number, retry: boo
 	local slot = if useOff then Config.OFFHAND_SLOT else InventoryService.selectedSlot(player)
 	local stack = InventoryService.getSlot(player, slot)
 	local item = stack and ItemRegistry.get(stack.item)
-	if not item or not item.block then
+	-- a block item places its block; seeds / carrots / potatoes plant their crop
+	local blockId = item and (item.block or item.places)
+	if not item or not blockId then
 		reject("not holding a block")
 		return true
 	end
@@ -342,7 +354,7 @@ local function place(player: Player, x: number, y: number, z: number, retry: boo
 	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	local look = if root then root.CFrame.LookVector else Vector3.new(0, 0, -1)
 	local lx, lz = e[4] or look.X, e[5] or look.Z
-	local changes, reason = Placement.resolve(item.block, {
+	local changes, reason = Placement.resolve(blockId :: number, {
 		hx = hx, hy = hy, hz = hz, nx = f[1], ny = f[2], nz = f[3], px = px, py = py, pz = pz, lx = lx, lz = lz,
 	}, WorldService.getBlock)
 	if not changes then

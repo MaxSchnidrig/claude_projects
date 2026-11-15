@@ -77,6 +77,11 @@ function SurvivalClient.reportFall(blocks: number)
 	send({ type = "fall", blocks = blocks })
 end
 
+-- Landed on farmland at (x, y, z) after falling `blocks` (the server rolls the trample chance).
+function SurvivalClient.trample(x: number, y: number, z: number, blocks: number)
+	send({ type = "trample", x = x, y = y, z = z, fall = blocks })
+end
+
 function SurvivalClient.respawn()
 	send({ type = "respawn" })
 end

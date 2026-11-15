@@ -163,6 +163,10 @@ local function emitShapes(padded: buffer, light: buffer?, groups: { [number]: { 
 						for d = 1, 6 do
 							local dir = DIRS[d]
 							local a = dir.axis + 1
+							-- a sheet (plants, crops) has no thickness: its edge faces are empty
+							if hi[dir.u + 1] - lo[dir.u + 1] <= 0 or hi[dir.v + 1] - lo[dir.v + 1] <= 0 then
+								continue
+							end
 							local onEdge = if dir.sign > 0 then hi[a] >= 1 else lo[a] <= 0
 							local nOff = STRIDE[dir.axis] * dir.sign
 							local visible = true

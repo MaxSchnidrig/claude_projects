@@ -108,6 +108,12 @@ Startup.run("server", {
 	{ name = "BlockUpdates", run = function()
 		require(server.World.BlockUpdates).init()
 	end },
+	{ name = "RandomTicks", run = function()
+		require(server.World.RandomTicks).init()
+	end },
+	{ name = "FarmingService", run = function()
+		require(server.Simulation.FarmingService).init()
+	end },
 	{ name = "FluidService", run = function()
 		require(server.Simulation.FluidService).init()
 	end },

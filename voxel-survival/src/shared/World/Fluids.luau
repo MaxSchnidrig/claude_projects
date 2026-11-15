@@ -21,6 +21,7 @@
 -- set(x, y, z, id), drop(x, y, z, itemKey) for washed-away items, fizz(x, y, z) for effects.
 
 local BlockRegistry = require(script.Parent.Parent.Blocks.BlockRegistry)
+local Farming = require(script.Parent.Parent.Gameplay.Farming)
 
 local Fluids = {}
 
@@ -92,7 +93,8 @@ local function washable(id: number): boolean
 		return true
 	end
 	local def = BlockRegistry.byId[id]
-	return def ~= nil and not isSolid[id + 1] and not def.fluid and (def.shape == "torch" or def.shape == "wall_torch")
+	return def ~= nil and not isSolid[id + 1] and not def.fluid
+		and (def.shape == "torch" or def.shape == "wall_torch" or def.shape == "plant" or def.shape == "crop")
 end
 
 -- Can `fluid` flow into (x, y, z)? Same fluid: only into lower amounts (never sources).
@@ -116,9 +118,19 @@ local function place(world: World, x: number, y: number, z: number, fluid: strin
 		return
 	end
 	if id ~= AIR and id ~= FIRE and not fluidOf[id] then
-		local def = BlockRegistry.byId[id]
-		if def and def.drop then
-			world.drop(x, y, z, def.drop) -- washed away
+		-- washed away: plants and crops drop what they drop when broken (seeds, ripe crops)
+		local farm = Farming.drops(id, nil, math.random)
+		if farm then
+			for _, s in farm do
+				for _ = 1, s.count do
+					world.drop(x, y, z, s.item)
+				end
+			end
+		else
+			local def = BlockRegistry.byId[id]
+			if def and def.drop then
+				world.drop(x, y, z, def.drop)
+			end
 		end
 	end
 	world.set(x, y, z, idFor[fluid][level])

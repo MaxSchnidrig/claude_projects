@@ -114,6 +114,11 @@ local function onUse(p: Player, a: any)
 	end
 	ItemUseService.stats.uses += 1
 
+	-- hoe tilling and bone meal (Phase 9a)
+	if require(script.Parent.FarmingService).use(p, item, x, y, z, a.ny) then
+		return
+	end
+
 	if item == "bucket" then
 		if clicked == WATER then
 			BlockUpdates.set(x, y, z, 0)

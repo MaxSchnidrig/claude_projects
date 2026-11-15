@@ -244,7 +244,62 @@ local function bucket(img: buffer, fill: { number }?)
 	end
 end
 
+-- A bowl seen from the side, optionally filled (soups and stews).
+local function bowl(img: buffer, fill: { number }?)
+	local wood = { 150, 106, 62 }
+	for x = 2, 13 do
+		put(img, x, 8, shade(wood, 1.15))
+	end
+	for y = 9, 12 do
+		local inset = y - 9
+		for x = 2 + inset, 13 - inset do
+			put(img, x, y, shade(wood, 1 - inset * 0.07))
+		end
+	end
+	if fill then
+		for x = 3, 12 do
+			put(img, x, 7, fill)
+			put(img, x, 8, shade(fill, 0.85))
+		end
+	end
+end
+
+-- Seeds: a few small grains.
+local function seeds(img: buffer, c: { number })
+	for _, p in { { 4, 6 }, { 8, 4 }, { 11, 7 }, { 6, 10 }, { 10, 11 }, { 7, 7 } } do
+		put(img, p[1], p[2], c)
+		put(img, p[1] + 1, p[2], shade(c, 0.8))
+		put(img, p[1], p[2] + 1, shade(c, 0.7))
+	end
+end
+
+-- A sheaf of wheat: stalks gathered in the middle.
+local function sheaf(img: buffer, c: { number })
+	for i = 0, 4 do
+		local x0 = 4 + i * 2
+		for y = 2, 14 do
+			local x = x0 + math.floor((y - 8) * (i - 2) * 0.12 + 0.5)
+			put(img, x, y, shade(c, if y < 5 then 1.15 else 0.95))
+		end
+	end
+	for x = 5, 11 do
+		put(img, x, 9, { 140, 110, 50 }) -- the band
+	end
+end
+
 local SHAPES: { [string]: (buffer, { number }, number) -> () } = {
+	bowl = function(img, _c)
+		bowl(img, nil)
+	end,
+	soup = function(img, c)
+		bowl(img, c)
+	end,
+	seeds = function(img, c)
+		seeds(img, c)
+	end,
+	sheaf = function(img, c)
+		sheaf(img, c)
+	end,
 	bucket = function(img, _c)
 		bucket(img, nil)
 	end,
@@ -310,6 +365,8 @@ local SHAPE_OF: { [string]: string } = {
 	arrow = "arrow", feather = "feather", bone = "bone", string = "string",
 	bread = "loaf", void_shard = "sphere", glow_ink_sac = "ball",
 	bucket = "bucket", water_bucket = "water_bucket", lava_bucket = "lava_bucket",
+	wheat_seeds = "seeds", beetroot_seeds = "seeds", bone_meal = "dust", wheat = "sheaf",
+	beetroot = "fruit", bowl = "bowl", beetroot_soup = "soup", poisonous_potato = "lump",
 }
 
 local function texel(tex: buffer, x: number, y: number, f: number?): { number }
@@ -320,6 +377,17 @@ end
 
 -- Block items whose block isn't a cube: a flat silhouette painted with the block's texture.
 local BLOCK_ICONS: { [string]: (img: buffer, tex: buffer, def: any) -> () } = {
+	-- plants: the texture as it is (its see-through background stays see-through)
+	plant = function(img, tex)
+		for y = 0, 15 do
+			for x = 0, 15 do
+				local o = (y * N + x) * 4
+				if buffer.readu8(tex, o + 3) > 0 then
+					put(img, x, y, texel(tex, x, y))
+				end
+			end
+		end
+	end,
 	slab = function(img, tex)
 		for y = 8, 15 do
 			for x = 0, 15 do

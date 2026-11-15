@@ -39,6 +39,7 @@ export type BlockDef = {
 	noItem: boolean,
 	icon: string?,
 	shearsOnly: boolean,
+	replaceable: boolean,
 }
 
 local BlockRegistry = {}
@@ -98,6 +99,7 @@ local isCube = table.create(4096, true) :: { boolean }
 local BOX_SHAPES = {
 	slab = true, stairs = true, fence = true, door = true, ladder = true,
 	trapdoor = true, fence_gate = true, wall = true, pane = true, vine = true, bed = true,
+	plant = true, crop = true, farmland = true,
 }
 local isBoxShape = table.create(4096, false) :: { boolean }
 
@@ -155,6 +157,7 @@ for _, d in BlockDefs do
 		noItem = d.noItem == true,
 		icon = d.icon,
 		shearsOnly = d.shearsOnly == true,
+		replaceable = d.replaceable == true, -- a placed block takes its place (short grass)
 	}
 	byId[d.id] = def
 	byKey[d.key] = def

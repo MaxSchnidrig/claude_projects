@@ -857,6 +857,175 @@ recipes.ladder = function(seed)
 	return img
 end
 
+-- Plants and farming (Phase 9a): our own pixel designs on a transparent background --------------
+
+-- A stalk from the bottom row up `h` pixels, drifting `lean` pixels sideways on the way up.
+local function stalk(img: Img, x0: number, h: number, lean: number, c: RGB, seed: number, k: number)
+	for i = 0, h - 1 do
+		local t = i / math.max(1, h - 1)
+		local x = math.floor(x0 + lean * t * t + 0.5)
+		put(img, x, 15 - i, shade(c, 0.78 + 0.35 * t + (rnd(seed, k, i, 41) - 0.5) * 0.12))
+	end
+end
+
+recipes.short_grass = function(seed)
+	local img = new()
+	for b = 1, 9 do
+		local x0 = 1 + math.floor((b - 1) * 1.6 + rnd(seed, b, 0, 40) * 1.5)
+		local h = 6 + math.floor(rnd(seed, b, 1, 40) * 8)
+		local lean = (rnd(seed, b, 2, 40) - 0.5) * 5
+		stalk(img, x0, h, lean, P.grass, seed, b)
+	end
+	return img
+end
+
+-- A flower: a stem with two leaves and a head drawn by `head(cx, cy)`.
+local function flower(seed: number, head: (Img, number, number) -> ()): Img
+	local img = new()
+	local green = { 66, 128, 44 }
+	for y = 7, 15 do
+		put(img, 7, y, shade(green, 0.85 + (rnd(seed, 7, y) * 0.2)))
+	end
+	for _, l in { { 5, 12 }, { 6, 11 }, { 9, 13 }, { 10, 12 } } do
+		put(img, l[1], l[2], shade(green, 1.1))
+	end
+	put(img, 6, 12, shade(green, 0.9))
+	put(img, 8, 13, shade(green, 0.9))
+	head(img, 7, 5)
+	return img
+end
+
+recipes.dandelion = function(seed)
+	return flower(seed, function(img, cx, cy)
+		local yellow = { 246, 214, 40 }
+		for dy = -2, 2 do
+			for dx = -2, 2 do
+				if math.abs(dx) + math.abs(dy) <= 3 then
+					put(img, cx + dx, cy + dy, shade(yellow, 0.85 + rnd(seed, dx, dy, 42) * 0.3))
+				end
+			end
+		end
+		put(img, cx, cy, { 255, 240, 140 })
+	end)
+end
+
+recipes.poppy = function(seed)
+	return flower(seed, function(img, cx, cy)
+		local red = { 214, 34, 30 }
+		for dy = -2, 1 do
+			for dx = -2, 2 do
+				if not (math.abs(dx) == 2 and (dy == -2 or dy == 1)) then
+					put(img, cx + dx, cy + dy, shade(red, 0.8 + rnd(seed, dx, dy, 43) * 0.35))
+				end
+			end
+		end
+		put(img, cx, cy - 1, { 40, 24, 20 })
+		put(img, cx, cy, { 60, 36, 24 })
+	end)
+end
+
+-- Farmland: dirt with furrows (dark rows) and ridges; wet farmland is darker.
+local function farmland(seed: number, wet: boolean): Img
+	local base = if wet then shade(P.dirt, 0.62) else shade(P.dirt, 0.92)
+	local img = noisy(seed, base, 0.18, 0.2)
+	for y = 0, N - 1 do
+		local row = y % 4
+		if row == 0 or row == 3 then
+			for x = 0, N - 1 do
+				put(img, x, y, shade(base, (if row == 0 then 0.72 else 0.84) + rnd(seed, x, y, 44) * 0.1))
+			end
+		elseif row == 1 then
+			for x = 0, N - 1 do
+				if rnd(seed, x, y, 45) > 0.6 then
+					put(img, x, y, shade(base, 1.18))
+				end
+			end
+		end
+	end
+	return img
+end
+recipes.farmland_dry = function(seed)
+	return farmland(seed, false)
+end
+recipes.farmland_wet = function(seed)
+	return farmland(seed, true)
+end
+
+-- Crops in rows of stalks; `stage` 0 (just planted) .. last (ripe).
+local function cropRows(seed: number, count: number, height: number, c: RGB, lean: number): Img
+	local img = new()
+	for b = 1, count do
+		local x0 = 1 + math.floor((b - 1) * (14 / count) + rnd(seed, b, 0, 46) * 1.5)
+		local h = math.max(1, math.floor(height * (0.75 + rnd(seed, b, 1, 46) * 0.25) + 0.5))
+		stalk(img, x0, h, (rnd(seed, b, 2, 46) - 0.5) * lean, c, seed, b)
+	end
+	return img
+end
+
+for stage = 0, 7 do
+	recipes[`wheat_stage_{stage}`] = function(seed)
+		local t = stage / 7
+		local green = { 70, 150, 44 }
+		local gold = { 214, 182, 76 }
+		local c = if stage == 7 then gold else mix(green, { 150, 170, 60 }, t * 0.6)
+		local img = cropRows(seed, 7, 2 + stage * 1.8, c, 2.5)
+		if stage >= 5 then
+			-- heads of grain on the tallest stalks
+			for b = 1, 7 do
+				local x = 1 + math.floor((b - 1) * 2 + rnd(seed, b, 0, 46) * 1.5)
+				for y = 16 - math.floor(2 + stage * 1.8), 18 - math.floor(2 + stage * 1.8) do
+					if y >= 0 and rnd(seed, b, y, 47) > 0.3 then
+						put(img, x, y, if stage == 7 then { 236, 206, 110 } else { 170, 176, 70 })
+					end
+				end
+			end
+		end
+		return img
+	end
+end
+
+-- Root crops: leafy tops, the root showing at the bottom when ripe.
+local function rootCrop(seed: number, stage: number, leaf: RGB, root: RGB?, stem: RGB?): Img
+	local heights = { 3, 6, 9, 11 }
+	local img = cropRows(seed, 5, heights[stage + 1], leaf, 4)
+	if stem then
+		for b = 1, 5 do
+			local x0 = 1 + math.floor((b - 1) * 2.8 + rnd(seed, b, 0, 46) * 1.5)
+			put(img, x0, 15, stem)
+			put(img, x0, 14, stem)
+		end
+	end
+	-- leaves: small clusters near the top of each stalk
+	for b = 1, 5 do
+		local x0 = 1 + math.floor((b - 1) * 2.8 + rnd(seed, b, 0, 46) * 1.5)
+		local top = 16 - heights[stage + 1]
+		put(img, x0 - 1, top + 1, shade(leaf, 1.1))
+		put(img, x0 + 1, top + 1, shade(leaf, 0.95))
+		put(img, x0, top, shade(leaf, 1.2))
+	end
+	if stage == 3 and root then
+		for b = 1, 5 do
+			local x0 = 1 + math.floor((b - 1) * 2.8 + rnd(seed, b, 0, 46) * 1.5)
+			put(img, x0, 15, root)
+			put(img, x0 + 1, 15, shade(root, 0.85))
+			put(img, x0, 14, shade(root, 1.1))
+		end
+	end
+	return img
+end
+
+for stage = 0, 3 do
+	recipes[`carrots_stage_{stage}`] = function(seed)
+		return rootCrop(seed, stage, { 74, 160, 48 }, { 238, 128, 26 }, nil)
+	end
+	recipes[`potatoes_stage_{stage}`] = function(seed)
+		return rootCrop(seed, stage, { 58, 138, 52 }, { 196, 160, 84 }, nil)
+	end
+	recipes[`beetroots_stage_{stage}`] = function(seed)
+		return rootCrop(seed, stage, { 64, 140, 50 }, { 150, 30, 50 }, { 150, 40, 60 })
+	end
+end
+
 -- Public -------------------------------------------------------------------------------------
 
 -- Fallback for texture keys without a recipe: noisy fill of the average colour.

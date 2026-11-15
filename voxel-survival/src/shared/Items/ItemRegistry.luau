@@ -18,6 +18,7 @@ export type ItemDef = {
 	hidden: boolean?, -- not in the Studio test menu
 	icon: string?, -- block items drawn as a shape icon (ItemIconGen) instead of the flat texture
 	iconTexture: string?, -- texture key that icon is painted with
+	places: number?, -- seeds / carrots / potatoes: the crop block they plant on farmland
 }
 
 local ItemRegistry = {}
@@ -63,7 +64,9 @@ for _, d in ItemDefs do
 		armor = d.armor,
 		hidden = d.hidden,
 		color = d.color or { 255, 0, 255 },
+		places = if d.places then (BlockRegistry.byKey[d.places] :: any).id else nil,
 	}
+	assert(d.places == nil or BlockRegistry.byKey[d.places], `ItemRegistry: {d.key} places unknown block '{d.places}'`)
 end
 
 -- Every block drop must be a real item (catches typos in BlockDefs at load time).

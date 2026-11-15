@@ -18,6 +18,12 @@
 --   500..530  vines         one id per set of faces (north 1, east 2, south 4, west 8, up 16)
 --   540..599  hanging signs oak, spruce, birch x 20: 16 ceiling rotations + 4 wall facings
 --   600..727  beds          16 colours x 8 (facing x foot / head)
+--   730..732  plants        short grass, dandelion, poppy (Phase 9a)
+--   733..740  farmland      moisture 0..7
+--   741..748  wheat         age 0..7
+--   749..756  carrots       age 0..7
+--   757..764  potatoes      age 0..7
+--   765..768  beetroots     age 0..3
 
 local ShapedDefs = {}
 
@@ -260,6 +266,49 @@ function ShapedDefs.list(): { Def }
 					icon = "bed", sound = "wool", flammable = nil,
 				})
 			end
+		end
+	end
+	-- plants (Phase 9a): no collision, broken at once. Short grass is replaced by a placed block
+	-- and drops seeds (Gameplay/Farming); shears give the grass itself.
+	table.insert(out, {
+		id = 730, key = "short_grass", name = "Short Grass", hardness = 0, drop = false, textures = { all = "short_grass" },
+		transparent = true, opacity = 0, solid = false, shape = "plant", state = {}, replaceable = true,
+		icon = "plant", sound = "grass", flammable = { 60, 100 },
+	})
+	for i, f in { { key = "dandelion", name = "Dandelion" }, { key = "poppy", name = "Poppy" } } do
+		table.insert(out, {
+			id = 730 + i, key = f.key, name = f.name, hardness = 0, textures = { all = f.key },
+			transparent = true, opacity = 0, solid = false, shape = "plant", state = { flower = true },
+			icon = "plant", sound = "grass", flammable = { 60, 100 },
+		})
+	end
+	-- farmland: 15/16 high, moisture 0..7 (Java: wet looks darker only at 7); drops dirt
+	for m = 0, 7 do
+		table.insert(out, {
+			id = 733 + m, key = if m == 0 then "farmland" else `farmland_moist_{m}`, name = "Farmland",
+			hardness = 0.6, tool = "shovel", drop = "dirt",
+			textures = { top = if m == 7 then "farmland_wet" else "farmland_dry", side = "dirt", bottom = "dirt" },
+			transparent = true, opacity = 0, shape = "farmland", state = { moisture = m }, family = "farmland",
+			noItem = true, sound = "gravel",
+		})
+	end
+	-- crops: one id per age; the texture follows Java's growth stages
+	local CROPS = {
+		{ family = "wheat", name = "Wheat Crops", base = 741, maxAge = 7, stages = { 0, 1, 2, 3, 4, 5, 6, 7 } },
+		{ family = "carrots", name = "Carrots", base = 749, maxAge = 7, stages = { 0, 0, 1, 1, 2, 2, 2, 3 } },
+		{ family = "potatoes", name = "Potatoes", base = 757, maxAge = 7, stages = { 0, 0, 1, 1, 2, 2, 2, 3 } },
+		{ family = "beetroots", name = "Beetroots", base = 765, maxAge = 3, stages = { 0, 1, 2, 3 } },
+	}
+	ShapedDefs.CROPS = CROPS
+	for _, c in CROPS do
+		for age = 0, c.maxAge do
+			table.insert(out, {
+				id = c.base + age, key = if age == 0 then c.family else `{c.family}_age_{age}`, name = c.name,
+				hardness = 0, drop = false, textures = { all = `{c.family}_stage_{c.stages[age + 1]}` },
+				transparent = true, opacity = 0, solid = false, shape = "crop",
+				state = { crop = c.family, age = age, maxAge = c.maxAge }, family = c.family,
+				noItem = true, sound = "grass", flammable = { 60, 100 },
+			})
 		end
 	end
 	return out

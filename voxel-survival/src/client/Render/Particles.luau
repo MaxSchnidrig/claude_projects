@@ -73,9 +73,9 @@ local function boundsOf(x: number, y: number, z: number, id: number): (Vector3, 
 		return Vector3.zero, Vector3.one
 	end
 	local gb = getBlock
-	return Shapes.bounds(Shapes.boxes(id, function(dx, dy, dz)
+	return Shapes.bounds(Shapes.outline(id, function(dx, dy, dz)
 		return if gb then gb(x + dx, y + dy, z + dz) else 0
-	end, false))
+	end))
 end
 
 function Particles.breakBlock(x: number, y: number, z: number, id: number)

@@ -37,10 +37,18 @@ local isCube = BlockRegistry.isCube
 local isOpaque = BlockRegistry.isOpaque
 local FIRE = BlockRegistry.id("fire")
 local DIR = Shapes.DIR
+local Farming = require(script.Parent.Parent.Gameplay.Farming)
 
--- Cells a placement may overwrite: air, liquids, fire.
+-- Cells a placement may overwrite: air, liquids, fire, and replaceable plants (short grass).
 function Placement.replaceable(id: number?): boolean
-	return id ~= nil and (id == 0 or isLiquid[id + 1] or id == FIRE)
+	if id == nil then
+		return false
+	end
+	if id == 0 or isLiquid[id + 1] or id == FIRE then
+		return true
+	end
+	local d = byId[id]
+	return d ~= nil and d.replaceable == true
 end
 local replaceable = Placement.replaceable
 
@@ -258,6 +266,23 @@ function Placement.resolve(itemBlock: number, ctx: Ctx, get: (number, number, nu
 		fracY = ctx.py - y
 	end
 	local shape = def.shape
+	-- Java: clicking a replaceable plant (short grass) places into its cell, not next to it
+	local clickedDef = byId[get(hx, hy, hz) or 0]
+	if clickedDef and clickedDef.replaceable and def.key ~= clickedDef.key then
+		x, y, z = hx, hy, hz
+	end
+
+	if shape == "plant" or shape == "crop" then
+		-- short grass and flowers on grass / dirt / farmland; crops (from seeds, carrots,
+		-- potatoes) on farmland only
+		if not replaceable(get(x, y, z)) or isLiquid[(get(x, y, z) or 0) + 1] then
+			return nil, "cell occupied"
+		end
+		if not Farming.survives(itemBlock, get(x, y - 1, z)) then
+			return nil, "can't grow here"
+		end
+		return { { x = x, y = y, z = z, id = itemBlock } }
+	end
 
 	if shape == "slab" then
 		-- merge into the clicked slab
@@ -455,6 +480,10 @@ function Placement.supported(id: number, x: number, y: number, z: number, get: (
 		local od = other and byId[other]
 		local ok = other == nil or (od ~= nil and od.family == d.family and od.state.part ~= d.state.part)
 		return ok, d.state.part == "head"
+	elseif shape == "plant" or shape == "crop" then
+		-- (their drops come from Gameplay/Farming, the caller handles them)
+		local below = get(x, y - 1, z)
+		return below == nil or Farming.survives(id, below), false
 	elseif shape == "hanging_sign" then
 		local above = get(x, y + 1, z)
 		return above == nil or isSolid[above + 1], true

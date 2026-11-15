@@ -185,6 +185,8 @@ Config.SHIFT_CLICK_INTO_CRAFT_GRID = true -- Java: shift-click from the inventor
 
 -- World simulation (phase 8) ----------------------------------------------------------------
 Config.MAX_BLOCK_TICKS_PER_TICK = 3000 -- scheduled block ticks per game tick (fluids, fire...)
+Config.RANDOM_TICK_SPEED = 3 -- Java's randomTickSpeed: blocks picked per 16^3 section per game tick
+Config.RANDOM_TICK_RADIUS = 6 -- chunks around each player that get random ticks (crops grow, grass spreads)
 
 -- Saving (phase 6) ----------------------------------------------------------------------------
 Config.DATASTORE_NAME = "RocraftWorlds_v1" -- Studio uses DATASTORE_NAME .. "_Studio" (never live data)

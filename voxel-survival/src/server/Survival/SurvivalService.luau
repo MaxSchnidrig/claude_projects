@@ -431,6 +431,17 @@ local function onAction(p: Player, a: any)
 		local st = stack :: InventoryService.Stack
 		st.count -= 1
 		InventoryService.setSlot(p, slot, if st.count > 0 then st else nil)
+		if food.remainder then
+			-- stews leave their bowl (in the same slot when it's empty, else in the inventory)
+			if st.count <= 0 then
+				InventoryService.setSlot(p, slot, { item = food.remainder, count = 1 })
+			elseif InventoryService.add(p, food.remainder, 1) > 0 then
+				local root = p.Character and p.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
+				if root then
+					require(script.Parent.Parent.World.ItemEntityService).spawn({ item = food.remainder, count = 1 }, root.Position)
+				end
+			end
+		end
 		do
 			SurvivalRules.eat(s.hunger, food.hunger, food.saturation)
 			sync(p)

@@ -45,6 +45,10 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		function T.survival.reportFall(blocks: number)
 			table.insert(T.survival.falls, blocks)
 		end
+		T.survival.tramples = {}
+		function T.survival.trample(x: number, y: number, z: number, blocks: number)
+			table.insert(T.survival.tramples, { x, y, z, blocks })
+		end
 		T.inventory = { uiOpen = false }
 		Loader.stubs["src/client/Survival/SurvivalClient.luau"] = T.survival
 		Loader.stubs["src/client/Player/InventoryClient.luau"] = T.inventory

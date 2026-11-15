@@ -20,7 +20,8 @@ export type ToolDef = {
 }
 
 -- Food values (classic): hunger points restored and saturation gained.
-export type FoodDef = { hunger: number, saturation: number }
+-- `remainder`: what is left in your hand after eating (stews leave a bowl)
+export type FoodDef = { hunger: number, saturation: number, remainder: string? }
 
 -- Armour (Java values): slot "head" | "chest" | "legs" | "feet", armour points, toughness.
 export type ArmorDef = { slot: string, defense: number, toughness: number, material: string }
@@ -34,6 +35,7 @@ export type ItemDefInput = {
 	armor: ArmorDef?,
 	hidden: boolean?, -- not listed in the Studio test menu (internal states like a loaded crossbow)
 	color: { number }?, -- placeholder icon colour (RGB)
+	places: string?, -- block key planted on farmland with a right-click (seeds, carrots, potatoes)
 }
 
 local defs: { ItemDefInput } = {
@@ -73,8 +75,18 @@ local defs: { ItemDefInput } = {
 	{ key = "void_shard", name = "Void Shard", stack = 16, color = { 120, 90, 230 } },
 	{ key = "rotten_flesh", name = "Rotten Flesh", color = { 140, 90, 70 }, food = { hunger = 4, saturation = 0.8 } },
 	{ key = "spider_eye", name = "Spider Eye", color = { 150, 40, 60 }, food = { hunger = 2, saturation = 3.2 } },
-	{ key = "carrot", name = "Carrot", color = { 240, 140, 30 }, food = { hunger = 3, saturation = 3.6 } },
-	{ key = "potato", name = "Potato", color = { 200, 170, 90 }, food = { hunger = 1, saturation = 0.6 } },
+	{ key = "carrot", name = "Carrot", color = { 240, 140, 30 }, food = { hunger = 3, saturation = 3.6 }, places = "carrots" },
+	{ key = "potato", name = "Potato", color = { 200, 170, 90 }, food = { hunger = 1, saturation = 0.6 }, places = "potatoes" },
+	-- Farming (Phase 9a). `places`: right-clicking farmland plants this crop
+	{ key = "wheat_seeds", name = "Wheat Seeds", color = { 120, 170, 60 }, places = "wheat" },
+	{ key = "wheat", name = "Wheat", color = { 214, 186, 90 } },
+	{ key = "beetroot_seeds", name = "Beetroot Seeds", color = { 170, 120, 80 }, places = "beetroots" },
+	{ key = "beetroot", name = "Beetroot", color = { 170, 36, 56 }, food = { hunger = 1, saturation = 1.2 } },
+	{ key = "beetroot_soup", name = "Beetroot Soup", stack = 1, color = { 180, 40, 50 }, food = { hunger = 6, saturation = 7.2, remainder = "bowl" } },
+	{ key = "bowl", name = "Bowl", color = { 140, 100, 60 } },
+	{ key = "bone_meal", name = "Bone Meal", color = { 236, 236, 228 } },
+	-- (Java: 60 % chance of Poison; status effects come later in phase 9)
+	{ key = "poisonous_potato", name = "Poisonous Potato", color = { 170, 190, 80 }, food = { hunger = 2, saturation = 1.2 } },
 	{ key = "baked_potato", name = "Baked Potato", color = { 214, 160, 70 }, food = { hunger = 5, saturation = 6 } },
 	{ key = "apple", name = "Apple", color = { 210, 40, 40 }, food = { hunger = 4, saturation = 2.4 } },
 	{ key = "bread", name = "Bread", color = { 196, 150, 80 }, food = { hunger = 5, saturation = 6 } },

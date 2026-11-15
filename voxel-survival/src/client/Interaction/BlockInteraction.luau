@@ -49,6 +49,8 @@ local isLiquid = BlockRegistry.isLiquid
 local Fluids = require(Shared.World.Fluids)
 local CAMPFIRE = BlockRegistry.id("campfire")
 local CAMPFIRE_UNLIT = BlockRegistry.id("campfire_unlit")
+local Farming = require(Shared.Gameplay.Farming)
+local GRASS_BLOCK = BlockRegistry.id("grass_block")
 
 
 
@@ -255,6 +257,19 @@ local function tryUse(): boolean
 		BlockInteraction.swing:Fire()
 		return true
 	end
+	-- farming (Phase 9a): a hoe tills grass / dirt (not from below, with air above); bone meal
+	-- grows a crop that isn't ripe or sprouts plants around a grass block
+	local above = blockAt(hit.x, hit.y + 1, hit.z)
+	local tool = def and def.tool
+	local crop = Farming.crop(hit.id)
+	local useIt = (tool ~= nil and tool.kind == "hoe" and hit.ny ~= -1 and Farming.tillable(hit.id) and above == AIR)
+		or (held == "bone_meal" and ((crop ~= nil and crop.age < crop.maxAge) or (hit.id == GRASS_BLOCK and above == AIR)))
+	if useIt then
+		Remotes.get("UseItem"):FireServer({ x = hit.x, y = hit.y, z = hit.z, nx = hit.nx, ny = hit.ny, nz = hit.nz })
+		BlockInteraction.used:Fire(held or "", hit.id)
+		BlockInteraction.swing:Fire()
+		return true
+	end
 	return false
 end
 
@@ -367,13 +382,27 @@ end
 -- The food to eat: the main hand's, else the off hand's (Java: the main hand is tried first,
 -- and only a main hand that does something with the click - a block being placed at a target -
 -- keeps the off hand's food from being eaten; a sword or tool does not). Slot or nil.
+-- Can this item be planted where the crosshair is? (Seeds, and carrots / potatoes on farmland:
+-- Java plants them instead of eating them.)
+local function plantsHere(def: ItemRegistry.ItemDef?): boolean
+	local hit = BlockInteraction.target
+	if not def or not def.places or not hit then
+		return false
+	end
+	local look = CameraController.facing()
+	return Placement.resolve(def.places, {
+		hx = hit.x, hy = hit.y, hz = hit.z, nx = hit.nx, ny = hit.ny, nz = hit.nz,
+		px = hit.px, py = hit.py, pz = hit.pz, lx = look.X, lz = look.Z,
+	}, ClientWorld.getBlock) ~= nil
+end
+
 local function foodSlot(aimingAtBlock: boolean): number?
 	local main = ItemRegistry.get(InventoryClient.heldItem())
-	if main and main.food then
+	if main and main.food and not (aimingAtBlock and plantsHere(main)) then
 		return InventoryClient.selected
 	end
-	if main and main.block and aimingAtBlock then
-		return nil -- the main hand places its block instead
+	if main and (main.block or (main.places and plantsHere(main))) and aimingAtBlock then
+		return nil -- the main hand places its block (or plants) instead
 	end
 	local off = InventoryClient.offhand()
 	local od = off and ItemRegistry.get(off.item)
@@ -593,7 +622,7 @@ local function update(dt: number)
 		-- outline the block's shape (a slab's half, a door's panel...)
 		local lo, hi = Vector3.zero, Vector3.one
 		if BlockRegistry.isBoxShape[hit.id + 1] then
-			lo, hi = Shapes.bounds(Shapes.at(blockAt, hit.x, hit.y, hit.z, false))
+			lo, hi = Shapes.bounds(Shapes.outlineAt(blockAt, hit.x, hit.y, hit.z))
 		end
 		highlightPart.Size = (hi - lo) * BS + Vector3.one * 0.02
 		highlightPart.CFrame = CFrame.new((Vector3.new(hit.x, hit.y, hit.z) + (lo + hi) / 2) * BS)
@@ -633,7 +662,7 @@ local function update(dt: number)
 				-- cracks cover only the block's shape (a slab's half, a fence post...)
 				local lo, hi = Vector3.zero, Vector3.one
 				if BlockRegistry.isBoxShape[hit.id + 1] then
-					lo, hi = Shapes.bounds(Shapes.at(blockAt, cur.x, cur.y, cur.z, false))
+					lo, hi = Shapes.bounds(Shapes.outlineAt(blockAt, cur.x, cur.y, cur.z))
 				end
 				crackPart.Size = (hi - lo) * BS + Vector3.one * 0.04
 				crackPart.CFrame = CFrame.new((Vector3.new(cur.x, cur.y, cur.z) + (lo + hi) / 2) * BS)
@@ -653,20 +682,25 @@ local function update(dt: number)
 	if placeHeld and hit and now >= nextPlaceAt and (hit.nx ~= 0 or hit.ny ~= 0 or hit.nz ~= 0) then
 		local item = ItemRegistry.get(InventoryClient.heldItem())
 		local fromOffhand = false
-		if not (item and item.block) and not (item and item.food) then
+		local function placeId(def: ItemRegistry.ItemDef?): number?
+			-- a block item places its block; seeds / carrots / potatoes plant their crop
+			return def and (def.block or (if plantsHere(def) then def.places else nil))
+		end
+		if not placeId(item) and not (item and item.food) then
 			-- Java: a main hand that can't place lets the off hand place its block (torches)
 			local off = InventoryClient.offhand()
 			local od = off and ItemRegistry.get(off.item)
-			if od and od.block then
+			if od and placeId(od) then
 				item, fromOffhand = od, true
 			end
 		end
-		if item and item.block then
+		local blockId = placeId(item)
+		if item and blockId then
 			local x, y, z = hit.x + hit.nx, hit.y + hit.ny, hit.z + hit.nz
 			-- block orientation follows where the player faces (not a touch's aim)
 			local look = CameraController.facing()
 			local lx, lz = look.X, look.Z
-			local changes = Placement.resolve(item.block, {
+			local changes = Placement.resolve(blockId, {
 				hx = hit.x, hy = hit.y, hz = hit.z, nx = hit.nx, ny = hit.ny, nz = hit.nz,
 				px = hit.px, py = hit.py, pz = hit.pz, lx = lx, lz = lz,
 			}, ClientWorld.getBlock)

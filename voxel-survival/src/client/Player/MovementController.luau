@@ -47,6 +47,7 @@ local PlayerMotor = require(Shared.Gameplay.PlayerMotor)
 local Combat = require(Shared.Gameplay.Combat)
 local Remotes = require(Shared.Net.Remotes)
 local Settings = require(script.Parent.Settings)
+local Farming = require(Shared.Gameplay.Farming)
 
 local BS = Config.BLOCK_SIZE
 local TICK = PlayerMotor.TICK
@@ -264,6 +265,13 @@ local function tick(b: Body, forward: number, strafe: number, jumpHeld: boolean,
 	-- the two ticks, like Java; an extra glide on top made the camera dip on every slab / stair)
 	if r.fall and r.fall > 3 then
 		SurvivalClient.reportFall(r.fall) -- the server checks it (and halves it on a bed)
+	end
+	if r.fall and r.fall > 0.5 and st.onGround then
+		-- landed on farmland: the server may trample it (Java: chance fall distance - 0.5)
+		local bx, by, bz = math.floor(st.x), math.floor(st.y - 0.1), math.floor(st.z)
+		if Farming.isFarmland(ClientWorld.getBlock(bx, by, bz)) then
+			SurvivalClient.trample(bx, by, bz, r.fall)
+		end
 	end
 	if MovementController.sprinting then
 		-- Java: a real collision ends the sprint (a glancing one doesn't), and so does wading

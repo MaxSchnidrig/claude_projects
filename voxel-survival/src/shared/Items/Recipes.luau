@@ -33,6 +33,9 @@ local shaped: { Shaped } = {
 	{ pattern = { "C", "S" }, key = { C = "#coals", S = "stick" }, result = { item = "torch", count = 4 } },
 	{ pattern = { "I I", " I " }, key = { I = "iron_ingot" }, result = { item = "bucket", count = 1 } },
 	{ pattern = { " S ", "SCS", "LLL" }, key = { S = "stick", C = "#coals", L = "#logs" }, result = { item = "campfire", count = 1 } },
+	-- Farming (Phase 9a)
+	{ pattern = { "WWW" }, key = { W = "wheat" }, result = { item = "bread", count = 1 } },
+	{ pattern = { "P P", " P " }, key = { P = "#planks" }, result = { item = "bowl", count = 4 } },
 }
 
 -- Building blocks (Phase 8b)
@@ -120,6 +123,8 @@ local shapeless: { Shapeless } = {
 	{ ingredients = { "oak_log" }, result = { item = "oak_planks", count = 4 } },
 	{ ingredients = { "birch_log" }, result = { item = "birch_planks", count = 4 } },
 	{ ingredients = { "spruce_log" }, result = { item = "spruce_planks", count = 4 } },
+	{ ingredients = { "bone" }, result = { item = "bone_meal", count = 3 } },
+	{ ingredients = { "beetroot", "beetroot", "beetroot", "beetroot", "beetroot", "beetroot", "bowl" }, result = { item = "beetroot_soup", count = 1 } },
 }
 
 -- Fuel that leaves an item behind in the fuel slot.
