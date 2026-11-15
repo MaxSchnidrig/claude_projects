@@ -120,6 +120,19 @@ are fine.
   "Lock Difficulty", regional difficulty (mob gear chances, phase 10+), Hard-only behaviours of
   mobs we don't have yet (zombies breaking doors, spider effects), gamepad menu navigation.
 
+- 0.8.16: touch acts at the crosshair; the pause button only on touch screens; new worlds
+  start empty (no Studio kit; G / C in Studio).
+- 9a (0.9.0, farming): short grass, dandelion, poppy (generated in plains / forests / taiga /
+  mountains, on new and old terrain); hoe tilling; farmland (moisture 0-7, wet near water, dries,
+  trampled by landing, squashed by blocks); wheat, carrots, potatoes, beetroots with Java's
+  random-tick growth formula and drops; bone meal; seeds from short grass; bread, bowl, beetroot
+  soup, bone meal recipes; grass spreads to dirt and dies under blocks; water washes plants
+  away. Server light for growth is estimated (open sky / leaves / torches).
+  Left for 9b+: pumpkins, melons, sugar cane, cactus, bamboo, berries, cocoa, saplings, mushrooms,
+  more flowers, tall grass, ferns; mobs trampling farmland; bone-meal particles; poison from the
+  poisonous potato (status effects); rain wetting farmland (weather). The texture atlas is at
+  116 / 121: the next textures need a bigger atlas (planned for 9b).
+
 ## Phase 8 – Survival foundations (XL)
 
 **Liquids and gravity blocks**

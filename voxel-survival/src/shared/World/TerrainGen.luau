@@ -21,6 +21,7 @@ local Biomes = require(script.Parent.Biomes)
 local BlockRegistry = require(Shared.Blocks.BlockRegistry)
 local Ores = require(script.Parent.Features.Ores)
 local Trees = require(script.Parent.Features.Trees)
+local Plants = require(script.Parent.Features.Plants)
 
 local CS = Config.CHUNK_SIZE
 local H = Config.WORLD_HEIGHT
@@ -407,6 +408,15 @@ function TerrainGen.generate(gen: Generator, chunk: ChunkData.Chunk, checkpoint:
 
 	-- 5. Trees -------------------------------------------------------------------------------
 	Trees.generate(gen, chunk)
+
+	-- 6. Short grass and flowers (Phase 9a; their own hash: nothing above changes) -------------
+	local heights = table.create(LAYER, 0)
+	for lz = 0, CS - 1 do
+		for lx = 0, CS - 1 do
+			heights[lx + lz * CS + 1] = hmap[(lx + 1) + (lz + 1) * BW + 1]
+		end
+	end
+	Plants.generate(seed, chunk, heights, bmap)
 
 	chunk.generated = true
 end

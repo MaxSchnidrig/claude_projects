@@ -280,6 +280,23 @@ local function onTrample(p: Player, x: number, y: number, z: number, fall: numbe
 	end
 end
 
+-- For tests: run one random tick / support check on a block.
+function FarmingService.randomTick(x: number, y: number, z: number)
+	local id = get(x, y, z)
+	if not id then
+		return
+	end
+	if Farming.isFarmland(id) then
+		farmlandTick(x, y, z, id)
+	elseif Farming.crop(id) then
+		cropTick(x, y, z, id)
+	elseif id == GRASS then
+		grassTick(x, y, z, id)
+	end
+end
+FarmingService.supportCheck = supportCheck
+FarmingService.trample = onTrample
+
 function FarmingService.init()
 	local farmland, crops = {}, {}
 	for id, d in byId do
