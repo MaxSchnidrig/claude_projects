@@ -457,9 +457,9 @@ local function onPlayer(p: Player)
 			local cx, cz = math.floor(state.pos.X) // CS, math.floor(state.pos.Z) // CS
 			ensure(ChunkData.key(cx, cz))
 		end
-	elseif RunService:IsStudio() then
-		InventoryService.giveStarterKit(p)
 	end
+	-- (a new world starts with an empty inventory, like Java; in Studio G gives a test kit and
+	-- C opens every item)
 	loadedPlayers[p] = true
 	p:SetAttribute("DataLoaded", true)
 end

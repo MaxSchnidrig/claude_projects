@@ -163,8 +163,10 @@ function PauseMenu.init()
 		end)
 	end
 
-	-- the pause button at the top (always there; on phones it's the only way in)
+	-- the pause button at the top: touch screens only (with a locked mouse it can't be clicked;
+	-- there P opens the menu)
 	local button = MenuKit.make("TextButton", {
+		Visible = UserInputService.TouchEnabled,
 		Name = "PauseButton",
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0, 6),

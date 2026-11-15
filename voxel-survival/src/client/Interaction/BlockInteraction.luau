@@ -691,7 +691,8 @@ local function update(dt: number)
 	end
 end
 
--- Touch (UI/TouchControls): the world is used where the finger is. The press does what the
+-- Touch (UI/TouchControls): a tap or hold anywhere acts at the crosshair (mobile Minecraft's
+-- crosshair layout). The press does what the
 -- right mouse button does (open, interact, equip, draw a bow, use, eat, place); a tap presses
 -- and lets go, a hold keeps it pressed while it uses something (eating, a bow, a shield) and
 -- otherwise breaks the block / hits the mob under the finger.
@@ -734,13 +735,11 @@ function BlockInteraction.aimAt(p: Vector2)
 	end
 end
 
-function BlockInteraction.touchTap(p: Vector2)
-	BlockInteraction.aimAt(p)
+function BlockInteraction.touchTap(_p: Vector2)
 	touchState = "tap"
 end
 
-function BlockInteraction.touchHold(p: Vector2)
-	BlockInteraction.aimAt(p)
+function BlockInteraction.touchHold(_p: Vector2)
 	touchState = "hold"
 end
 
@@ -762,11 +761,6 @@ touchStep = function()
 			pressUse()
 			task.delay(0.1, releaseUse) -- one press
 		end
-		task.delay(0.15, function()
-			if touchState == nil then
-				CameraController.aimOverride = nil
-			end
-		end)
 	elseif t == "hold" then
 		local item = ItemRegistry.get(InventoryClient.heldItem())
 		local usable = item ~= nil and (item.food ~= nil or item.key == "bow" or item.key == "crossbow"

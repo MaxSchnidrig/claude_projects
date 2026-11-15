@@ -5,8 +5,9 @@
 --              sneak button in the middle, or a joystick (Options > Movement Controls).
 --              Double-tap forward (or the joystick) to sprint.
 --   jump       the big button bottom right; hold it to keep jumping / swim up
---   the world  drag to look around; tap to place, open, use or attack where you tapped; hold
---              to break the block you're pressing (food, bows and shields: hold to use)
+--   the world  drag to look around; tap anywhere to place, open, use or attack at the
+--              crosshair; hold to break what the crosshair is on (food, bows, shields: hold to
+--              use); moving the finger while holding turns the view
 --   hotbar     tap a slot to select it, hold it to drop the item
 --   pause      the button at the top; inventory: the bag next to the hotbar
 -- Movement goes to MovementController.touch; the world taps to BlockInteraction.
@@ -250,9 +251,8 @@ function TouchControls.init()
 			if not w.dragging and (p - w.start).Magnitude > DRAG and not w.holding then
 				w.dragging = true
 			end
-			if w.holding then
-				BlockInteraction.aimAt(p) -- breaking: the aim follows the finger
-			elseif w.dragging then
+			-- the crosshair does the aiming: moving the finger (also while breaking) looks around
+			if w.dragging or w.holding then
 				CameraController.turn(d.X, d.Y)
 			end
 		end

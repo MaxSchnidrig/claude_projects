@@ -281,7 +281,8 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		eq(t.stubs.inventory.uiOpen, false)
 		eq(t.stubs.camera.mouseUnlocked, false)
 		-- the button at the top opens it too; Save and Quit sends quit
-		click(gui, "II")
+		eq(find(gui, "II"), nil, "no pause button on a computer (the mouse is locked; P opens it)")
+		PauseMenu.setOpen(true)
 		eq(PauseMenu.open, true)
 		click(gui, "Save and Quit to Title")
 		eq(lastSent(t, "Menu").type, "quit")
@@ -378,9 +379,11 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 			t.G.frame(1 / 60)
 		end
 		eq(t.stubs.block.log[#t.stubs.block.log], "touchHold")
+		local turnedBefore = t.stubs.camera.turned[1]
 		w.Position = Vector3.new(660, 310, 0)
 		uis.TouchMoved:Fire(w, false)
-		eq(t.stubs.block.log[#t.stubs.block.log], "aimAt") -- the aim follows the finger
+		eq(t.stubs.block.log[#t.stubs.block.log], "touchHold") -- still breaking at the crosshair
+		assert(t.stubs.camera.turned[1] > turnedBefore, "moving the finger while breaking turns the view")
 		uis.TouchEnded:Fire(w, false)
 		eq(t.stubs.block.log[#t.stubs.block.log], "touchRelease")
 		-- a drag turns the camera and doesn't tap
