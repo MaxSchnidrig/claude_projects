@@ -27,7 +27,8 @@ local function when(t: number): string
 	if t <= 0 then
 		return ""
 	end
-	return os.date("%d %b %Y, %H:%M", t) :: string
+	local ok, text = pcall(os.date, "%d %b %Y, %H:%M", t)
+	return if ok and typeof(text) == "string" then text else ""
 end
 
 function LobbyUI.init()
@@ -236,21 +237,18 @@ function LobbyUI.init()
 	for _, n in Difficulty.ORDER do
 		table.insert(diffOptions, { n, Difficulty.LABEL[n] })
 	end
-	local diffBtn
-	diffBtn, refreshDifficulty = MenuKit.cycle(createList, "Difficulty", diffOptions, function()
+	local diffBtn, baseRefresh = MenuKit.cycle(createList, "Difficulty", diffOptions, function()
 		return if hardcore then "hard" else difficulty
 	end, function(v)
 		if not hardcore then
 			difficulty = v
 		end
+	end, function(): string?
+		return if hardcore then "Difficulty: Hard (Hardcore)" else nil
 	end)
-	local baseRefresh = refreshDifficulty
 	refreshDifficulty = function()
 		baseRefresh()
 		diffBtn.BackgroundTransparency = if hardcore then 0.6 else 0
-		if hardcore then
-			diffBtn.Text = "Difficulty: Hard (Hardcore)"
-		end
 	end
 	MenuKit.label(createList, "Seed for the world generator", true)
 	local seedBox = MenuKit.textbox(createList, "Leave blank for a random seed", 32)

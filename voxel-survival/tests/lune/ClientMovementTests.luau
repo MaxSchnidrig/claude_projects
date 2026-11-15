@@ -571,6 +571,45 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		cleanup()
 	end)
 
+	test("client: our touch controls walk, sprint (double tap) and jump like the keys", function()
+		local T = boot()
+		spawn(T, 0.5, FLOOR, 0.5)
+		frames(T, 30)
+		T.G.game:GetService("UserInputService").TouchEnabled = true
+		local touch = { forward = 0, strafe = 0, jump = false }
+		T.MC.touch = touch
+		T.MC.lookYaw = 0 -- look -z
+		touch.forward = 1
+		local z0 = feet(T).Z
+		frames(T, 120)
+		local walked = z0 - feet(T).Z
+		near(walked / 2, 4.317, 0.25, "walks at walking speed (blocks per second)")
+		-- double tap forward (TouchControls calls touchSprint) -> sprinting
+		T.MC.touchSprint()
+		frames(T, 10)
+		eq(T.MC.sprinting, true)
+		-- letting go of forward ends it, like releasing W
+		touch.forward = 0
+		frames(T, 10)
+		eq(T.MC.sprinting, false)
+		-- the jump button
+		touch.jump = true
+		local top = 0
+		for _ = 1, 20 do
+			frames(T, 1)
+			top = math.max(top, T.seen[2] - FLOOR)
+		end
+		touch.jump = false
+		assert(top > 1.2, `jumped ({top})`)
+		-- Roblox's own touch controls are ignored while ours are on
+		T.humanoid:Move(Fake.Vector3.new(1, 0, 0))
+		local x0 = feet(T).X
+		frames(T, 30)
+		near(feet(T).X, x0, 1e-6, "the Roblox thumbstick doesn't move us")
+		T.MC.touch = nil
+		cleanup()
+	end)
+
 	test("client: walking up slabs and stairs moves the camera smoothly up, never down (any frame rate)", function()
 		local SLAB = BlockRegistry.id("stone_slab")
 		local STAIRS = BlockRegistry.id("oak_stairs_east_bottom") -- steps up toward +x
@@ -695,7 +734,7 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 	end)
 
 	-- leave the loader as the other tests expect it
-	for _, k in { "game", "workspace", "Instance", "Enum", "CFrame", "Vector2", "Color3", "UDim2", "UDim", "task", "os", "time", "tick", "warn" } do
+	for _, k in { "game", "workspace", "Instance", "Enum", "CFrame", "Vector2", "Color3", "UDim2", "UDim", "task", "os", "time", "tick", "warn", "Random" } do
 		Loader.globals[k] = nil
 	end
 	Loader.forget("src/client/")

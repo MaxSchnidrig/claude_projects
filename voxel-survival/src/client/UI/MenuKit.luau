@@ -173,10 +173,17 @@ function MenuKit.label(parent: Instance, text: string, muted: boolean?, height: 
 end
 
 -- A button that steps through `options` ({ value, text } pairs): "Difficulty: Normal".
-function MenuKit.cycle(parent: Instance, label: string, options: { { any } }, get: () -> any, set: (any) -> ()): (TextButton, () -> ())
+-- `override(value)`: return a whole label to show instead (e.g. a locked setting), or nil.
+function MenuKit.cycle(parent: Instance, label: string, options: { { any } }, get: () -> any, set: (any) -> (),
+	override: ((any) -> string?)?): (TextButton, () -> ())
 	local b = MenuKit.button(parent, "")
 	local function refresh()
 		local v = get()
+		local forced = override and override(v)
+		if forced then
+			b.Text = forced
+			return
+		end
 		local text = tostring(v)
 		for _, o in options do
 			if o[1] == v then

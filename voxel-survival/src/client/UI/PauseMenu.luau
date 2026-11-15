@@ -107,6 +107,8 @@ function PauseMenu.init()
 			return
 		end
 		Remotes.get("WorldSettings"):FireServer({ type = "difficulty", value = v })
+	end, function(): string?
+		return if ReplicatedStorage:GetAttribute("Hardcore") == true then "Difficulty: Hard (Hardcore)" else nil
 	end)
 	local friendsBtn, refreshFriends = MenuKit.toggle(wlist, "Friends can join", function()
 		return ReplicatedStorage:GetAttribute("FriendsCanJoin") ~= false
@@ -124,9 +126,6 @@ function PauseMenu.init()
 		local hc = ReplicatedStorage:GetAttribute("Hardcore") == true
 		refreshDiff()
 		refreshFriends()
-		if hc then
-			diffBtn.Text = "Difficulty: Hard (Hardcore)"
-		end
 		local owner = isOwner()
 		diffBtn.BackgroundTransparency = if hc or not owner then 0.6 else 0
 		friendsBtn.BackgroundTransparency = if owner then 0 else 0.6

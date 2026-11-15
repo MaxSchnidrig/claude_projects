@@ -63,7 +63,7 @@ Fake.Signal = Signal
 
 -- Classes --------------------------------------------------------------------------------------
 
-type Class = { parent: string?, props: { [string]: any }?, getters: any?, setters: any?, methods: any?, signals: { string }? }
+type Class = { parent: string?, props: { [string]: any }?, getters: any?, setters: any?, methods: any?, signals: { string }?, defaults: any?, init: any? }
 local CLASSES: { [string]: Class } = {}
 
 local InstanceMeta = {}
@@ -353,13 +353,95 @@ InstanceMeta.__tostring = function(self)
 	return rawget(self, "__props").Name
 end
 
+-- Classes not written out below come from Roblox's real class database (Lune ships it): their
+-- real properties with real defaults, read-only ones read-only, so a misspelled or made-up
+-- property errors like in Roblox. Events are listed here by hand (the database has none).
+local reflection = roblox.getReflectionDatabase()
+local REFLECTED_SIGNALS: { [string]: { string } } = {
+	GuiObject = { "InputBegan", "InputChanged", "InputEnded", "MouseEnter", "MouseLeave", "MouseMoved",
+		"SelectionGained", "SelectionLost", "TouchTap", "TouchLongPress", "TouchPan", "TouchPinch", "TouchSwipe" },
+	GuiButton = { "Activated", "MouseButton1Click", "MouseButton1Down", "MouseButton1Up", "MouseButton2Click",
+		"MouseButton2Down", "MouseButton2Up" },
+	TextBox = { "FocusLost", "Focused", "ReturnPressedFromOnScreenKeyboard" },
+	Sound = { "Ended", "Played", "Loaded", "Paused", "Resumed", "Stopped" },
+}
+local REFLECTED_METHODS: { [string]: { [string]: any } } = {
+	TextBox = {
+		CaptureFocus = function() end,
+		ReleaseFocus = function() end,
+		IsFocused = function()
+			return false
+		end,
+	},
+	Sound = { Play = function() end, Stop = function() end, Pause = function() end, Resume = function() end },
+}
+local REFLECTED_GETTERS: { [string]: { [string]: any } } = {
+	GuiBase2d = {
+		AbsolutePosition = function(self)
+			return rawget(self, "__absPos") or roblox.Vector2.new(0, 0)
+		end,
+		AbsoluteSize = function(self)
+			return rawget(self, "__absSize") or roblox.Vector2.new(0, 0)
+		end,
+	},
+}
+local function reflectClass(name: string): boolean
+	if CLASSES[name] then
+		return true
+	end
+	local ok, def = pcall(function()
+		return reflection:GetClass(name)
+	end)
+	if not ok or not def then
+		return false
+	end
+	local parent = def.Superclass
+	if parent and parent ~= "" and not reflectClass(parent) then
+		return false
+	end
+	local props, getters = {}, {}
+	for pname, p in def.Properties do
+		local d = def.DefaultProperties[pname]
+		if p.Scriptability == "ReadWrite" then
+			props[pname] = if d == nil then NIL else d
+		elseif p.Scriptability == "Read" then
+			getters[pname] = function()
+				return d
+			end
+		end
+	end
+	for k, g in REFLECTED_GETTERS[name] or {} do
+		getters[k] = g
+	end
+	CLASSES[name] = {
+		parent = if parent ~= "" then parent else nil,
+		props = props,
+		getters = getters,
+		signals = REFLECTED_SIGNALS[name],
+		methods = REFLECTED_METHODS[name],
+		-- a concrete class's defaults include the inherited properties (Visible, Size, ...)
+		defaults = def.DefaultProperties,
+	}
+	return true
+end
+Fake.reflectClass = reflectClass
+
 local function new(className: string, parent: any?)
-	if not CLASSES[className] then
+	if not CLASSES[className] and not reflectClass(className) then
 		error(`FakeRoblox: class {className} is not modelled yet (add it to tests/lune/FakeRoblox.luau)`, 2)
 	end
 	local self = setmetatable({
 		__class = className, __props = { Name = className }, __children = {}, __signals = {}, __attrs = {},
 	}, InstanceMeta)
+	local defaults = (CLASSES[className] :: any).defaults
+	if defaults then
+		local props = rawget(self, "__props")
+		for k, v in defaults do
+			if k ~= "Name" and k ~= "Parent" then
+				props[k] = v
+			end
+		end
+	end
 	local init = CLASSES[className].init
 	if init then
 		init(self)
@@ -419,6 +501,23 @@ CLASSES.RemoteEvent = {
 	methods = {
 		FireServer = function(self, ...)
 			table.insert(rawget(self, "__sent"), { ... })
+		end,
+		-- server side: what was sent to clients (player, ...)
+		FireClient = function(self, player, ...)
+			local list = rawget(self, "__toClient")
+			if not list then
+				list = {}
+				rawset(self, "__toClient", list)
+			end
+			table.insert(list, { player, ... })
+		end,
+		FireAllClients = function(self, ...)
+			local list = rawget(self, "__toClient")
+			if not list then
+				list = {}
+				rawset(self, "__toClient", list)
+			end
+			table.insert(list, { "all", ... })
 		end,
 	},
 }
@@ -565,7 +664,22 @@ CLASSES.Workspace = {
 		end,
 	},
 }
-CLASSES.Players = { parent = "Instance", props = { LocalPlayer = NIL, CharacterAutoLoads = true }, signals = { "PlayerAdded", "PlayerRemoving" } }
+CLASSES.Players = {
+	parent = "Instance",
+	props = { LocalPlayer = NIL, CharacterAutoLoads = true },
+	signals = { "PlayerAdded", "PlayerRemoving" },
+	methods = {
+		GetPlayers = function(self)
+			local out = {}
+			for _, c in rawget(self, "__children") do
+				if rawget(c, "__class") == "Player" then
+					table.insert(out, c)
+				end
+			end
+			return out
+		end,
+	},
+}
 CLASSES.ReplicatedStorage = { parent = "Instance" }
 CLASSES.GuiService = { parent = "Instance", props = { MenuIsOpen = false } }
 CLASSES.RunService = {
@@ -615,7 +729,7 @@ CLASSES.UserInputService = {
 		MouseBehavior = Enum.MouseBehavior.Default, MouseIconEnabled = true, TouchEnabled = false,
 		GamepadEnabled = false, KeyboardEnabled = true, MouseEnabled = true,
 	},
-	signals = { "InputBegan", "InputEnded", "InputChanged", "TouchStarted", "TouchEnded", "JumpRequest" },
+	signals = { "InputBegan", "InputEnded", "InputChanged", "TouchStarted", "TouchMoved", "TouchEnded", "JumpRequest" },
 	init = function(self)
 		rawset(self, "__keys", {})
 		rawset(self, "__focused", nil)
@@ -642,6 +756,85 @@ CLASSES.UserInputService = {
 	},
 }
 
+-- Services a server needs (tests check what was asked of them).
+CLASSES.DataStoreService = {
+	parent = "Instance",
+	methods = {
+		-- no DataStore access: the game's queue falls back to its in-memory store (like Studio
+		-- without API access)
+		GetDataStore = function()
+			error("FakeRoblox: no DataStore access")
+		end,
+		GetRequestBudgetForRequestType = function()
+			return 100
+		end,
+	},
+}
+CLASSES.TeleportService = {
+	parent = "Instance",
+	signals = { "TeleportInitFailed" },
+	init = function(self)
+		rawset(self, "__teleports", {})
+		rawset(self, "__reserved", 0)
+	end,
+	methods = {
+		ReserveServer = function(self)
+			local n = rawget(self, "__reserved") + 1
+			rawset(self, "__reserved", n)
+			return `code{n}`, `psid{n}`
+		end,
+		TeleportAsync = function(self, placeId, players, options)
+			table.insert(rawget(self, "__teleports"), { placeId = placeId, players = players, options = options })
+		end,
+	},
+}
+CLASSES.MemoryStoreService = {
+	parent = "Instance",
+	init = function(self)
+		rawset(self, "__maps", {})
+	end,
+	methods = {
+		GetSortedMap = function(self, name: string)
+			local maps = rawget(self, "__maps")
+			local m = maps[name]
+			if not m then
+				local data = {}
+				m = {
+					data = data,
+					GetAsync = function(_, key)
+						return data[key]
+					end,
+					SetAsync = function(_, key, value)
+						data[key] = value
+					end,
+					RemoveAsync = function(_, key)
+						data[key] = nil
+					end,
+				}
+				maps[name] = m
+			end
+			return m
+		end,
+	},
+}
+CLASSES.TextService = {
+	parent = "Instance",
+	methods = {
+		-- "filters" by replacing the word "bad" (enough to see the filtered text is used)
+		FilterStringAsync = function(_, text: string)
+			local filtered = string.gsub(text, "bad", "###")
+			return {
+				GetNonChatStringForUserAsync = function()
+					return filtered
+				end,
+				GetNonChatStringForBroadcastAsync = function()
+					return filtered
+				end,
+			}
+		end,
+	},
+}
+
 -- The fake DataModel ----------------------------------------------------------------------------
 
 Fake.now = 0 -- seconds since the fake game started (os.clock / time inside modules)
@@ -658,7 +851,7 @@ function Fake.newGame()
 					if not s then
 						if not CLASSES[name] then
 							error(`FakeRoblox: service {name} is not modelled yet (add it to tests/lune/FakeRoblox.luau)`, 2)
-						end
+						end -- (services stay hand-written: their behaviour matters, not just properties)
 						s = new(name)
 						services[name] = s
 					end
@@ -721,6 +914,24 @@ function Fake.newGame()
 		warn = function(...)
 			table.insert(Fake.warnings, table.concat({ ... }, " "))
 		end,
+		-- Roblox's Random (the parts we use)
+		Random = {
+			new = function(seed: number?)
+				local r = { state = seed or 12345 }
+				local function nextFloat(): number
+					r.state = (r.state * 1103515245 + 12345) % 2147483648
+					return r.state / 2147483648
+				end
+				function r.NextNumber(_, lo: number?, hi: number?): number
+					local a, b = lo or 0, hi or 1
+					return a + nextFloat() * (b - a)
+				end
+				function r.NextInteger(_, lo: number, hi: number): number
+					return math.min(hi, lo + math.floor(nextFloat() * (hi - lo + 1)))
+				end
+				return r
+			end,
+		},
 	}
 	Fake.warnings = {}
 	Fake.mainThread = coroutine.running()

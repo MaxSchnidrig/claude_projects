@@ -23,6 +23,10 @@ local CameraController = {}
 CameraController.mode = "first"
 -- Set true while a menu needs the cursor (phase 3 inventory).
 CameraController.mouseUnlocked = false
+-- Touch (UI/TouchControls): the world is aimed where the finger is, not at the screen centre.
+CameraController.aimOverride = nil :: Vector3?
+-- Touch drags are handled by UI/TouchControls (which calls CameraController.turn).
+CameraController.touchOwned = false
 
 local modeChanged = Instance.new("BindableEvent")
 CameraController.ModeChanged = modeChanged.Event
@@ -40,12 +44,17 @@ end
 -- Eye position (studs) and the player's look direction. The look direction is the same in every
 -- camera mode, so block targeting doesn't change when you switch views.
 function CameraController.getEyeAndLook(): (Vector3?, Vector3)
-	local look = CFrame.fromEulerAnglesYXZ(pitch, yaw, 0).LookVector
+	local look = CameraController.aimOverride or CFrame.fromEulerAnglesYXZ(pitch, yaw, 0).LookVector
 	local root = rootPart()
 	if not root then
 		return nil, look
 	end
 	return root.Position + Vector3.new(0, MovementController.eyeHeight, 0), look
+end
+
+-- Where the player faces (for block orientation: stairs, doors), whatever is being aimed at.
+function CameraController.facing(): Vector3
+	return CFrame.fromEulerAnglesYXZ(pitch, yaw, 0).LookVector
 end
 
 local function setLocalTransparency(character: Model, value: number)
@@ -162,7 +171,7 @@ function CameraController.init()
 		end
 		if input.KeyCode == keyCamera then
 			CameraController.cycle()
-		elseif input.UserInputType == Enum.UserInputType.Touch then
+		elseif input.UserInputType == Enum.UserInputType.Touch and not CameraController.touchOwned then
 			touchLook[input] = true -- touches not claimed by UI/thumbstick turn the camera
 		end
 	end)

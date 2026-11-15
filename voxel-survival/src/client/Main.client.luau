@@ -149,6 +149,9 @@ Startup.run("client", {
 	system("PauseMenu", function()
 		return client.UI.PauseMenu
 	end),
+	system("TouchControls", function()
+		return client.UI.TouchControls
+	end),
 	system("DebugOverlay", function()
 		return client.Debug.DebugOverlay
 	end),

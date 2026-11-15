@@ -104,6 +104,21 @@ are fine.
   The step-up camera glide is gone (it dipped the view on every slab and stair now that the body
   moves smoothly between ticks). Beds stack to 1 and hanging signs to 16 (Java); over-full
   stacks from older saves are spread out on load.
+- 8d (done, 0.8.15): difficulty (Peaceful / Easy / Normal / Hard with Java's damage scaling,
+  starvation floors, Peaceful healing / food / no monsters; fire spread and skeleton arrows use
+  the difficulty) and Hardcore (always Hard, one life, then a server-enforced spectator).
+  Title screen with a world list (up to 10 worlds: create with name, mode, difficulty and seed,
+  play, delete, friends access; the old world is world 1; Studio starts there too). Pause menu
+  (P or the top button) with Options and World Settings (owner: difficulty, friends) and Save and
+  Quit. Options saved per player: FOV, FOV effects, render distance, brightness, view bobbing,
+  sensitivity, touch layout, volume per sound category. Touch controls like mobile: arrow pad
+  (or joystick) with sneak, jump button, tap / hold the world, drag to look, hold a hotbar slot
+  to drop. Tests run the real menus, lobby, survival and touch controls in the fake Roblox
+  (properties checked against Roblox's class database); compile_all also catches a function
+  used above its definition.
+  Left for later: GUI scale (the HUD is built at fixed sizes; comes with the HUD remodel),
+  "Lock Difficulty", regional difficulty (mob gear chances, phase 10+), Hard-only behaviours of
+  mobs we don't have yet (zombies breaking doors, spider effects), gamepad menu navigation.
 
 ## Phase 8 – Survival foundations (XL)
 

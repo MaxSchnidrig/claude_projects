@@ -1422,6 +1422,106 @@ test("difficulty: Java mob damage scaling, starvation floors, peaceful hunger", 
 	eq(h.food, 13)
 end)
 
+test("world list, server records, world names and Java seeds", function()
+	local SaveFormat = Loader.require("src/shared/Persistence/SaveFormat")
+	-- the first world keeps the old keys (saves from before world lists still load)
+	eq(SaveFormat.metaKey(SaveFormat.mainWorld(123)), "w:123:meta")
+	eq(SaveFormat.metaKey(123), "w:123:meta")
+	eq(SaveFormat.regionKey("123_4", 1, -2), "w:123_4:r:1:-2")
+	eq(SaveFormat.playerKey("123_4", 9), "w:123_4:p:9")
+	-- no list yet: an existing old world becomes world 1; none: empty
+	local l = SaveFormat.decodeWorldList(nil, 123, true)
+	eq(#l.worlds, 1); eq(l.worlds[1], "123"); eq(l.next, 2)
+	eq(#SaveFormat.decodeWorldList(nil, 123, false).worlds, 0)
+	-- new keys count up; a stored list round-trips
+	eq(SaveFormat.newWorldKey(l, 123), "123_2"); eq(l.next, 3)
+	table.insert(l.worlds, "123_2")
+	local back = SaveFormat.decodeWorldList(SaveFormat.encodeWorldList(l), 123, false)
+	eq(#back.worlds, 2); eq(back.worlds[2], "123_2"); eq(back.next, 3)
+	-- other owners' keys, junk and duplicates are dropped; at most MAX_WORLDS
+	local junk = SaveFormat.decodeWorldList({ next = 9, worlds = { "123_5", "999", "1234", "123_5", 7, "123_x", "123" } }, 123, false)
+	eq(#junk.worlds, 2); eq(junk.worlds[1], "123_5"); eq(junk.worlds[2], "123"); eq(junk.next, 9)
+	local many = { next = 50, worlds = {} }
+	for i = 2, 30 do
+		table.insert(many.worlds, `123_{i}`)
+	end
+	eq(#SaveFormat.decodeWorldList(many, 123, false).worlds, SaveFormat.MAX_WORLDS)
+	eq(SaveFormat.isOwnWorld(123, "123"), true)
+	eq(SaveFormat.isOwnWorld(123, "1234_2"), false)
+	eq(SaveFormat.isOwnWorld(123, "123_2"), true)
+	eq(SaveFormat.ownerOf("123_7"), 123)
+	-- reserved server records: old (just the owner) and new
+	local o, w = SaveFormat.decodeServer(55)
+	eq(o, 55); eq(w, "55")
+	o, w = SaveFormat.decodeServer({ owner = 55, world = "55_3" })
+	eq(o, 55); eq(w, "55_3")
+	o, w = SaveFormat.decodeServer({ owner = 55, world = "66_3" })
+	eq(o, nil); eq(w, nil)
+	-- names: trimmed, one line, 32 characters, empty = nil
+	eq(SaveFormat.cleanName("  My Base  "), "My Base")
+	eq(SaveFormat.cleanName("a\nb"), "a b")
+	eq(SaveFormat.cleanName("   "), nil)
+	eq(SaveFormat.cleanName(5), nil)
+	eq(#(SaveFormat.cleanName(string.rep("x", 50)) :: string), 32)
+	-- seeds: numbers as they are, text as Java's String.hashCode (mod 2^32), blank = random
+	eq(SaveFormat.seedFromText("12345"), 12345)
+	eq(SaveFormat.seedFromText("-1"), 4294967295)
+	eq(SaveFormat.seedFromText(""), nil)
+	eq(SaveFormat.seedFromText("   "), nil)
+	eq(SaveFormat.seedFromText("a"), 97)
+	eq(SaveFormat.seedFromText("hello"), 99162322) -- Java: "hello".hashCode() = 99162322
+	eq(SaveFormat.seedFromText("Minecraft"), (-1595926131) % 4294967296) -- Java: "Minecraft".hashCode() = -1595926131
+	-- the player save keeps the Hardcore spectator flag
+	local rec = SaveFormat.encodePlayer({ slots = {}, selected = 1, health = 0, food = 20, saturation = 5,
+		exhaustion = 0, air = 15, yaw = 0, spectator = true })
+	eq((SaveFormat.decodePlayer(rec, 41) :: any).spectator, true)
+	rec.spec = nil
+	eq((SaveFormat.decodePlayer(rec, 41) :: any).spectator, false)
+end)
+
+test("settings: defaults, cleaning, sound categories", function()
+	local SettingsSchema = Loader.require("src/shared/Gameplay/SettingsSchema")
+	local d = SettingsSchema.defaults()
+	eq(d.fov, 70); eq(d.brightness, 50); eq(d.bobbing, true); eq(d.master, 100); eq(d.renderDistance, 0)
+	local c = SettingsSchema.sanitize({ fov = 500, sensitivity = 103, bobbing = "yes", touchLayout = "joystick",
+		renderDistance = 0, music = -4, hacked = true, brightness = 0 / 0 })
+	eq(c.fov, 110); eq(c.sensitivity, 105); eq(c.bobbing, true); eq(c.touchLayout, "joystick")
+	eq(c.renderDistance, 0); eq(c.music, 0); eq(c.hacked, nil); eq(c.brightness, 50)
+	eq(SettingsSchema.clean("touchLayout", "wheel"), "dpad")
+	eq(SettingsSchema.clean("renderDistance", 1), 2)
+	eq(SettingsSchema.fovText(70), "Normal"); eq(SettingsSchema.fovText(110), "Quake Pro")
+	eq(SettingsSchema.brightnessText(0), "Moody"); eq(SettingsSchema.brightnessText(100), "Bright")
+	eq(SettingsSchema.soundCategory("mob.zombie.hurt"), "hostile")
+	eq(SettingsSchema.soundCategory("mob.cow.idle"), "friendly")
+	eq(SettingsSchema.soundCategory("step.stone"), "players")
+	eq(SettingsSchema.soundCategory("break.wood"), "blocks")
+	eq(SettingsSchema.soundCategory("lava.ambient"), "ambient")
+	eq(SettingsSchema.soundCategory("explosion"), "blocks")
+	-- brightness: Moody is darker than the default in the dark, Bright lighter; full light the same
+	local GM = GreedyMesher
+	local P = SectionSampler.SIZE
+	local function litTop(level: number, gamma: number): number
+		GM.setBrightness(gamma)
+		local padded = buffer.create(SectionSampler.BYTES)
+		buffer.writeu16(padded, ((5 + 1) + (5 + 1) * P + (5 + 1) * P * P) * 2, STONE)
+		local light = buffer.create(SectionSampler.VOLUME)
+		buffer.fill(light, 0, level)
+		local r = GM.meshLit(padded, light, {})
+		for _, quads in r.groups do
+			for q = 1, #quads, GM.QUAD do
+				if quads[q] == 3 then
+					return quads[q + 6]
+				end
+			end
+		end
+		return -1
+	end
+	local moody, normal, bright = litTop(4, 0), litTop(4, 0.5), litTop(4, 1)
+	assert(moody < normal and normal < bright, `brightness order {moody} {normal} {bright}`)
+	eq(litTop(15, 0), litTop(15, 1))
+	GM.setBrightness(0.5)
+end)
+
 test("stack sizes match Java (beds 1, signs and hanging signs 16, doors 64, tools 1)", function()
 	local ItemRegistry = Loader.require("src/shared/Items/ItemRegistry")
 	local SlotLogic = Loader.require("src/shared/Items/SlotLogic")
@@ -2239,7 +2339,10 @@ end
 -- The real client movement code, frame by frame, in a fake Roblox.
 require("./ClientMovementTests")(test, eq)
 require("./ClientRenderTests")(test, eq)
+require("./ClientMenuTests")(test, eq)
 require("./ServerBedTests")(test, eq)
+require("./ServerLobbyTests")(test, eq)
+require("./ServerSurvivalTests")(test, eq)
 
 print(`\n{passed} passed, {failed} failed`)
 if failed > 0 then

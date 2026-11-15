@@ -196,6 +196,26 @@ local function buildGui()
 		frame.Activated:Connect(function()
 			InventoryClient.select(i)
 		end)
+		-- touch: hold a slot to drop its item (mobile)
+		frame.InputBegan:Connect(function(input: InputObject)
+			if input.UserInputType ~= Enum.UserInputType.Touch then
+				return
+			end
+			local held = true
+			local conn: RBXScriptConnection
+			conn = input:GetPropertyChangedSignal("UserInputState"):Connect(function()
+				if input.UserInputState ~= Enum.UserInputState.Begin and input.UserInputState ~= Enum.UserInputState.Change then
+					held = false
+					conn:Disconnect()
+				end
+			end)
+			task.delay(0.6, function()
+				if held and not InventoryClient.uiOpen then
+					InventoryClient.select(i)
+					InventoryClient.drop(true)
+				end
+			end)
+		end)
 		frame.Parent = bar
 		slots[i] = { frame = frame, stroke = stroke, icon = icon, count = count, durability = durability, durabilityBg = durabilityBg }
 	end

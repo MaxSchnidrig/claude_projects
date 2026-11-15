@@ -115,7 +115,7 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		end
 	end)
 
-	for _, k in { "game", "workspace", "Instance", "Enum", "CFrame", "Vector2", "Color3", "UDim2", "UDim", "task", "os", "time", "tick", "warn" } do
+	for _, k in { "game", "workspace", "Instance", "Enum", "CFrame", "Vector2", "Color3", "UDim2", "UDim", "task", "os", "time", "tick", "warn", "Random" } do
 		Loader.globals[k] = nil
 	end
 	Loader.forget("src/client/")

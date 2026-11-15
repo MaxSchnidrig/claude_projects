@@ -68,6 +68,8 @@ MovementController.eyeHeight = Config.EYE_HEIGHT -- studs above the root, eases 
 MovementController.spectating = false -- Studio test tool (Java spectator mode comes in phase 21)
 MovementController.velocity = Vector3.zero -- blocks/tick (crits, sounds, view bobbing)
 MovementController.lookYaw = 0 -- where the player looks (radians); CameraController sets it
+-- Our touch controls (UI/TouchControls) write here; nil = none (Roblox's own touch controls).
+MovementController.touch = nil :: { forward: number, strafe: number, jump: boolean }?
 -- Diagnostics for the F3 overlay and the headless tests.
 MovementController.stats = { ticks = 0, held = false, waitingForChunk = false }
 
@@ -160,6 +162,14 @@ local function canStartSprint(): boolean
 		and not MovementController.usingItem
 end
 
+-- Touch: double-tap forward starts sprinting (like double-tapping W).
+function MovementController.touchSprint()
+	if canStartSprint() then
+		sprintLatch = true
+	end
+end
+
+
 -- Put the box at a position that came from outside (a spawn, the server): no speed, and
 -- nudged out of anything it overlaps by a rounding error.
 local function resync(b: Body, feet: Vector3)
@@ -214,7 +224,14 @@ local function readInput(humanoid: Humanoid, fx: number, fz: number): (number, n
 			end
 		end
 	end
-	if UserInputService.TouchEnabled then
+	local touch = MovementController.touch
+	if touch then
+		-- our touch controls: forward / strafe relative to where you look, like the keys
+		if forward == 0 and strafe == 0 then
+			forward, strafe = touch.forward, touch.strafe
+		end
+		jump = jump or touch.jump
+	elseif UserInputService.TouchEnabled then
 		-- Roblox's touch controls: the thumbstick's direction (world space) arrives in the
 		-- Humanoid's move direction, the jump button in its Jump flag
 		if forward == 0 and strafe == 0 then
@@ -521,8 +538,10 @@ local function step(dt: number)
 
 	if MovementController.spectating then
 		-- fly freely, through blocks; Space up, Shift down, sprint doubles the speed
-		local up = (if UserInputService:IsKeyDown(Enum.KeyCode.Space) then 1 else 0)
-			- (if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then 1 else 0)
+		-- (touch: the jump button flies up, the sneak button down)
+		local touch = MovementController.touch
+		local up = (if UserInputService:IsKeyDown(Enum.KeyCode.Space) or (touch and touch.jump) then 1 else 0)
+			- (if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or (touch and touchSneak) then 1 else 0)
 		if InventoryClient.uiOpen or UserInputService:GetFocusedTextBox() ~= nil then
 			up = 0
 		end

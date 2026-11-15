@@ -524,6 +524,9 @@ local function tryEquip(): boolean
 	return false
 end
 
+-- (defined with the touch helpers further down)
+local touchStep: () -> ()
+
 local function update(dt: number)
 	local now = os.clock()
 	if Players.LocalPlayer:GetAttribute("Spectating") then
@@ -582,6 +585,8 @@ local function update(dt: number)
 			BlockInteraction.target = nil
 		end
 	end
+
+	touchStep()
 
 	-- Highlight
 	if hit then
@@ -658,8 +663,9 @@ local function update(dt: number)
 		end
 		if item and item.block then
 			local x, y, z = hit.x + hit.nx, hit.y + hit.ny, hit.z + hit.nz
-			local _, look = CameraController.getEyeAndLook()
-			local lx, lz = if look then look.X else 0, if look then look.Z else -1
+			-- block orientation follows where the player faces (not a touch's aim)
+			local look = CameraController.facing()
+			local lx, lz = look.X, look.Z
 			local changes = Placement.resolve(item.block, {
 				hx = hit.x, hy = hit.y, hz = hit.z, nx = hit.nx, ny = hit.ny, nz = hit.nz,
 				px = hit.px, py = hit.py, pz = hit.pz, lx = lx, lz = lz,
@@ -685,76 +691,100 @@ local function update(dt: number)
 	end
 end
 
-local function makeTouchButtons()
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "TouchActions"
-	gui.ResetOnSpawn = false
-	local function button(text: string, pos: UDim2, onDown: () -> (), onUp: () -> ())
-		local b = Instance.new("TextButton")
-		b.Size = UDim2.fromOffset(84, 84)
-		b.Position = pos
-		b.AnchorPoint = Vector2.new(1, 1)
-		b.BackgroundColor3 = Color3.fromRGB(20, 22, 28)
-		b.BackgroundTransparency = 0.35
-		b.TextColor3 = Color3.fromRGB(235, 235, 240)
-		b.Font = Enum.Font.GothamBold
-		b.TextSize = 18
-		b.Text = text
-		b.AutoButtonColor = true
-		local corner = Instance.new("UICorner")
-		corner.CornerRadius = UDim.new(0, 10)
-		corner.Parent = b
-		b.MouseButton1Down:Connect(onDown)
-		b.MouseButton1Up:Connect(onUp)
-		b.MouseLeave:Connect(onUp)
-		b.Parent = gui
+-- Touch (UI/TouchControls): the world is used where the finger is. The press does what the
+-- right mouse button does (open, interact, equip, draw a bow, use, eat, place); a tap presses
+-- and lets go, a hold keeps it pressed while it uses something (eating, a bow, a shield) and
+-- otherwise breaks the block / hits the mob under the finger.
+local touchState: string? = nil -- nil | "tap" (waiting for the next frame) | "hold" | "breaking" | "using"
+
+local function pressUse(): boolean -- true if something started that a hold keeps going
+	local hit = BlockInteraction.target
+	if hit and INTERACTABLE[hit.id] and not MovementController.sneaking then
+		InventoryClient.openBlock(hit.x, hit.y, hit.z)
+		return false
 	end
-	button("Mine", UDim2.new(1, -24, 1, -200), function()
-		if BlockInteraction.frameTarget then
-			DecorClient.hitFrame(BlockInteraction.frameTarget :: string)
-			return
-		end
+	if tryInteract(MovementController.sneaking) or tryEquip() then
+		return false
+	end
+	if startGear(hit ~= nil) then
+		return true
+	end
+	if tryUse() then
+		return false
+	end
+	if foodSlot(hit ~= nil) then
+		useHeld = true
+		return true
+	end
+	placeHeld = true
+	nextPlaceAt = 0
+	return false
+end
+
+local function releaseUse()
+	placeHeld = false
+	useHeld = false
+	gearHeld = false
+end
+
+function BlockInteraction.aimAt(p: Vector2)
+	local cam = workspace.CurrentCamera
+	if cam then
+		CameraController.aimOverride = cam:ScreenPointToRay(p.X, p.Y).Direction.Unit
+	end
+end
+
+function BlockInteraction.touchTap(p: Vector2)
+	BlockInteraction.aimAt(p)
+	touchState = "tap"
+end
+
+function BlockInteraction.touchHold(p: Vector2)
+	BlockInteraction.aimAt(p)
+	touchState = "hold"
+end
+
+function BlockInteraction.touchRelease()
+	breakHeld = false
+	releaseUse()
+	touchState = nil
+	CameraController.aimOverride = nil
+end
+
+-- Runs in `update` once the targets under the finger are known.
+touchStep = function()
+	local t = touchState
+	if t == "tap" then
+		touchState = nil
 		if BlockInteraction.mobTarget then
 			attackMob(BlockInteraction.mobTarget :: number)
-			return
+		else
+			pressUse()
+			task.delay(0.1, releaseUse) -- one press
 		end
-		breakHeld = true
-	end, function()
-		breakHeld = false
-	end)
-	button("Place", UDim2.new(1, -120, 1, -130), function()
-		local hit = BlockInteraction.target
-		if hit and INTERACTABLE[hit.id] and not MovementController.sneaking then
-			InventoryClient.openBlock(hit.x, hit.y, hit.z)
-			return
+		task.delay(0.15, function()
+			if touchState == nil then
+				CameraController.aimOverride = nil
+			end
+		end)
+	elseif t == "hold" then
+		local item = ItemRegistry.get(InventoryClient.heldItem())
+		local usable = item ~= nil and (item.food ~= nil or item.key == "bow" or item.key == "crossbow"
+			or item.key == "crossbow_loaded" or item.key == "shield")
+		if BlockInteraction.mobTarget then
+			attackMob(BlockInteraction.mobTarget :: number)
+			touchState = "breaking"
+		elseif BlockInteraction.frameTarget then
+			DecorClient.hitFrame(BlockInteraction.frameTarget :: string)
+			touchState = "breaking"
+		elseif usable and pressUse() then
+			touchState = "using"
+		else
+			releaseUse()
+			breakHeld = true
+			touchState = "breaking"
 		end
-		if tryInteract(MovementController.sneaking) then
-			return
-		end
-		if tryEquip() then
-			return
-		end
-		if startGear(hit ~= nil) then
-			return
-		end
-		if tryUse() then
-			return
-		end
-		if foodSlot(hit ~= nil) then
-			useHeld = true
-			return
-		end
-		placeHeld = true
-		nextPlaceAt = 0
-	end, function()
-		placeHeld = false
-		useHeld = false
-		gearHeld = false
-	end)
-	button("Sneak", UDim2.new(1, -216, 1, -130), function()
-		MovementController.toggleSneak()
-	end, function() end)
-	gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+	end
 end
 
 function BlockInteraction.init()
@@ -812,9 +842,6 @@ function BlockInteraction.init()
 			gearHeld = false
 		end
 	end)
-	if UserInputService.TouchEnabled then
-		makeTouchButtons()
-	end
 
 	RunService:BindToRenderStep("RocraftBlockInteraction", Enum.RenderPriority.Camera.Value + 2, update)
 end
