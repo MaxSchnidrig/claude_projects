@@ -12,6 +12,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local WorldSettingsService = require(script.Parent.Parent.World.WorldSettingsService)
 local Config = require(Shared.Config)
 local BlockRegistry = require(Shared.Blocks.BlockRegistry)
 local WorldService = require(script.Parent.Parent.World.WorldService)
@@ -150,7 +151,7 @@ local function tick(x: number, y: number, z: number)
 							enc = math.max(enc, encouragement(get(tx + d[1], ty + d[2], tz + d[3])))
 						end
 						if enc > 0 then
-							local odds = (enc + 40 + Config.DIFFICULTY_FIRE * 7) // (age + 30)
+							local odds = (enc + 40 + WorldSettingsService.difficultyId() * 7) // (age + 30)
 							if odds > 0 and math.random(0, chanceBase - 1) <= odds then
 								FireService.ignite(tx, ty, tz, math.min(15, age + math.random(0, 4) // 4))
 							end

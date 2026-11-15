@@ -22,6 +22,8 @@ local InventoryService = require(script.Parent.Parent.Player.InventoryService)
 local SpawnService = require(script.Parent.Parent.Player.SpawnService)
 local BlockActionService = require(script.Parent.Parent.Interaction.BlockActionService)
 local DayNightService = require(script.Parent.DayNightService)
+local WorldSettingsService = require(script.Parent.Parent.World.WorldSettingsService)
+local Difficulty = require(Shared.Gameplay.Difficulty)
 
 local BS = Config.BLOCK_SIZE
 local FEET_BELOW_ROOT = 3 -- R6: HumanoidRootPart centre is 3 studs above the feet
@@ -34,7 +36,6 @@ local function isLava(id: number): boolean
 end
 local isSolid = BlockRegistry.isSolid
 local isLiquid = BlockRegistry.isLiquid
-local MIN_STARVE_HEALTH = ({ easy = 10, normal = 1, hard = 0 } :: { [string]: number })[Config.DIFFICULTY] or 1
 
 type State = {
 	hunger: SurvivalRules.Hunger,
@@ -59,6 +60,8 @@ type State = {
 	lastHealth: number, -- for saving after the character is gone
 	burning: number, -- seconds of fire left (after lava)
 	fireTimer: number,
+	peaceHeal: number, -- Peaceful: time towards the next +1 health / +1 food
+	peaceFood: number,
 }
 
 local SurvivalService = {}
@@ -91,6 +94,8 @@ local function newState(): State
 		lastHealth = 20,
 		burning = 0,
 		fireTimer = 0,
+		peaceHeal = 0,
+		peaceFood = 0,
 	}
 end
 
@@ -137,7 +142,9 @@ end
 -- Damage options (Phase 8c): `armor` = worn armour reduces it (attacks, arrows, explosions,
 -- fire, lava; not falls, drowning, starving, the void); `source` = where it came from (block
 -- units) so a raised shield in front can block it.
-export type DamageOpts = { armor: boolean?, source: Vector3? }
+-- `scales` = caused by a living mob (bites, its arrows, a Sneaker's blast): changed by the
+-- difficulty first (Gameplay/Difficulty: Peaceful 0, Easy halved + 1, Hard x 1.5).
+export type DamageOpts = { armor: boolean?, source: Vector3?, scales: boolean? }
 -- Set by CombatGearService (avoids a require cycle): shield and armour.
 local gear: { block: (Player, number, DamageOpts) -> boolean, armor: (Player, number) -> number }? = nil
 function SurvivalService.setGear(g: { block: (Player, number, DamageOpts) -> boolean, armor: (Player, number) -> number })
@@ -149,6 +156,12 @@ function SurvivalService.damage(p: Player, amount: number, cause: string, bypass
 	local s = state(p)
 	if not humanoid or s.dead or humanoid.Health <= 0 or amount <= 0 then
 		return 0, false
+	end
+	if opts and opts.scales then
+		amount = Difficulty.scaleMobDamage(WorldSettingsService.difficulty(), amount)
+		if amount <= 0 then
+			return 0, false -- Java: a hit scaled to nothing doesn't hurt at all
+		end
 	end
 	-- Java order: a shield blocks first (nothing gets through, no knockback), then the hurt
 	-- cooldown, then armour.
@@ -312,7 +325,29 @@ local function stepPlayer(p: Player, s: State, dt: number)
 	end
 
 	-- Regeneration / starvation
-	local heal, starve = SurvivalRules.tick(s.hunger, dt, humanoid.Health, humanoid.MaxHealth, MIN_STARVE_HEALTH)
+	local difficulty = WorldSettingsService.difficulty()
+	local peaceful = difficulty == "peaceful"
+	s.hunger.peaceful = peaceful
+	if peaceful then
+		-- Java Player.aiStep on Peaceful: +1 health every second, +1 food every half second
+		s.peaceHeal += dt
+		while s.peaceHeal >= Difficulty.PEACEFUL_HEAL_INTERVAL do
+			s.peaceHeal -= Difficulty.PEACEFUL_HEAL_INTERVAL
+			if humanoid.Health < humanoid.MaxHealth then
+				humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + 1)
+			end
+		end
+		s.peaceFood += dt
+		while s.peaceFood >= Difficulty.PEACEFUL_FOOD_INTERVAL do
+			s.peaceFood -= Difficulty.PEACEFUL_FOOD_INTERVAL
+			if s.hunger.food < SurvivalRules.MAX_FOOD then
+				s.hunger.food += 1
+			end
+		end
+	else
+		s.peaceHeal, s.peaceFood = 0, 0
+	end
+	local heal, starve = SurvivalRules.tick(s.hunger, dt, humanoid.Health, humanoid.MaxHealth, Difficulty.starveFloor(difficulty))
 	if heal > 0 then
 		humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + heal)
 	end

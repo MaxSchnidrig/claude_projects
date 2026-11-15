@@ -1379,6 +1379,49 @@ test("8b2: trapdoors, fence gates, walls, panes, bars, vines, hanging signs", fu
 	eq(BlockRegistry.byId[c[1].id].key, "oak_wall_hanging_sign_east")
 end)
 
+test("difficulty: Java mob damage scaling, starvation floors, peaceful hunger", function()
+	local Difficulty = Loader.require("src/shared/Gameplay/Difficulty")
+	local SurvivalRules = Loader.require("src/shared/Gameplay/SurvivalRules")
+	-- zombie (3), skeleton arrow (about 4), sneaker blast (up to ~49) per difficulty
+	eq(Difficulty.scaleMobDamage("peaceful", 3), 0)
+	eq(Difficulty.scaleMobDamage("easy", 3), 2.5)
+	eq(Difficulty.scaleMobDamage("easy", 1), 1) -- min(1/2 + 1, 1)
+	eq(Difficulty.scaleMobDamage("normal", 3), 3)
+	eq(Difficulty.scaleMobDamage("hard", 3), 4.5)
+	eq(Difficulty.scaleMobDamage("hard", 49), 73.5)
+	eq(Difficulty.starveFloor("easy"), 10)
+	eq(Difficulty.starveFloor("normal"), 1)
+	eq(Difficulty.starveFloor("hard"), 0)
+	eq(Difficulty.hostileMobs("peaceful"), false)
+	eq(Difficulty.hostileMobs("easy"), true)
+	eq(Difficulty.id("peaceful"), 0); eq(Difficulty.id("hard"), 3)
+	eq(Difficulty.sanitize("banana"), "normal")
+	eq(Difficulty.sanitize(nil), "normal")
+	eq(Difficulty.sanitize("hard"), "hard")
+	eq(Difficulty.next("hard"), "peaceful")
+	eq(Difficulty.next("peaceful"), "easy")
+	-- starving: Hard kills, Easy stops at 10
+	for _, case in { { "easy", 10 }, { "normal", 1 }, { "hard", 0 } } do
+		local h = SurvivalRules.newHunger()
+		h.food, h.saturation = 0, 0
+		local health = 20
+		for _ = 1, 200 do
+			local heal, dmg = SurvivalRules.tick(h, 1, health, 20, Difficulty.starveFloor(case[1]))
+			health += heal - dmg
+		end
+		eq(health, case[2], `starving on {case[1]} ends at`)
+	end
+	-- peaceful: exhaustion eats saturation but never food
+	local h = SurvivalRules.newHunger()
+	h.peaceful = true
+	h.food, h.saturation = 15, 2
+	SurvivalRules.addExhaustion(h, 40)
+	eq(h.saturation, 0); eq(h.food, 15)
+	h.peaceful = false
+	SurvivalRules.addExhaustion(h, 8)
+	eq(h.food, 13)
+end)
+
 test("stack sizes match Java (beds 1, signs and hanging signs 16, doors 64, tools 1)", function()
 	local ItemRegistry = Loader.require("src/shared/Items/ItemRegistry")
 	local SlotLogic = Loader.require("src/shared/Items/SlotLogic")

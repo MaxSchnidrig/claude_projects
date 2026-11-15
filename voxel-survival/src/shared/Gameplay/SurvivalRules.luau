@@ -7,7 +7,8 @@
 --   taking damage 0.1, healing 1 HP 6.0
 -- Regeneration: food 20 with saturation -> min(saturation, 6)/6 HP every 0.5 s (costs
 -- min(saturation, 6) exhaustion); food >= 18 -> 1 HP every 4 s (costs 6.0).
--- Starvation: food 0 -> 1 damage every 4 s (Normal difficulty: stops at 1 HP).
+-- Starvation: food 0 -> 1 damage every 4 s, stopping at Gameplay/Difficulty's floor (Easy 10 HP,
+-- Normal 1 HP, Hard: none). Peaceful: food never drops (see Hunger.peaceful).
 -- Sprinting needs food > 6.
 -- Fall damage: ceil(fallBlocks - 3), none when landing in water.
 
@@ -41,6 +42,8 @@ export type Hunger = {
 	exhaustion: number,
 	regenTimer: number,
 	starveTimer: number,
+	-- Peaceful: exhaustion only ever uses up saturation, never food (Java FoodData.tick)
+	peaceful: boolean?,
 }
 
 function SurvivalRules.newHunger(): Hunger
@@ -59,7 +62,7 @@ function SurvivalRules.addExhaustion(h: Hunger, amount: number)
 		h.exhaustion -= SurvivalRules.EXHAUSTION_PER_POINT
 		if h.saturation > 0 then
 			h.saturation = math.max(0, h.saturation - 1)
-		else
+		elseif not h.peaceful then
 			h.food = math.max(0, h.food - 1)
 		end
 	end

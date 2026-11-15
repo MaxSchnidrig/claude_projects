@@ -58,6 +58,9 @@ Startup.run("server", {
 	{ name = "BlockEntityService", run = function()
 		require(server.World.BlockEntityService).init()
 	end },
+	{ name = "WorldSettingsService", run = function()
+		require(server.World.WorldSettingsService).init()
+	end },
 	{ name = "InventoryService", run = function()
 		require(server.Player.InventoryService).init()
 	end },

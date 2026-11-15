@@ -30,6 +30,7 @@ local Config = require(Shared.Config)
 local ChunkData = require(Shared.World.ChunkData)
 local SaveFormat = require(Shared.Persistence.SaveFormat)
 local DataStoreQueue = require(script.Parent.DataStoreQueue)
+local WorldSettings = require(script.Parent.Parent.World.WorldSettingsService)
 
 local CS = Config.CHUNK_SIZE
 local BS = Config.BLOCK_SIZE
@@ -48,6 +49,11 @@ export type Meta = {
 	psid: string?,
 	regions: { string },
 	created: number?,
+	-- Phase 8d
+	name: string?, -- shown in the world list
+	difficulty: string?, -- Gameplay/Difficulty name (nil = the default, Normal)
+	hardcore: boolean?, -- set when the world is created, never changes
+	friendsAt: number?, -- os.time() of the last friends change (lobby and world both write it)
 }
 
 local queue: DataStoreQueue.Queue
@@ -114,9 +120,31 @@ local function decodeMeta(v: any): Meta?
 		psid = if typeof(v.psid) == "string" then v.psid else nil,
 		regions = regions,
 		created = if typeof(v.created) == "number" then v.created else nil,
+		name = if typeof(v.name) == "string" then v.name else nil,
+		difficulty = if typeof(v.difficulty) == "string" then v.difficulty else nil,
+		hardcore = v.hardcore == true,
+		friendsAt = if typeof(v.friendsAt) == "number" then v.friendsAt else nil,
 	}
 end
 Persistence.decodeMeta = decodeMeta
+
+-- The fields of a meta record that a save writes (old fields kept, unknown keys dropped).
+function Persistence.encodeMeta(m: Meta): any
+	return {
+		v = SaveFormat.VERSION,
+		seed = m.seed,
+		ticks = m.ticks,
+		friends = m.friends,
+		code = m.code,
+		psid = m.psid,
+		regions = m.regions,
+		created = m.created,
+		name = m.name,
+		difficulty = m.difficulty,
+		hardcore = if m.hardcore then true else nil,
+		friendsAt = m.friendsAt,
+	}
+end
 
 -- A new world's seed (Studio keeps the default seed so test worlds stay familiar).
 function Persistence.newSeed(): number
@@ -146,6 +174,7 @@ function Persistence.loadWorld(): Meta
 	for _, r in meta.regions do
 		savedRegions[r] = true
 	end
+	WorldSettings.load(meta, Persistence.ownerId)
 	print(`[Persistence] world of {Persistence.ownerId}: seed {meta.seed}, {#meta.regions} saved regions, saving {if queue:isPersistent() then "on" else "OFF"}`)
 	return meta
 end
@@ -293,16 +322,24 @@ local function markMeta()
 			end
 		end
 		table.sort(regions)
-		return {
-			v = SaveFormat.VERSION,
+		-- friends: whichever side changed it last (the lobby or this world's pause menu)
+		local friends, friendsAt = WorldSettings.friends()
+		if prev and (prev.friendsAt or 0) > friendsAt then
+			friends, friendsAt = prev.friends, prev.friendsAt or 0
+		end
+		return Persistence.encodeMeta({
 			seed = meta.seed,
 			ticks = DayNightService.ticks(),
-			friends = if prev then prev.friends else meta.friends,
+			friends = friends,
+			friendsAt = if friendsAt > 0 then friendsAt else nil,
 			code = if prev and prev.code then prev.code else meta.code,
 			psid = if prev and prev.psid then prev.psid else meta.psid,
 			regions = regions,
 			created = (prev and prev.created) or meta.created or os.time(),
-		}
+			name = (prev and prev.name) or meta.name,
+			difficulty = WorldSettings.difficulty(),
+			hardcore = meta.hardcore or (prev ~= nil and prev.hardcore),
+		})
 	end)
 	metaDirty = false
 end
@@ -351,7 +388,10 @@ local function canJoin(p: Player): (boolean, string?)
 	end
 	local ok, v = queue:get(SaveFormat.metaKey(Persistence.ownerId))
 	local m = if ok then decodeMeta(v) else nil
-	local friends = if m then m.friends else meta.friends
+	local friends, friendsAt = WorldSettings.friends()
+	if m and (m.friendsAt or 0) > friendsAt then
+		friends = m.friends
+	end
 	if not friends then
 		return false, "The owner of this world doesn't allow visitors right now."
 	end
@@ -446,6 +486,9 @@ function Persistence.startWorld(services: { [string]: any })
 	SurvivalService = services.SurvivalService
 	SpawnService = services.SpawnService
 	DayNightService = services.DayNightService
+	WorldSettings.setDirtyHandler(function()
+		metaDirty = true
+	end)
 
 	Players.PlayerAdded:Connect(onPlayer)
 	for _, p in Players:GetPlayers() do

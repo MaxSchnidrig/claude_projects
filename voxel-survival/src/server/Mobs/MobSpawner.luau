@@ -30,6 +30,8 @@ local Pathfinder = require(Shared.Mobs.Pathfinder)
 local ChunkData = require(Shared.World.ChunkData)
 local SkyLight = require(Shared.World.SkyLight)
 local WorldService = require(script.Parent.Parent.World.WorldService)
+local WorldSettingsService = require(script.Parent.Parent.World.WorldSettingsService)
+local Difficulty = require(Shared.Gameplay.Difficulty)
 
 local H = Config.WORLD_HEIGHT
 local CS = Config.CHUNK_SIZE
@@ -261,9 +263,24 @@ function MobSpawner.step(dt: number, targets: { any })
 		return
 	end
 	local ticks = math.max(1, math.floor(dt * 20 + 0.5))
-	for _, t in targets do
-		for _ = 1, HOSTILE_ATTEMPTS_PER_TICK * ticks do
-			tryHostile(t, targets)
+	local hostiles = Difficulty.hostileMobs(WorldSettingsService.difficulty())
+	if hostiles then
+		for _, t in targets do
+			for _ = 1, HOSTILE_ATTEMPTS_PER_TICK * ticks do
+				tryHostile(t, targets)
+			end
+		end
+	else
+		-- Java: on Peaceful every monster disappears at once (even ones that wouldn't despawn)
+		local gone = {}
+		for _, m in S.mobs do
+			if m.def.category == "hostile" then
+				table.insert(gone, m)
+			end
+		end
+		for _, m in gone do
+			S.remove(m)
+			S.stats.despawned += 1
 		end
 	end
 	if passiveAcc >= 20 then

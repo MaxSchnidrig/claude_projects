@@ -354,8 +354,14 @@ end
 
 -- Damage a player from a mob (melee / arrow). A fresh hit pushes the player away from `from`
 -- with Java's 0.4 knockback (the client applies it to its own character).
-function MobService.hurtPlayer(t: Target, amount: number, cause: string, from: Vector3)
-	local dealt, fresh = SurvivalService.damage(t.player, amount, cause, nil, { armor = true, source = from })
+-- The world's difficulty id (0 Peaceful .. 3 Hard) for Java formulas (MobAI: skeleton arrows).
+function MobService.difficultyId(): number
+	return require(script.Parent.Parent.World.WorldSettingsService).difficultyId()
+end
+
+-- `byPlayer`: an arrow a player shot (not changed by the difficulty, unlike a mob's damage).
+function MobService.hurtPlayer(t: Target, amount: number, cause: string, from: Vector3, byPlayer: boolean?)
+	local dealt, fresh = SurvivalService.damage(t.player, amount, cause, nil, { armor = true, source = from, scales = not byPlayer })
 	if dealt > 0 and fresh then
 		local d = Vector3.new(t.feet.X - from.X, 0, t.feet.Z - from.Z)
 		Remotes.get("Knockback"):FireClient(t.player, { dir = d, strength = Combat.KNOCKBACK })
@@ -534,7 +540,7 @@ local function stepProjectile(m: Mob, dt: number)
 			for _, t in targets do
 				local f = t.feet
 				if t.player ~= m.ownerPlayer and math.abs(m.x - f.X) < 0.55 and math.abs(m.z - f.Z) < 0.55 and m.y >= f.Y - 0.25 and m.y <= f.Y + 2.05 then
-					MobService.hurtPlayer(t, dmg, `was shot by {m.owner or "an arrow"}`, Vector3.new(m.x - vx * 4, m.y, m.z - vz * 4))
+					MobService.hurtPlayer(t, dmg, `was shot by {m.owner or "an arrow"}`, Vector3.new(m.x - vx * 4, m.y, m.z - vz * 4), m.ownerPlayer ~= nil)
 					MobService.remove(m)
 					return
 				end
@@ -764,8 +770,8 @@ function MobService.init()
 		end
 	end)
 
-	ExplosionService.setHooks(function(p: Player, amount: number, cause: string, center: Vector3?)
-		SurvivalService.damage(p, amount, cause, nil, { armor = true, source = center })
+	ExplosionService.setHooks(function(p: Player, amount: number, cause: string, center: Vector3?, byMob: boolean?)
+		SurvivalService.damage(p, amount, cause, nil, { armor = true, source = center, scales = byMob })
 	end, explosionDamage)
 
 	Remotes.get("AttackMob").OnServerEvent:Connect(onAttack)

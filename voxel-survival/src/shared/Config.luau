@@ -169,7 +169,6 @@ Config.CORE_GUI_DISABLE = { "Backpack", "Health", "EmotesMenu" }
 Config.DAY_LENGTH_SECONDS = 1200 -- classic 20-minute day (24000 ticks at 20 ticks/s)
 Config.START_TIME_TICKS = 1000 -- morning (0 = sunrise, 6000 = noon, 18000 = midnight)
 Config.AUTO_RESPAWN_SECONDS = 120 -- safety net if the death screen never sends "respawn"
-Config.DIFFICULTY = "normal" -- "easy": starvation stops at 10 HP, "normal": 1 HP, "hard": no limit
 
 -- Mobs (phase 5) ------------------------------------------------------------------------------
 -- Java Edition values: monster cap 70 and creature cap 10 per player area (17x17 chunks).
@@ -185,7 +184,6 @@ Config.SHIFT_CLICK_INTO_CRAFT_GRID = true -- Java: shift-click from the inventor
 
 -- World simulation (phase 8) ----------------------------------------------------------------
 Config.MAX_BLOCK_TICKS_PER_TICK = 3000 -- scheduled block ticks per game tick (fluids, fire...)
-Config.DIFFICULTY_FIRE = 2 -- Java fire spread uses the difficulty id (Normal = 2)
 
 -- Saving (phase 6) ----------------------------------------------------------------------------
 Config.DATASTORE_NAME = "RocraftWorlds_v1" -- Studio uses DATASTORE_NAME .. "_Studio" (never live data)

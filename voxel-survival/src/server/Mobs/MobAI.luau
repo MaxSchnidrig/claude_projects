@@ -428,7 +428,8 @@ local function ranged(m: any, now: number, dt: number, targets: { any })
 			local g = math.sqrt(ex * ex + ez * ez)
 			local dir = Vector3.new(ex, ey + g * 0.2, ez).Unit
 			dir += Vector3.new(gaussian(), gaussian(), gaussian()) * 0.0075 * 6
-			local base = 2 + 2 * 0.11 + (math.random() - math.random()) * 0.57425
+			-- Java: 2 + difficulty id x 0.11 + a little randomness
+			local base = 2 + S.difficultyId() * 0.11 + (math.random() - math.random()) * 0.57425
 			S.shootArrow(from + dir * 0.4, dir * 1.6 * 20, base, def.name, m.id)
 		end
 	else
@@ -466,7 +467,7 @@ local function exploder(m: any, now: number, dt: number, targets: { any })
 		local center = Vector3.new(m.x, m.y, m.z)
 		S.broadcastEvent({ type = "explode", id = m.id, pos = (center + Vector3.new(0, def.height / 2, 0)) * 3 }, center)
 		S.remove(m)
-		ExplosionService.explode(center, def.explosionPower or 3, `was blown up by {def.name}`)
+		ExplosionService.explode(center, def.explosionPower or 3, `was blown up by {def.name}`, { byMob = true })
 	end
 end
 

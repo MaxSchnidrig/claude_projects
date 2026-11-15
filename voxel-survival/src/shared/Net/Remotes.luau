@@ -33,6 +33,11 @@
 --   StareMob      C -> S  (mobId)  the player has looked a voidling in the eyes for 5 ticks
 --   Knockback     S -> C  { dir = Vector3, strength } (Java hit knockback, blocks/tick) or
 --                         { add = Vector3 } (explosion push, blocks/tick)
+--   WorldSettings both    difficulty / friends of the running world (server/World/WorldSettingsService)
+--   Menu          C -> S  { type = "quit" } save and go back to the title screen
+--                 S -> C  { type = "status", text }
+--   Settings      C -> S  { type = "save", settings }    S -> C { type = "load", settings }
+--                         the player's own options (render distance, FOV, volumes, ...)
 
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -61,6 +66,9 @@ local NAMES = {
 	"Decor",
 	"Gear",
 	"Bed",
+	"WorldSettings",
+	"Menu",
+	"Settings",
 }
 -- High-frequency state where a lost packet doesn't matter (the next one replaces it).
 local UNRELIABLE = { "MobSnapshot" }
