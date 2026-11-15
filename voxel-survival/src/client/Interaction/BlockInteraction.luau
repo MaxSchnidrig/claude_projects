@@ -762,7 +762,7 @@ function BlockInteraction.init()
 
 	local keyDrop = (Enum.KeyCode :: any)[Config.KEY_DROP]
 	UserInputService.InputBegan:Connect(function(input, processed)
-		if processed or InventoryClient.uiOpen then
+		if processed or InventoryClient.uiOpen or Players.LocalPlayer:GetAttribute("Spectating") then
 			return
 		end
 		local t = input.UserInputType

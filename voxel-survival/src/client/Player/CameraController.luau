@@ -14,6 +14,7 @@ local UserInputService = game:GetService("UserInputService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local MovementController = require(script.Parent.MovementController)
+local Settings = require(script.Parent.Settings)
 
 local MODES = { "first", "back", "front" }
 local MAX_PITCH = math.rad(89)
@@ -27,6 +28,7 @@ local modeChanged = Instance.new("BindableEvent")
 CameraController.ModeChanged = modeChanged.Event
 
 local yaw, pitch = 0, 0
+local mouseScale, touchScale = 1, 1 -- Settings: "sensitivity", "touchSensitivity" (100 % = 1)
 local touchLook: { [InputObject]: boolean } = {}
 local gamepadLook = Vector2.zero
 
@@ -82,7 +84,7 @@ local function update(dt: number)
 		UserInputService.MouseIconEnabled = false
 		local delta = UserInputService:GetMouseDelta()
 		local settings = UserSettings():GetService("UserGameSettings")
-		local sens = Config.MOUSE_SENSITIVITY * settings.MouseSensitivity
+		local sens = Config.MOUSE_SENSITIVITY * settings.MouseSensitivity * mouseScale
 		yaw -= math.rad(delta.X * sens)
 		pitch -= math.rad(delta.Y * sens)
 	else
@@ -139,7 +141,20 @@ function CameraController.cycle()
 	modeChanged:Fire(CameraController.mode)
 end
 
+-- Touch controls (UI/TouchControls) turn the camera with drags they own.
+function CameraController.turn(dx: number, dy: number)
+	yaw -= math.rad(dx * Config.TOUCH_SENSITIVITY * touchScale)
+	pitch = math.clamp(pitch - math.rad(dy * Config.TOUCH_SENSITIVITY * touchScale), -MAX_PITCH, MAX_PITCH)
+end
+
 function CameraController.init()
+	Settings.onChange(function(key: string, value: any)
+		if key == "sensitivity" then
+			mouseScale = value / 100
+		elseif key == "touchSensitivity" then
+			touchScale = value / 100
+		end
+	end)
 	local keyCamera = (Enum.KeyCode :: any)[Config.KEY_CAMERA]
 	UserInputService.InputBegan:Connect(function(input, processed)
 		if processed then
@@ -153,8 +168,8 @@ function CameraController.init()
 	end)
 	UserInputService.InputChanged:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.Touch and touchLook[input] then
-			yaw -= math.rad(input.Delta.X * Config.TOUCH_SENSITIVITY)
-			pitch -= math.rad(input.Delta.Y * Config.TOUCH_SENSITIVITY)
+			yaw -= math.rad(input.Delta.X * Config.TOUCH_SENSITIVITY * touchScale)
+			pitch -= math.rad(input.Delta.Y * Config.TOUCH_SENSITIVITY * touchScale)
 		elseif input.KeyCode == Enum.KeyCode.Thumbstick2 then
 			gamepadLook = Vector2.new(input.Position.X, input.Position.Y)
 		end

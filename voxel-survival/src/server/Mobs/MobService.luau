@@ -174,7 +174,8 @@ function MobService.targets(): { Target }
 		local c = p.Character
 		local h = c and c:FindFirstChildOfClass("Humanoid")
 		local root = c and c:FindFirstChild("HumanoidRootPart") :: BasePart?
-		if h and root and h.Health > 0 then
+		-- spectators are invisible to mobs and don't make them spawn (Java: NO_SPECTATORS)
+		if h and root and h.Health > 0 and p:GetAttribute("Spectator") ~= true then
 			local pos = root.Position
 			table.insert(list, {
 				player = p,
@@ -607,7 +608,7 @@ end
 ---------------------------------------------------------------------------------------------
 
 local function onAttack(p: Player, id: any, critClaim: any)
-	if typeof(id) ~= "number" then
+	if typeof(id) ~= "number" or p:GetAttribute("Spectator") == true then
 		return
 	end
 	local m = mobs[id]
@@ -677,7 +678,7 @@ end
 -- A player reports staring a voidling in the eyes (5 ticks). The server checks range (64) and
 -- that no block with collision is in the way.
 local function onStare(p: Player, id: any)
-	if typeof(id) ~= "number" then
+	if typeof(id) ~= "number" or p:GetAttribute("Spectator") == true then
 		return
 	end
 	local m = mobs[id]

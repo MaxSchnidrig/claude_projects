@@ -19,6 +19,8 @@ local ChunkData = require(Shared.World.ChunkData)
 local TerrainGen = require(Shared.World.TerrainGen)
 local Scheduler = require(Shared.Util.Scheduler)
 local Remotes = require(Shared.Net.Remotes)
+local GreedyMesher = require(Shared.Meshing.GreedyMesher)
+local Settings = require(script.Parent.Parent.Player.Settings)
 local ChunkRenderer = require(script.Parent.Parent.Render.ChunkRenderer)
 local LightEngine = require(Shared.World.LightEngine)
 local TorchRules = require(Shared.Blocks.TorchRules)
@@ -581,15 +583,33 @@ function ClientWorld.init()
 	end
 	local own = player:GetAttribute("SpawnBlock")
 	spawnBlock = if typeof(own) == "Vector3" then own else (ReplicatedStorage:GetAttribute("SpawnBlock") or Vector3.new(0, 80, 0))
+	-- the "Render Distance" option (0 = this device's default); the attribute is a test override
+	local chosen = 0
 	local function applyRenderDistance()
 		local rd = player:GetAttribute("RenderDistance")
-		if typeof(rd) == "number" then
-			renderDistance = math.clamp(math.floor(rd), Config.RENDER_DISTANCE_MIN, Config.RENDER_DISTANCE_MAX)
+		if typeof(rd) ~= "number" or rd <= 0 then
+			rd = if chosen > 0 then chosen else (if isMobile then Config.RENDER_DISTANCE_MOBILE else Config.RENDER_DISTANCE_DESKTOP)
 		end
+		renderDistance = math.clamp(math.floor(rd :: number), Config.RENDER_DISTANCE_MIN, Config.RENDER_DISTANCE_MAX)
+		applyFog(effectiveRenderDistance())
 	end
 	applyRenderDistance()
-	applyFog(effectiveRenderDistance())
 	player:GetAttributeChangedSignal("RenderDistance"):Connect(applyRenderDistance)
+	local lastBrightness = nil
+	Settings.onChange(function(key: string, value: any)
+		if key == "renderDistance" then
+			chosen = value
+			applyRenderDistance()
+		elseif key == "brightness" and value ~= lastBrightness then
+			-- Java's Brightness option lifts dark light levels: rebuild the terrain with the new curve
+			local first = lastBrightness == nil
+			lastBrightness = value
+			GreedyMesher.setBrightness(value / 100)
+			if not first then
+				ClientWorld.remeshAll()
+			end
+		end
+	end)
 
 	ChunkRenderer.init()
 	TorchRenderer.init()

@@ -46,11 +46,13 @@ local SneakPose = require(Shared.Gameplay.SneakPose)
 local PlayerMotor = require(Shared.Gameplay.PlayerMotor)
 local Combat = require(Shared.Gameplay.Combat)
 local Remotes = require(Shared.Net.Remotes)
+local Settings = require(script.Parent.Settings)
 
 local BS = Config.BLOCK_SIZE
 local TICK = PlayerMotor.TICK
 local FEET_BELOW_ROOT = 3 -- studs from the HumanoidRootPart centre down to the feet
-local BASE_FOV = 70
+local baseFov = 70 -- Settings: "fov"
+local fovEffects = 1 -- Settings: "fovEffects" (how much sprinting / a bow change the FOV)
 
 local MovementController = {}
 MovementController.sprinting = false
@@ -317,6 +319,30 @@ local function playAnim(name: string, speed: number)
 	t:AdjustSpeed(speed)
 end
 
+local function setSpectating(on: boolean)
+	local b = body
+	if not b then
+		return
+	end
+	MovementController.spectating = on
+	Players.LocalPlayer:SetAttribute("Spectating", on)
+	sprintLatch = false
+	local st = b.st
+	st.vx, st.vy, st.vz = 0, 0, 0
+	st.onGround = false
+	st.fallDistance = 0
+	b.px, b.py, b.pz = st.x, st.y, st.z
+	b.acc = 0
+	if not Players.LocalPlayer:GetAttribute("Spectator") then
+		print(`[Spectator] {if on then "on (N to leave)" else "off"}`)
+	end
+end
+
+-- Hardcore: after dying you only watch (the server sets the "Spectator" attribute).
+local function serverSpectator(): boolean
+	return Players.LocalPlayer:GetAttribute("Spectator") == true
+end
+
 -- A new character: hand its movement over to the motor.
 local function configure(humanoid: Humanoid)
 	local character = humanoid.Parent :: Model
@@ -386,24 +412,11 @@ local function configure(humanoid: Humanoid)
 	resync(b, feet)
 	pendingTeleport = nil
 	body = b
+	if serverSpectator() or MovementController.spectating then
+		setSpectating(true) -- a new body keeps spectating
+	end
 end
 
-local function setSpectating(on: boolean)
-	local b = body
-	if not b then
-		return
-	end
-	MovementController.spectating = on
-	Players.LocalPlayer:SetAttribute("Spectating", on)
-	sprintLatch = false
-	local st = b.st
-	st.vx, st.vy, st.vz = 0, 0, 0
-	st.onGround = false
-	st.fallDistance = 0
-	b.px, b.py, b.pz = st.x, st.y, st.z
-	b.acc = 0
-	print(`[Spectator] {if on then "on (N to leave)" else "off"}`)
-end
 
 -- Every frame, before the camera: read the input, run the ticks, place the body.
 local function step(dt: number)
@@ -442,7 +455,9 @@ local function step(dt: number)
 	-- bow zooms in by up to 15 %; eased by half the remaining gap per tick
 	local camera = workspace.CurrentCamera
 	if camera then
-		local targetFov = (if MovementController.sprinting then BASE_FOV * 1.15 else BASE_FOV) * (1 - MovementController.bowPull * 0.15)
+		-- Java: the FOV modifier is scaled by "FOV Effects" (lerp from 1)
+		local modifier = (if MovementController.sprinting then 1.15 else 1) * (1 - MovementController.bowPull * 0.15)
+		local targetFov = baseFov * (1 + (modifier - 1) * fovEffects)
 		camera.FieldOfView += (targetFov - camera.FieldOfView) * (1 - 0.5 ^ (dt * 20))
 	end
 
@@ -591,6 +606,13 @@ local function step(dt: number)
 end
 
 function MovementController.init()
+	Settings.onChange(function(key: string, value: any)
+		if key == "fov" then
+			baseFov = value
+		elseif key == "fovEffects" then
+			fovEffects = value / 100
+		end
+	end)
 	UserInputService.InputBegan:Connect(function(input, processed)
 		if processed then
 			return
@@ -611,7 +633,9 @@ function MovementController.init()
 			if canStartSprint() then
 				sprintLatch = true -- gamepad: left stick click; needs forward movement
 			end
-		elseif input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_SPECTATOR] and RunService:IsStudio() then
+		elseif input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_SPECTATOR] and RunService:IsStudio()
+			and not serverSpectator()
+		then
 			-- Spectator mode (Studio only): fly through blocks, no collision, no interaction
 			setSpectating(not MovementController.spectating)
 		end
@@ -651,6 +675,12 @@ function MovementController.init()
 			task.spawn(configure, h)
 		end
 	end
+
+	Players.LocalPlayer:GetAttributeChangedSignal("Spectator"):Connect(function()
+		if serverSpectator() and not MovementController.spectating then
+			setSpectating(true)
+		end
+	end)
 
 	RunService:BindToRenderStep("RocraftMotor", Enum.RenderPriority.Input.Value + 1, step)
 end

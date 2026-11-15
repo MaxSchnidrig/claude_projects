@@ -38,7 +38,8 @@ local RC = SaveFormat.REGION_CHUNKS
 
 local Persistence = {}
 Persistence.mode = "world"
-Persistence.ownerId = 0
+Persistence.ownerId = 0 -- the world's owner (access, friends)
+Persistence.worldKey = "0" -- which of the owner's worlds (SaveFormat: world keys)
 Persistence.stats = { regionsLoaded = 0, regionsSaved = 0, regionsFailed = 0 }
 
 export type Meta = {
@@ -54,6 +55,7 @@ export type Meta = {
 	difficulty: string?, -- Gameplay/Difficulty name (nil = the default, Normal)
 	hardcore: boolean?, -- set when the world is created, never changes
 	friendsAt: number?, -- os.time() of the last friends change (lobby and world both write it)
+	played: number?, -- os.time() this world was last running (the world list is sorted by it)
 }
 
 local queue: DataStoreQueue.Queue
@@ -71,8 +73,9 @@ function Persistence.queue(): DataStoreQueue.Queue
 	return queue
 end
 
--- Which kind of server is this, and who owns the world? Yields (DataStore read, or waiting for
--- the first player in Studio).
+-- Which kind of server is this, and whose world? Yields (DataStore read, or waiting for the
+-- first player in Studio). Studio starts at the title screen too (Config.STUDIO_LOBBY): the lobby
+-- then opens the chosen world in this same server (Persistence.useWorld) instead of teleporting.
 function Persistence.resolve(): (string, number)
 	queue = DataStoreQueue.new(Persistence.storeName())
 	if RunService:IsStudio() then
@@ -81,23 +84,34 @@ function Persistence.resolve(): (string, number)
 			local first = Players:GetPlayers()[1] or Players.PlayerAdded:Wait()
 			owner = first.UserId
 		end
-		Persistence.mode, Persistence.ownerId = "world", owner
+		Persistence.ownerId = owner
+		Persistence.worldKey = SaveFormat.mainWorld(owner)
+		Persistence.mode = if Config.STUDIO_LOBBY then "lobby" else "world"
 	elseif game.PrivateServerId ~= "" and game.PrivateServerOwnerId ~= 0 then
-		Persistence.mode, Persistence.ownerId = "world", game.PrivateServerOwnerId -- VIP server
+		-- VIP server: the owner's first world
+		Persistence.mode, Persistence.ownerId = "world", game.PrivateServerOwnerId
+		Persistence.worldKey = SaveFormat.mainWorld(game.PrivateServerOwnerId)
 	elseif game.PrivateServerId ~= "" then
-		local ok, owner = queue:get(SaveFormat.serverKey(game.PrivateServerId))
-		if ok and typeof(owner) == "number" then
-			Persistence.mode, Persistence.ownerId = "world", owner
+		local ok, v = queue:get(SaveFormat.serverKey(game.PrivateServerId))
+		local owner, world = SaveFormat.decodeServer(if ok then v else nil)
+		if owner and world then
+			Persistence.mode, Persistence.ownerId, Persistence.worldKey = "world", owner, world
 		else
 			warn("[Persistence] reserved server without a known owner")
 			Persistence.mode = "world"
 			local first = Players:GetPlayers()[1] or Players.PlayerAdded:Wait()
 			Persistence.ownerId = first.UserId
+			Persistence.worldKey = SaveFormat.mainWorld(first.UserId)
 		end
 	else
 		Persistence.mode = "lobby"
 	end
 	return Persistence.mode, Persistence.ownerId
+end
+
+-- Studio's title screen picked a world to open in this server.
+function Persistence.useWorld(owner: number, world: string)
+	Persistence.mode, Persistence.ownerId, Persistence.worldKey = "world", owner, world
 end
 
 local function decodeMeta(v: any): Meta?
@@ -124,6 +138,7 @@ local function decodeMeta(v: any): Meta?
 		difficulty = if typeof(v.difficulty) == "string" then v.difficulty else nil,
 		hardcore = v.hardcore == true,
 		friendsAt = if typeof(v.friendsAt) == "number" then v.friendsAt else nil,
+		played = if typeof(v.played) == "number" then v.played else nil,
 	}
 end
 Persistence.decodeMeta = decodeMeta
@@ -143,6 +158,7 @@ function Persistence.encodeMeta(m: Meta): any
 		difficulty = m.difficulty,
 		hardcore = if m.hardcore then true else nil,
 		friendsAt = m.friendsAt,
+		played = m.played,
 	}
 end
 
@@ -156,7 +172,7 @@ end
 
 -- Load (or create) the world meta. Yields.
 function Persistence.loadWorld(): Meta
-	local ok, v = queue:get(SaveFormat.metaKey(Persistence.ownerId))
+	local ok, v = queue:get(SaveFormat.metaKey(Persistence.worldKey))
 	if not ok then
 		-- can't read the world: refuse to run it rather than overwrite it
 		for _, p in Players:GetPlayers() do
@@ -175,7 +191,7 @@ function Persistence.loadWorld(): Meta
 		savedRegions[r] = true
 	end
 	WorldSettings.load(meta, Persistence.ownerId)
-	print(`[Persistence] world of {Persistence.ownerId}: seed {meta.seed}, {#meta.regions} saved regions, saving {if queue:isPersistent() then "on" else "OFF"}`)
+	print(`[Persistence] world {Persistence.worldKey} of {Persistence.ownerId}: seed {meta.seed}, {#meta.regions} saved regions, saving {if queue:isPersistent() then "on" else "OFF"}`)
 	return meta
 end
 
@@ -195,7 +211,7 @@ local installing = false
 
 local function loadRegion(rx: number, rz: number, rid: string)
 	regionState[rid] = "loading"
-	local ok, v = queue:get(SaveFormat.regionKey(Persistence.ownerId, rx, rz))
+	local ok, v = queue:get(SaveFormat.regionKey(Persistence.worldKey, rx, rz))
 	if not ok then
 		warn(`[Persistence] region {rid} could not be loaded; it will not be saved this session`)
 		regionState[rid] = "failed"
@@ -295,7 +311,7 @@ local function markRegion(rx: number, rz: number)
 		savedRegions[rid] = true
 		metaDirty = true
 	end
-	queue:markDirty(SaveFormat.regionKey(Persistence.ownerId, rx, rz), regionProducer(rx, rz))
+	queue:markDirty(SaveFormat.regionKey(Persistence.worldKey, rx, rz), regionProducer(rx, rz))
 end
 
 ---------------------------------------------------------------------------------------------
@@ -305,7 +321,7 @@ end
 local DayNightService: any
 
 local function markMeta()
-	queue:markDirty(SaveFormat.metaKey(Persistence.ownerId), function(old: any): any
+	queue:markDirty(SaveFormat.metaKey(Persistence.worldKey), function(old: any): any
 		-- merge: the lobby owns code/psid/friends; this server owns time and the region index
 		local prev = decodeMeta(old)
 		local regions = {}
@@ -339,6 +355,7 @@ local function markMeta()
 			name = (prev and prev.name) or meta.name,
 			difficulty = WorldSettings.difficulty(),
 			hardcore = meta.hardcore or (prev ~= nil and prev.hardcore),
+			played = os.time(),
 		})
 	end)
 	metaDirty = false
@@ -369,6 +386,7 @@ local function playerProducer(p: Player): (any) -> any
 		yaw = if lp then lp.yaw else 0,
 		bed = require(script.Parent.Parent.Player.BedService).spawnOf(p),
 		sinceRest = require(script.Parent.Parent.Player.BedService).sinceRest(p),
+		spectator = SurvivalService.isSpectator(p),
 	}
 	local encoded = SaveFormat.encodePlayer(state)
 	return function(_old: any): any
@@ -378,7 +396,7 @@ end
 
 local function savePlayer(p: Player)
 	if loadedPlayers[p] then
-		queue:markDirty(SaveFormat.playerKey(Persistence.ownerId, p.UserId), playerProducer(p))
+		queue:markDirty(SaveFormat.playerKey(Persistence.worldKey, p.UserId), playerProducer(p))
 	end
 end
 
@@ -386,7 +404,7 @@ local function canJoin(p: Player): (boolean, string?)
 	if p.UserId == Persistence.ownerId or RunService:IsStudio() then
 		return true, nil
 	end
-	local ok, v = queue:get(SaveFormat.metaKey(Persistence.ownerId))
+	local ok, v = queue:get(SaveFormat.metaKey(Persistence.worldKey))
 	local m = if ok then decodeMeta(v) else nil
 	local friends, friendsAt = WorldSettings.friends()
 	if m and (m.friendsAt or 0) > friendsAt then
@@ -411,7 +429,7 @@ local function onPlayer(p: Player)
 		p:Kick(why)
 		return
 	end
-	local ok, v = queue:get(SaveFormat.playerKey(Persistence.ownerId, p.UserId))
+	local ok, v = queue:get(SaveFormat.playerKey(Persistence.worldKey, p.UserId))
 	if not p.Parent then
 		return
 	end
@@ -423,6 +441,9 @@ local function onPlayer(p: Player)
 	if state then
 		InventoryService.restore(p, state.slots, state.selected)
 		require(script.Parent.Parent.Player.BedService).restore(p, state.bed, state.sinceRest or 0)
+		if state.spectator and WorldSettings.isHardcore() then
+			SurvivalService.setSpectator(p, true)
+		end
 		SurvivalService.setRestore(p, {
 			health = state.health,
 			food = state.food,
@@ -456,7 +477,7 @@ local function publishActive(remove: boolean?)
 		if remove then
 			map:RemoveAsync(tostring(Persistence.ownerId))
 		else
-			map:SetAsync(tostring(Persistence.ownerId), { players = #Players:GetPlayers() }, 150)
+			map:SetAsync(tostring(Persistence.ownerId), { players = #Players:GetPlayers(), world = Persistence.worldKey }, 150)
 		end
 	end)
 end
@@ -560,6 +581,17 @@ function Persistence.startWorld(services: { [string]: any })
 		queue:flush(os.clock() + 25)
 		publishActive(true)
 	end)
+end
+
+-- Save one player now (the pause menu's "Save and Quit"). Yields until written (or failed).
+function Persistence.saveNow(p: Player): boolean
+	if not loadedPlayers[p] then
+		return false
+	end
+	savePlayer(p)
+	markMeta()
+	queue:flush(os.clock() + 15)
+	return queue.stats.pending == 0
 end
 
 function Persistence.worldMeta(): Meta

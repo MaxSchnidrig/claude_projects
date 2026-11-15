@@ -171,7 +171,11 @@ local function onUse(p: Player, a: any)
 end
 
 function ItemUseService.init()
-	Remotes.get("UseItem").OnServerEvent:Connect(onUse)
+	Remotes.get("UseItem").OnServerEvent:Connect(function(p: Player, ...)
+		if p:GetAttribute("Spectator") ~= true then -- spectators can't use items
+			onUse(p, ...)
+		end
+	end)
 end
 
 return ItemUseService

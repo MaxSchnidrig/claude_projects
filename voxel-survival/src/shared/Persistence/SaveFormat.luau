@@ -7,7 +7,14 @@
 --                               the chests/furnaces in it
 --   w:<ownerId>:p:<userId>      a player's state in this world: inventory, health, hunger, air,
 --                               position (inventories are per world, like separate save files)
---   srv:<privateServerId>       which owner a reserved server belongs to
+--   srv:<privateServerId>       which world a reserved server runs: { owner, world } (older saves:
+--                               just the owner's id, meaning their first world)
+--   u:<ownerId>:worlds          the owner's world list (Phase 8d): { next, worlds = { worldKey } }
+--   u:<userId>:settings         a player's own options (render distance, FOV, volumes, ...)
+--
+-- A world is named by its world key: the owner's first world is just "<ownerId>" (so worlds
+-- saved before the world list keep their keys), later ones "<ownerId>_<n>". The w:<...> keys
+-- above take that world key.
 --
 -- Every record carries `v` (format version) so later phases can migrate old saves.
 
@@ -51,16 +58,141 @@ SaveFormat.REGION_CHUNKS = 4 -- region = 4 x 4 chunks (64 x 64 blocks)
 
 export type Stack = { item: string, count: number, durability: number? }
 
-function SaveFormat.metaKey(ownerId: number): string
-	return `w:{ownerId}:meta`
+-- `world`: a world key (see the header); a plain owner id means that owner's first world.
+function SaveFormat.metaKey(world: string | number): string
+	return `w:{world}:meta`
 end
 
-function SaveFormat.regionKey(ownerId: number, rx: number, rz: number): string
-	return `w:{ownerId}:r:{rx}:{rz}`
+function SaveFormat.regionKey(world: string | number, rx: number, rz: number): string
+	return `w:{world}:r:{rx}:{rz}`
 end
 
-function SaveFormat.playerKey(ownerId: number, userId: number): string
-	return `w:{ownerId}:p:{userId}`
+function SaveFormat.playerKey(world: string | number, userId: number): string
+	return `w:{world}:p:{userId}`
+end
+
+-- World list -----------------------------------------------------------------------------------
+
+SaveFormat.MAX_WORLDS = 10
+SaveFormat.MAX_NAME = 32
+
+function SaveFormat.worldsKey(ownerId: number): string
+	return `u:{ownerId}:worlds`
+end
+
+function SaveFormat.settingsKey(userId: number): string
+	return `u:{userId}:settings`
+end
+
+function SaveFormat.mainWorld(ownerId: number): string
+	return tostring(ownerId)
+end
+
+-- Is `key` one of this owner's world keys? (Never trust a key a client sends.)
+function SaveFormat.isOwnWorld(ownerId: number, key: any): boolean
+	if typeof(key) ~= "string" then
+		return false
+	end
+	local main = tostring(ownerId)
+	if key == main then
+		return true
+	end
+	local n = string.match(key, "^" .. main .. "_(%d+)$")
+	return n ~= nil and #n <= 6
+end
+
+-- The owner of a world key.
+function SaveFormat.ownerOf(key: string): number?
+	return tonumber(string.match(key, "^(%d+)"))
+end
+
+export type WorldList = { next: number, worlds: { string } }
+
+-- A stored list (or nothing). `hasMain`: the owner's first world exists (a world saved before
+-- world lists): it becomes the list's first entry.
+function SaveFormat.decodeWorldList(v: any, ownerId: number, hasMain: boolean): WorldList
+	local out: WorldList = { next = 2, worlds = {} }
+	if typeof(v) == "table" and typeof(v.worlds) == "table" then
+		local seen = {}
+		for _, key in v.worlds do
+			if SaveFormat.isOwnWorld(ownerId, key) and not seen[key] and #out.worlds < SaveFormat.MAX_WORLDS then
+				seen[key] = true
+				table.insert(out.worlds, key)
+			end
+		end
+		if typeof(v.next) == "number" and v.next % 1 == 0 and v.next >= 2 then
+			out.next = v.next
+		end
+		return out
+	end
+	if hasMain then
+		out.worlds = { SaveFormat.mainWorld(ownerId) }
+	end
+	return out
+end
+
+function SaveFormat.encodeWorldList(l: WorldList): any
+	return { v = SaveFormat.VERSION, next = l.next, worlds = table.clone(l.worlds) }
+end
+
+-- A new world's key; advances l.next.
+function SaveFormat.newWorldKey(l: WorldList, ownerId: number): string
+	local key = `{ownerId}_{l.next}`
+	l.next += 1
+	return key
+end
+
+-- srv:<psid> record -> owner and world key.
+function SaveFormat.decodeServer(v: any): (number?, string?)
+	if typeof(v) == "number" then
+		return v, SaveFormat.mainWorld(v)
+	elseif typeof(v) == "table" and typeof(v.owner) == "number" and SaveFormat.isOwnWorld(v.owner, v.world) then
+		return v.owner, v.world
+	end
+	return nil, nil
+end
+
+-- A world name as typed: trimmed, one line, at most MAX_NAME characters; nil if empty.
+function SaveFormat.cleanName(text: any): string?
+	if typeof(text) ~= "string" then
+		return nil
+	end
+	local t = string.gsub(text, "[%c]", " ")
+	t = string.match(t, "^%s*(.-)%s*$") or ""
+	if utf8.len(t) == nil then
+		return nil
+	end
+	if (utf8.len(t) :: number) > SaveFormat.MAX_NAME then
+		t = string.sub(t, 1, utf8.offset(t, SaveFormat.MAX_NAME + 1) - 1)
+	end
+	return if t == "" then nil else t
+end
+
+-- Java's world seed from the "Seed" box: a whole number is used as is, any other text becomes
+-- its String.hashCode(); stored as 0 .. 2^32 - 1. nil for an empty box (a random seed).
+function SaveFormat.seedFromText(text: any): number?
+	if typeof(text) ~= "string" then
+		return nil
+	end
+	local t = string.match(text, "^%s*(.-)%s*$") or ""
+	if t == "" then
+		return nil
+	end
+	local n = tonumber(t)
+	if n and n % 1 == 0 and string.match(t, "^%-?%d+$") then
+		return n % 4294967296
+	end
+	local h = 0
+	for _, c in utf8.codes(t) do
+		if c > 0xFFFF then -- Java hashes UTF-16 code units: a surrogate pair
+			local v = c - 0x10000
+			h = (h * 31 + 0xD800 + v // 0x400) % 4294967296
+			h = (h * 31 + 0xDC00 + v % 0x400) % 4294967296
+		else
+			h = (h * 31 + c) % 4294967296
+		end
+	end
+	return h
 end
 
 function SaveFormat.serverKey(privateServerId: string): string
@@ -242,6 +374,7 @@ export type PlayerState = {
 	yaw: number,
 	bed: Vector3?, -- respawn point: the bed's head block (Phase 8c)
 	sinceRest: number?, -- ticks since the player last slept (the insomnia counter)
+	spectator: boolean?, -- died in a Hardcore world: only watches from now on (Phase 8d)
 }
 
 function SaveFormat.encodePlayer(p: PlayerState): { [string]: any }
@@ -258,6 +391,7 @@ function SaveFormat.encodePlayer(p: PlayerState): { [string]: any }
 		yaw = p.yaw,
 		bed = if p.bed then { p.bed.X, p.bed.Y, p.bed.Z } else nil,
 		rest = p.sinceRest,
+		spec = if p.spectator then true else nil,
 	}
 end
 
@@ -293,6 +427,7 @@ function SaveFormat.decodePlayer(record: any, inventorySlots: number): PlayerSta
 			then Vector3.new(math.floor(record.bed[1]), math.floor(record.bed[2]), math.floor(record.bed[3]))
 			else nil,
 		sinceRest = num(record.rest, 0, 0, 1e9),
+		spectator = record.spec == true,
 	}
 end
 

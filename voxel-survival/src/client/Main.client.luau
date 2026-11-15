@@ -32,11 +32,19 @@ if mode == "lobby" then
 		system("CoreGuiSetup", function()
 			return client.UI.CoreGuiSetup
 		end),
+		system("Settings", function()
+			return client.Player.Settings
+		end),
 		system("LobbyUI", function()
 			return client.Lobby.LobbyUI
 		end),
 	})
-	return
+	-- A live lobby teleports you away. In Studio the server opens the world right here: then the
+	-- title screen closes and the game starts.
+	while ReplicatedStorage:GetAttribute("ServerMode") ~= "world" do
+		ReplicatedStorage:GetAttributeChangedSignal("ServerMode"):Wait()
+	end
+	(require(client.Lobby.LobbyUI) :: any).close()
 end
 
 Startup.run("client", {
@@ -49,6 +57,9 @@ Startup.run("client", {
 	end),
 	system("CoreGuiSetup", function()
 		return client.UI.CoreGuiSetup
+	end),
+	system("Settings", function()
+		return client.Player.Settings
 	end),
 	system("SurvivalClient", function()
 		return client.Survival.SurvivalClient
@@ -135,6 +146,9 @@ Startup.run("client", {
 			})
 		end,
 	},
+	system("PauseMenu", function()
+		return client.UI.PauseMenu
+	end),
 	system("DebugOverlay", function()
 		return client.Debug.DebugOverlay
 	end),

@@ -33,6 +33,14 @@ local eatBar: Frame
 local eatFill: Frame
 local deathScreen: Frame
 local deathCause: TextLabel
+local deathTitle: TextLabel
+local respawnButton: TextButton
+local titleButton: TextButton
+local hud: Frame
+
+local function isHardcore(): boolean
+	return game:GetService("ReplicatedStorage"):GetAttribute("Hardcore") == true
+end
 
 local function pipRow(parent: Instance, count: number, color: Color3, round: boolean, alignRight: boolean): (Frame, { Pip })
 	local row = Instance.new("Frame")
@@ -91,6 +99,11 @@ local function showDeath(on: boolean)
 	CameraController.mouseUnlocked = on
 	if on then
 		deathCause.Text = `{Players.LocalPlayer.DisplayName} {SurvivalClient.deathCause}`
+		-- Hardcore (Java): "Game over!", and you can only watch from now on
+		local hc = isHardcore()
+		deathTitle.Text = if hc then "Game Over!" else "You died"
+		respawnButton.Text = if hc then "Spectate World" else "Respawn"
+		titleButton.Visible = hc
 	end
 end
 
@@ -110,7 +123,7 @@ function SurvivalHUD.init()
 	gui.ResetOnSpawn = false
 	gui.DisplayOrder = 4
 
-	local hud = Instance.new("Frame")
+	hud = Instance.new("Frame")
 	hud.BackgroundTransparency = 1
 	hud.AnchorPoint = Vector2.new(0.5, 1)
 	hud.Position = UDim2.new(0.5, 0, 1, ROW_Y)
@@ -185,6 +198,7 @@ function SurvivalHUD.init()
 	title.TextStrokeTransparency = 0.5
 	title.Text = "You died"
 	title.Parent = deathScreen
+	deathTitle = title
 	deathCause = Instance.new("TextLabel")
 	deathCause.BackgroundTransparency = 1
 	deathCause.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -210,6 +224,17 @@ function SurvivalHUD.init()
 	respawn.Activated:Connect(function()
 		SurvivalClient.respawn()
 	end)
+	respawnButton = respawn
+	titleButton = respawn:Clone()
+	titleButton.Position = UDim2.fromScale(0.5, 0.66)
+	titleButton.Text = "Title Screen"
+	titleButton.Visible = false
+	titleButton.Parent = deathScreen
+	titleButton.Activated:Connect(function()
+		-- the world keeps your spectator state; this goes back to the title screen
+		game:GetService("ReplicatedStorage"):WaitForChild("Shared")
+		require(game:GetService("ReplicatedStorage").Shared.Net.Remotes).get("Menu"):FireServer({ type = "quit" })
+	end)
 
 	gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
 	deathGui.Parent = gui.Parent
@@ -225,7 +250,24 @@ function SurvivalHUD.init()
 		end
 	end)
 
+	-- Hardcore hearts: our own mark, a gold rim around each heart
+	local function hardcoreLook()
+		local hc = isHardcore()
+		for _, p in healthPips do
+			local stroke = p.bg:FindFirstChildOfClass("UIStroke")
+			if stroke then
+				stroke.Color = if hc then Color3.fromRGB(240, 200, 80) else Color3.new(0, 0, 0)
+				stroke.Thickness = if hc then 2 else 1
+				stroke.Transparency = if hc then 0 else 0.3
+			end
+		end
+	end
+	hardcoreLook()
+	game:GetService("ReplicatedStorage"):GetAttributeChangedSignal("Hardcore"):Connect(hardcoreLook)
+
 	RunService.RenderStepped:Connect(function()
+		-- spectators have no health or hunger to show
+		hud.Visible = Players.LocalPlayer:GetAttribute("Spectator") ~= true
 		local h = humanoid()
 		setPips(healthPips, if h then math.ceil(h.Health) else 0, false)
 		setPips(hungerPips, SurvivalClient.food, true)

@@ -26,6 +26,24 @@ local MobDefs = require(Shared.Mobs.MobDefs)
 local BS = Config.BLOCK_SIZE
 local AudioClient = {}
 
+-- Volume sliders (Settings): one SoundGroup per category, its volume = category x master.
+local SettingsSchema = require(Shared.Gameplay.SettingsSchema)
+local CATEGORIES = { "music", "blocks", "hostile", "friendly", "players", "ambient" }
+local groups: { [string]: SoundGroup } = {}
+local volume: { [string]: number } = { master = 1 }
+for _, c in CATEGORIES do
+	local g = Instance.new("SoundGroup")
+	g.Name = "Rocraft_" .. c
+	g.Parent = SoundService
+	groups[c] = g
+	volume[c] = 1
+end
+local function applyVolumes()
+	for _, c in CATEGORIES do
+		groups[c].Volume = volume[c] * volume.master
+	end
+end
+
 local holder: Part
 local function group(id: number?): string
 	local def = id and BlockRegistry.byId[id]
@@ -41,6 +59,7 @@ function AudioClient.play(name: string, pos: Vector3?, volumeScale: number?): bo
 	local s = Instance.new("Sound")
 	s.SoundId = e.id
 	s.Volume = e.volume * (volumeScale or 1)
+	s.SoundGroup = groups[SettingsSchema.soundCategory(name)]
 	local p = e.pitch
 	if p then
 		s.PlaybackSpeed = p[1] + math.random() * (p[2] - p[1])
@@ -83,6 +102,12 @@ local function blockCenter(x: number, y: number, z: number): Vector3
 end
 
 function AudioClient.init(deps: { [string]: any })
+	require(script.Parent.Parent.Player.Settings).onChange(function(key: string, value: any)
+		if volume[key] ~= nil then
+			volume[key] = value / 100
+			applyVolumes()
+		end
+	end)
 	holder = Instance.new("Part")
 	holder.Name = "SoundHolder"
 	holder.Anchored = true
@@ -276,6 +301,7 @@ function AudioClient.init(deps: { [string]: any })
 			local s = Instance.new("Sound")
 			s.SoundId = track.id
 			s.Volume = m.volume
+			s.SoundGroup = groups.music
 			s.Parent = SoundService
 			s:Play()
 			s.Ended:Wait()

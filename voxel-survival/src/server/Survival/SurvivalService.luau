@@ -66,6 +66,8 @@ type State = {
 
 local SurvivalService = {}
 local states: { [Player]: State } = {}
+-- Hardcore: players who died in this world. They come back only as spectators (Java).
+local spectators: { [Player]: boolean } = {}
 -- Saved values to apply on the player's first spawn this session (Persistence).
 type Restore = { health: number, food: number, saturation: number, exhaustion: number, air: number }
 local pendingRestore: { [Player]: Restore } = {}
@@ -154,7 +156,7 @@ end
 function SurvivalService.damage(p: Player, amount: number, cause: string, bypass: boolean?, opts: DamageOpts?): (number, boolean)
 	local humanoid = humanoidOf(p)
 	local s = state(p)
-	if not humanoid or s.dead or humanoid.Health <= 0 or amount <= 0 then
+	if not humanoid or s.dead or humanoid.Health <= 0 or amount <= 0 or spectators[p] then
 		return 0, false
 	end
 	if opts and opts.scales then
@@ -238,7 +240,7 @@ end
 
 local function stepPlayer(p: Player, s: State, dt: number)
 	local humanoid, root = humanoidOf(p)
-	if not humanoid or not root or humanoid.Health <= 0 or s.dead then
+	if not humanoid or not root or humanoid.Health <= 0 or s.dead or spectators[p] then
 		return
 	end
 	local pos = root.Position
@@ -435,8 +437,44 @@ local function onAction(p: Player, a: any)
 		end
 	elseif t == "respawn" then
 		if s.dead then
-			SpawnService.respawn(p)
+			SpawnService.respawn(p) -- (Hardcore: comes back as a spectator, see onCharacter)
 		end
+	end
+end
+
+-- Spectator (Hardcore after death): no damage, hunger or pickups, can't touch the world, mobs
+-- ignore you, and others can't see you. The attribute is what the rest of the server checks.
+local function applySpectator(p: Player, character: Model?)
+	p:SetAttribute("Spectator", true)
+	if character then
+		for _, d in character:GetDescendants() do
+			if d:IsA("BasePart") then
+				d.Transparency = 1
+				d.CanQuery = false
+				d.CanTouch = false
+			elseif d:IsA("Decal") then
+				d.Transparency = 1
+			end
+		end
+		character.DescendantAdded:Connect(function(d)
+			if d:IsA("BasePart") then
+				d.Transparency = 1
+			elseif d:IsA("Decal") then
+				d.Transparency = 1
+			end
+		end)
+	end
+end
+
+function SurvivalService.isSpectator(p: Player): boolean
+	return spectators[p] == true
+end
+
+-- From the save (Persistence): this player already died in this Hardcore world.
+function SurvivalService.setSpectator(p: Player, on: boolean)
+	spectators[p] = if on then true else nil
+	if on then
+		applySpectator(p, p.Character)
 	end
 end
 
@@ -465,9 +503,15 @@ local function onCharacter(p: Player, character: Model)
 		s.hunger.exhaustion = r.exhaustion
 		s.air = r.air
 	end
+	if spectators[p] then
+		applySpectator(p, character)
+	end
 	humanoid.Died:Connect(function()
 		if s.dead then
 			return
+		end
+		if WorldSettingsService.isHardcore() then
+			spectators[p] = true -- one life: from now on this player only watches (saved)
 		end
 		s.dead = true
 		s.diedAt = os.clock()
@@ -542,6 +586,7 @@ function SurvivalService.init()
 		task.delay(30, function() -- kept a moment longer so Persistence can save it
 			states[p] = nil
 			pendingRestore[p] = nil
+			spectators[p] = nil
 		end)
 	end)
 

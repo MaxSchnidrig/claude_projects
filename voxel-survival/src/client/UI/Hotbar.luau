@@ -258,6 +258,13 @@ end
 function Hotbar.init()
 	step("init")
 	buildGui()
+	-- spectators (Hardcore after death) have no hotbar
+	local player = game:GetService("Players").LocalPlayer
+	local function spectator()
+		bar.Visible = player:GetAttribute("Spectator") ~= true
+	end
+	spectator()
+	player:GetAttributeChangedSignal("Spectator"):Connect(spectator)
 
 	UserInputService.InputBegan:Connect(function(input, processed)
 		if processed then

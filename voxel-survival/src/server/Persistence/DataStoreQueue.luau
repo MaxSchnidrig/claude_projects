@@ -146,6 +146,33 @@ function DataStoreQueue.write(self: Queue, key: string, fn: (any) -> any, deadli
 	return false
 end
 
+-- Delete one key now (yields; deleting a world). Returns true on success.
+function DataStoreQueue.remove(self: Queue, key: string): boolean
+	self.dirty[key] = nil
+	if self.memory then
+		self.memory[key] = nil
+		return true
+	end
+	local store = self.store :: GlobalDataStore
+	for attempt = 1, MAX_ATTEMPTS do
+		waitBudget(Enum.DataStoreRequestType.SetIncrementAsync)
+		local ok, err = pcall(function()
+			store:RemoveAsync(key)
+		end)
+		self.stats.writes += 1
+		if ok then
+			return true
+		end
+		self.stats.failures += 1
+		self.stats.lastError = tostring(err)
+		warn(`[Persistence] delete {key} failed (attempt {attempt}): {err}`)
+		if attempt < MAX_ATTEMPTS then
+			backoff(attempt)
+		end
+	end
+	return false
+end
+
 -- Write all dirty keys (yields). Keys written in parallel threads so one slow key (6 s rule)
 -- doesn't hold up the rest; returns when all are done or the deadline passes.
 function DataStoreQueue.flush(self: Queue, deadline: number?)

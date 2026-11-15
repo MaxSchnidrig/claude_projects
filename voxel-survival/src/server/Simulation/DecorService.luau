@@ -362,6 +362,9 @@ function DecorService.init()
 		if typeof(m) ~= "table" then
 			return
 		end
+		if m.type ~= "sync" and player:GetAttribute("Spectator") == true then
+			return -- spectators only watch
+		end
 		if m.type == "sync" then
 			sendAll(player)
 			return

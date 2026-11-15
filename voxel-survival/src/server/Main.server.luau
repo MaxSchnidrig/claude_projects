@@ -22,12 +22,30 @@ local Persistence = require(server.Persistence.Persistence)
 local mode = Persistence.resolve()
 ReplicatedStorage:SetAttribute("ServerMode", mode)
 if mode == "lobby" then
+	-- Studio: the title screen opens the chosen world right here (no teleporting in Studio)
+	local inPlace = game:GetService("RunService"):IsStudio()
+	local chosen = Instance.new("BindableEvent")
 	Startup.run("server", {
+		{ name = "SettingsService", run = function()
+			local SettingsService = require(server.Player.SettingsService) :: any
+			SettingsService.started = true
+			SettingsService.init()
+		end },
 		{ name = "LobbyService", run = function()
-			require(server.Lobby.LobbyService).init()
+			require(server.Lobby.LobbyService).init(if inPlace
+				then function(_p: Player, owner: number, world: string)
+					Persistence.useWorld(owner, world)
+					chosen:Fire()
+				end
+				else nil)
 		end },
 	})
-	return
+	if not inPlace then
+		return
+	end
+	chosen.Event:Wait()
+	require(server.Lobby.LobbyService).close()
+	ReplicatedStorage:SetAttribute("ServerMode", "world")
 end
 
 local meta = Persistence.loadWorld()
@@ -57,6 +75,13 @@ Startup.run("server", {
 	end },
 	{ name = "BlockEntityService", run = function()
 		require(server.World.BlockEntityService).init()
+	end },
+	{ name = "SettingsService", run = function()
+		local SettingsService = require(server.Player.SettingsService) :: any
+		if not SettingsService.started then
+			SettingsService.started = true
+			SettingsService.init()
+		end
 	end },
 	{ name = "WorldSettingsService", run = function()
 		require(server.World.WorldSettingsService).init()
@@ -106,6 +131,9 @@ Startup.run("server", {
 	end },
 	{ name = "BedService", run = function()
 		require(server.Player.BedService).init()
+	end },
+	{ name = "MenuService", run = function()
+		require(server.Player.MenuService).init()
 	end },
 	{ name = "Persistence", run = function()
 		Persistence.startWorld({

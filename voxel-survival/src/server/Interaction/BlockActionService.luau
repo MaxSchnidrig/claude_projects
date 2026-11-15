@@ -443,6 +443,9 @@ function BlockActionService.init()
 		if typeof(action) ~= "string" or not isInt(x) or not isInt(y) or not isInt(z) then
 			return
 		end
+		if player:GetAttribute("Spectator") == true then
+			return correct(player, x, y, z, "spectator") -- spectators can't touch the world
+		end
 		local st = state(player)
 		if not allow(st) then
 			return correct(player, x, y, z, "rate limited")

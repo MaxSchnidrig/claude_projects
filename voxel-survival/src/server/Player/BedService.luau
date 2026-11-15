@@ -198,7 +198,7 @@ end
 function BedService.init()
 	MobService = require(script.Parent.Parent.Mobs.MobService)
 	remote().OnServerEvent:Connect(function(p: Player, m: any)
-		if typeof(m) ~= "table" then
+		if typeof(m) ~= "table" or p:GetAttribute("Spectator") == true then
 			return
 		end
 		if m.type == "use" and typeof(m.x) == "number" and typeof(m.y) == "number" and typeof(m.z) == "number" then

@@ -726,6 +726,9 @@ local function onAction(player: Player, a: any)
 	if typeof(a) ~= "table" or typeof(a.type) ~= "string" then
 		return
 	end
+	if player:GetAttribute("Spectator") == true and a.type ~= "close" then
+		return -- spectators have no inventory to use
+	end
 	local i = inv(player)
 	local t = a.type
 	if t == "click" then

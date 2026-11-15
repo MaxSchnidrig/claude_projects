@@ -105,7 +105,7 @@ local function update(dt: number)
 		local character = p.Character
 		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-		if root and humanoid and humanoid.Health > 0 then
+		if root and humanoid and humanoid.Health > 0 and p:GetAttribute("Spectator") ~= true then
 			table.insert(roots, { player = p, pos = root.Position })
 		end
 	end

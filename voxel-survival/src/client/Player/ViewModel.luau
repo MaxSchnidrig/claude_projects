@@ -39,6 +39,7 @@ local SWING = 6 / 20
 local equipT = 1
 local walkDist = 0
 local bobAmount = 0
+local bobbing = true -- Settings: "bobbing"
 
 local function part(size: Vector3, color: Color3, material: Enum.Material?): Part
 	local p = Instance.new("Part")
@@ -140,6 +141,11 @@ function ViewModel.swing()
 end
 
 function ViewModel.init(swingEvent: BindableEvent)
+	require(script.Parent.Settings).onChange(function(key: string, value: any)
+		if key == "bobbing" then
+			bobbing = value
+		end
+	end)
 	model = Instance.new("Model")
 	model.Name = "ViewModel"
 	arm = part(Vector3.new(0.42, 0.42, 1.25), armColor())
@@ -174,7 +180,7 @@ function ViewModel.init(swingEvent: BindableEvent)
 		local v = MovementController.velocity -- blocks/tick (the motor moves the body)
 		local horiz = Vector3.new(v.X, 0, v.Z).Magnitude
 		local grounded = MovementController.onGround
-		local target = if grounded then math.min(0.1, horiz) else 0
+		local target = if grounded and bobbing then math.min(0.1, horiz) else 0
 		bobAmount += (target - bobAmount) * (1 - 0.6 ^ (dt * 20))
 		walkDist += horiz * 0.6 * dt * 20
 		local f = walkDist * math.pi

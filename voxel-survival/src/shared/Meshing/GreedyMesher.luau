@@ -326,15 +326,25 @@ end
 
 -- Java-like light curve (level 0..15 -> 0..1) with the default brightness setting's lift, and a
 -- small floor so pitch-black caves still show a hint of shape.
+-- `gamma` is Java's Brightness option (0 Moody .. 1 Bright, default 0.5): the curve is
+-- lerp(base, 1 - (1 - base)^4, gamma).
 local CURVE = table.create(16 * 4 + 1, 0)
-for i = 0, 60 do
-	local l = i / 4 -- quarter-level steps (corner averages)
-	local f = l / 15
-	local base = f / (4 - 3 * f)
-	local v = base * 0.5 + (1 - (1 - base) ^ 4) * 0.5
-	CURVE[i + 1] = 0.035 + 0.965 * v
+local function buildCurve(gamma: number)
+	for i = 0, 60 do
+		local l = i / 4 -- quarter-level steps (corner averages)
+		local f = l / 15
+		local base = f / (4 - 3 * f)
+		local v = base * (1 - gamma) + (1 - (1 - base) ^ 4) * gamma
+		CURVE[i + 1] = 0.035 + 0.965 * v
+	end
 end
+buildCurve(0.5)
 CURVE_REF = CURVE
+
+-- The Brightness option (0..1). Already-built terrain keeps its old light until it is rebuilt.
+function GreedyMesher.setBrightness(gamma: number)
+	buildCurve(math.clamp(gamma, 0, 1))
+end
 -- Ambient occlusion factor by number of occluders around a corner (0 = fully enclosed).
 local AO = { [0] = 0.5, [1] = 0.66, [2] = 0.82, [3] = 1.0 }
 -- corner -> (sign along u, sign along v), matching quadCorners order

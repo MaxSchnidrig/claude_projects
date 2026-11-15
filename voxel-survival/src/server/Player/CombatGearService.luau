@@ -274,7 +274,11 @@ function CombatGearService.init()
 	MobService = require(script.Parent.Parent.Mobs.MobService)
 	SurvivalService.setGear({ block = block, armor = armor })
 	InventoryService.onArmorChanged(refreshLook)
-	Remotes.get("Gear").OnServerEvent:Connect(onGear)
+	Remotes.get("Gear").OnServerEvent:Connect(function(p: Player, ...)
+		if p:GetAttribute("Spectator") ~= true then
+			onGear(p, ...)
+		end
+	end)
 	-- arrows shot by players can be picked up again once they're in the ground
 	MobService.setArrowPickup(function(p: Player): boolean
 		return InventoryService.add(p, "arrow", 1) == 0

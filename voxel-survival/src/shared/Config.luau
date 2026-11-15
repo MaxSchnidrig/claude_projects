@@ -144,6 +144,7 @@ Config.ARMOR_SLOT = { head = 37, chest = 38, legs = 39, feet = 40 }
 Config.OFFHAND_SLOT = 41
 Config.PLAYER_SLOTS = 41 -- everything a player carries (saves, syncs)
 Config.KEY_SWAP_HANDS = "F"
+Config.KEY_PAUSE = "P" -- the pause menu (Esc belongs to Roblox's own menu); also the button at the top
 -- Items given on spawn while testing in Studio (ignored in live games).
 Config.STUDIO_STARTER_KIT = {
 	{ "wooden_pickaxe", 1 },
@@ -189,6 +190,7 @@ Config.MAX_BLOCK_TICKS_PER_TICK = 3000 -- scheduled block ticks per game tick (f
 Config.DATASTORE_NAME = "RocraftWorlds_v1" -- Studio uses DATASTORE_NAME .. "_Studio" (never live data)
 Config.AUTOSAVE_SECONDS = 60
 Config.STUDIO_OWNER_ID = 0 -- 0: in Studio the first player to join owns the world
+Config.STUDIO_LOBBY = true -- Studio starts at the title screen (world list); false: straight into the first world
 Config.ACTIVE_WORLDS_MAP = "RocraftActiveWorlds" -- MemoryStore: worlds running now (for friends)
 
 -- Debug -------------------------------------------------------------------------------------
