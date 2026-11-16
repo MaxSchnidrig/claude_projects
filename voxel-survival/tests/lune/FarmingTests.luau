@@ -365,6 +365,226 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		Loader.forget("src/server/")
 	end)
 
+	test("9b placement and shapes: sugar cane by water, cactus alone on sand, stems, saplings", function()
+		local SAND, CANE, CACTUS = id("sand"), id("sugar_cane"), id("cactus")
+		local cells = { ["0,0,0"] = SAND, ["1,0,0"] = WATER, ["5,0,0"] = SAND, ["9,0,0"] = SAND, ["10,1,0"] = STONE,
+			["12,0,0"] = FARM0, ["14,0,0"] = GRASS }
+		local get = world(cells)
+		local function ctx(hx, hy, hz)
+			return { hx = hx, hy = hy, hz = hz, nx = 0, ny = 1, nz = 0, px = hx + 0.5, py = hy + 1, pz = hz + 0.5, lx = 0, lz = -1 }
+		end
+		assert(Placement.resolve(CANE, ctx(0, 0, 0), get), "cane on sand beside water")
+		eq(Placement.resolve(CANE, ctx(5, 0, 0), get), nil, "no cane without water")
+		cells["0,1,0"] = CANE
+		assert(Placement.resolve(CANE, ctx(0, 1, 0), get), "cane on cane")
+		assert(Placement.resolve(CACTUS, ctx(5, 0, 0), get), "cactus on sand")
+		eq(Placement.resolve(CACTUS, ctx(9, 0, 0), get), nil, "no cactus beside a block")
+		eq(Placement.resolve(CACTUS, ctx(14, 0, 0), get), nil, "no cactus on grass")
+		local stem = Farming.cropId("pumpkin_stem", 0)
+		assert(stem, "pumpkin stem")
+		assert(Placement.resolve(stem, ctx(12, 0, 0), get), "stem on farmland")
+		eq(Placement.resolve(stem, ctx(14, 0, 0), get), nil, "no stem on grass")
+		assert(Placement.resolve(id("oak_sapling"), ctx(14, 0, 0), get), "sapling on grass")
+		eq(Placement.resolve(id("oak_sapling"), ctx(5, 0, 0), get), nil, "no sapling on sand")
+		-- cactus: 1/16 inset, collision 15/16 high; you can step 1/16 into its cell
+		local cb = Shapes.boxes(CACTUS, get, true)[1]
+		eq(cb[1], 1 / 16); eq(cb[5], 15 / 16)
+		-- items: seeds place stems; leaves drop saplings; recipes
+		local ItemRegistry = Loader.require("src/shared/Items/ItemRegistry")
+		eq(ItemRegistry.get("pumpkin_seeds").places, stem)
+		eq(ItemRegistry.get("melon_seeds").places, Farming.cropId("melon_stem", 0))
+		local leafDrops = BlockRegistry.byKey.oak_leaves.bonusDrops
+		local hasSapling = false
+		for _, b in leafDrops do
+			hasSapling = hasSapling or (b.item == "oak_sapling" and b.chance == 0.05)
+		end
+		assert(hasSapling, "oak leaves drop saplings 1 in 20")
+		-- stems drop seeds by age (Java: 3 tries at (age + 1) / 15)
+		local function seeds(sid, r)
+			local n = 0
+			for _, st in Farming.drops(sid, nil, function()
+				return r
+			end) do
+				n += st.count
+			end
+			return n
+		end
+		eq(seeds(stem, 0.05), 3); eq(seeds(stem, 0.1), 0)
+		eq(seeds(Farming.cropId("melon_stem", 7), 0.5), 3)
+		eq(BlockRegistry.byKey.melon.drop, "melon_slice")
+		eq(BlockRegistry.byKey.melon.dropMin, 3); eq(BlockRegistry.byKey.melon.dropMax, 7)
+	end)
+
+	test("9b world generation: sugar cane by water, cactus in deserts, pumpkins; trees unchanged", function()
+		local TerrainGen = Loader.require("src/shared/World/TerrainGen")
+		local ChunkData = Loader.require("src/shared/World/ChunkData")
+		local Config = Loader.require("src/shared/Config")
+		local CANE, CACTUS, PUMPKIN, SAND = id("sugar_cane"), id("cactus"), id("pumpkin"), id("sand")
+		local gen = TerrainGen.new(1337)
+		local counts = { cane = 0, cactus = 0, pumpkin = 0 }
+		for cx = -8, 8 do
+			for cz = -8, 8 do
+				local c = ChunkData.new(cx, cz)
+				TerrainGen.generate(gen, c)
+				for z = 0, 15 do
+					for x = 0, 15 do
+						for y = Config.SEA_LEVEL - 20, Config.SEA_LEVEL + 60 do
+							local b = ChunkData.get(c, x, y, z)
+							if b == CANE then
+								counts.cane += 1
+								local below = ChunkData.get(c, x, y - 1, z)
+								assert(below == CANE or below == SAND or below == GRASS or below == DIRT, "cane on its soil")
+							elseif b == CACTUS then
+								counts.cactus += 1
+								local below = ChunkData.get(c, x, y - 1, z)
+								assert(below == CACTUS or below == SAND, "cactus on sand")
+							elseif b == PUMPKIN then
+								counts.pumpkin += 1
+							end
+						end
+					end
+				end
+			end
+		end
+		print(`       17x17 chunks: {counts.cane} sugar cane, {counts.cactus} cactus, {counts.pumpkin} pumpkins`)
+		assert(counts.cane > 0, "some sugar cane")
+	end)
+
+	test("9b server: cane / cactus grow to 3, cactus breaks beside a block, stems grow fruit, saplings grow trees", function()
+		local G = Fake.newGame()
+		for k, v in G.env do
+			Loader.globals[k] = v
+		end
+		Loader.forget("src/server/")
+		local cells: { [string]: number } = {}
+		local FLOOR = 64
+		local function getb(x, y, z)
+			return cells[`{x},{y},{z}`] or (if y < FLOOR then STONE else 0)
+		end
+		local drops = {}
+		Loader.stubs["src/server/World/WorldService.luau"] = { getBlockIfLoaded = getb, getBlock = getb, blockLightAt = function() return 0 end }
+		Loader.stubs["src/server/World/BlockUpdates.luau"] = {
+			set = function(x, y, z, b)
+				cells[`{x},{y},{z}`] = b
+			end,
+			schedule = function() end, register = function() end, onNeighbourChanged = function() end, onTick = function() end,
+		}
+		Loader.stubs["src/server/World/RandomTicks.luau"] = { register = function() end }
+		Loader.stubs["src/server/World/ItemEntityService.luau"] = { spawn = function(st) table.insert(drops, st) end }
+		Loader.stubs["src/server/Player/InventoryService.luau"] = { consumeSelected = function() return true end, damageSelectedTool = function() end }
+		Loader.stubs["src/shared/Net/Remotes.luau"] = { get = function() return Fake.Instance.new("RemoteEvent") end }
+		Fake.mount(G.game:GetService("ReplicatedStorage"), "Shared", Loader.node("src/shared"))
+		local FS = Loader.require("src/server/Simulation/FarmingService")
+		local function set(x, y, z, b)
+			cells[`{x},{y},{z}`] = b
+		end
+		local SAND, CANE, CACTUS = id("sand"), id("sugar_cane"), id("cactus")
+
+		-- sugar cane: grows to 3 tall and stops
+		set(0, FLOOR - 1, 0, SAND)
+		set(1, FLOOR - 1, 0, WATER)
+		set(0, FLOOR, 0, CANE)
+		for _ = 1, 200 do
+			for y = FLOOR, FLOOR + 3 do
+				FS.randomTick(0, y, 0)
+			end
+		end
+		assert(Farming.isCane(getb(0, FLOOR + 2, 0)), "3 tall")
+		eq(getb(0, FLOOR + 3, 0), 0, "never 4")
+		-- break the bottom: the rest pops off, each dropping cane
+		set(0, FLOOR, 0, 0)
+		FS.supportCheck(0, FLOOR + 1, 0)
+		FS.supportCheck(0, FLOOR + 2, 0)
+		eq(getb(0, FLOOR + 1, 0), 0); eq(getb(0, FLOOR + 2, 0), 0)
+		eq(#drops, 2)
+		-- the water goes: cane on sand without water breaks
+		set(0, FLOOR, 0, CANE)
+		set(1, FLOOR - 1, 0, SAND)
+		FS.supportCheck(0, FLOOR, 0)
+		eq(getb(0, FLOOR, 0), 0, "no water: breaks")
+
+		-- cactus: grows to 3; a block beside it breaks it
+		set(10, FLOOR - 1, 0, SAND)
+		set(10, FLOOR, 0, CACTUS)
+		for _ = 1, 200 do
+			for y = FLOOR, FLOOR + 3 do
+				FS.randomTick(10, y, 0)
+			end
+		end
+		assert(Farming.isCactus(getb(10, FLOOR + 2, 0)), "cactus 3 tall")
+		eq(getb(10, FLOOR + 3, 0), 0)
+		set(11, FLOOR + 1, 0, STONE)
+		FS.supportCheck(10, FLOOR + 1, 0)
+		eq(getb(10, FLOOR + 1, 0), 0, "a block beside breaks the cactus")
+
+		-- pumpkin stem: ripe stems grow a pumpkin beside them and bend toward it
+		set(20, FLOOR - 1, 0, FARM7)
+		for _, d in { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } } do
+			set(20 + d[1], FLOOR - 1, d[2], GRASS)
+		end
+		set(20, FLOOR, 0, Farming.cropId("pumpkin_stem", 7))
+		for _ = 1, 400 do
+			FS.randomTick(20, FLOOR, 0)
+			set(20, FLOOR - 1, 0, FARM7)
+			if BlockRegistry.byId[getb(20, FLOOR, 0)].state.attachedStem then
+				break
+			end
+		end
+		local attached = BlockRegistry.byId[getb(20, FLOOR, 0)]
+		assert(attached.state.attachedStem == "pumpkin", "stem attached")
+		local f = ({ north = { 0, -1 }, east = { 1, 0 }, south = { 0, 1 }, west = { -1, 0 } })[attached.state.facing]
+		eq(getb(20 + f[1], FLOOR, f[2]), id("pumpkin"), "a pumpkin beside it")
+		-- harvest the pumpkin: the stem goes back to ripe (and can grow another)
+		set(20 + f[1], FLOOR, f[2], 0)
+		FS.supportCheck(20, FLOOR, 0)
+		eq(getb(20, FLOOR, 0), Farming.cropId("pumpkin_stem", 7))
+
+		-- saplings: stage 0 -> 1 -> a tree with logs and leaves (open sky)
+		set(30, FLOOR - 1, 0, GRASS)
+		set(30, FLOOR, 0, id("oak_sapling"))
+		for _ = 1, 400 do
+			FS.randomTick(30, FLOOR, 0)
+			if getb(30, FLOOR, 0) == id("oak_log") then
+				break
+			end
+		end
+		eq(getb(30, FLOOR, 0), id("oak_log"), "grew into a tree")
+		eq(getb(30, FLOOR - 1, 0), DIRT, "grass under the trunk turns to dirt")
+		local leaves = 0
+		for dx = -2, 2 do
+			for dz = -2, 2 do
+				for dy = 2, 9 do
+					if getb(30 + dx, FLOOR + dy, dz) == id("oak_leaves") then
+						leaves += 1
+					end
+				end
+			end
+		end
+		assert(leaves > 10, `leaves ({leaves})`)
+		-- no room (a block 2 above): it can't grow
+		set(40, FLOOR - 1, 0, GRASS)
+		set(40, FLOOR + 2, 0, STONE)
+		eq(FS.growTree(40, FLOOR, 0, "birch"), false)
+		-- bone meal on a sapling advances it about half the time
+		set(50, FLOOR - 1, 0, GRASS)
+		set(50, FLOOR, 0, id("spruce_sapling"))
+		for _ = 1, 20 do
+			FS.use(G.player, "bone_meal", 50, FLOOR, 0, 1)
+		end
+		eq(getb(50, FLOOR, 0), id("spruce_log"), "bone meal grew the spruce")
+
+		for _, path in {
+			"src/server/World/WorldService.luau", "src/server/World/BlockUpdates.luau", "src/server/World/RandomTicks.luau",
+			"src/server/World/ItemEntityService.luau", "src/server/Player/InventoryService.luau", "src/shared/Net/Remotes.luau",
+		} do
+			Loader.stubs[path] = nil
+		end
+		for _, k in { "game", "workspace", "Instance", "Enum", "CFrame", "Vector2", "Color3", "UDim2", "UDim", "task", "os", "time", "tick", "warn", "Random" } do
+			Loader.globals[k] = nil
+		end
+		Loader.forget("src/server/")
+	end)
+
 	test("server farming: growth by random ticks, farmland dries / wets, hoe, bone meal, trampling, popping off", function()
 		local G = Fake.newGame()
 		for k, v in G.env do

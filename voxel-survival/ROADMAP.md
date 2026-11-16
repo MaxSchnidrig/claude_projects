@@ -139,6 +139,17 @@ are fine.
   appearing around the player (trampled farmland -> dirt) pushes them up. Studio key H: random
   ticks x10 for testing growth (like Java's randomTickSpeed rule).
 
+- 9b (0.9.2): texture atlas at 4x (169 slots, 133 used). Pumpkins and melons from stems (Java
+  stem growth, the ripe stem grows its fruit on a free cell beside it and bends toward it; taking
+  the fruit resets it); melon slices, melon block, seeds. Sugar cane (beside water, grows to 3,
+  sugar, paper) and cactus (alone on sand, grows to 3, pricks for 1). Saplings from leaves (1 in
+  20) grow into the same trees as world generation (Java stages, light, room check, bone meal
+  45 %). Flowers: azure bluet, oxeye daisy, cornflower, red tulip. World generation: cane along
+  water, cactus in deserts, rare pumpkins, more flowers in plains.
+  Left for later: jungle melons (no jungles yet), carved pumpkins / jack o'lanterns, pumpkin pie
+  (eggs), dyes from flowers, cocoa, bamboo, berries, mushrooms, tall grass / ferns, items
+  destroyed by cactus, mobs pricked by cactus.
+
 ## Phase 8 – Survival foundations (XL)
 
 **Liquids and gravity blocks**

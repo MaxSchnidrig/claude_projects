@@ -24,6 +24,7 @@ local BlockActionService = require(script.Parent.Parent.Interaction.BlockActionS
 local DayNightService = require(script.Parent.DayNightService)
 local WorldSettingsService = require(script.Parent.Parent.World.WorldSettingsService)
 local Difficulty = require(Shared.Gameplay.Difficulty)
+local Farming = require(Shared.Gameplay.Farming)
 
 local BS = Config.BLOCK_SIZE
 local FEET_BELOW_ROOT = 3 -- R6: HumanoidRootPart centre is 3 studs above the feet
@@ -319,6 +320,24 @@ local function stepPlayer(p: Player, s: State, dt: number)
 		end
 	else
 		s.fireTimer = 0
+	end
+
+	-- Cactus (Java: touching it, 1 damage; its 1/16 inset lets you walk into its cell)
+	do
+		local fx, fy, fz = pos.X / BS, feetY / BS, pos.Z / BS
+		local pricked = false
+		for cx = math.floor(fx - 0.299), math.floor(fx + 0.299) do
+			for cz = math.floor(fz - 0.299), math.floor(fz + 0.299) do
+				for cy = math.floor(fy + 0.001), math.floor(fy + 1.799) do
+					if Farming.isCactus(block(cx, cy, cz)) then
+						pricked = true
+					end
+				end
+			end
+		end
+		if pricked then
+			SurvivalService.damage(p, 1, "was pricked to death", nil, { armor = true })
+		end
 	end
 
 	-- Out of the world

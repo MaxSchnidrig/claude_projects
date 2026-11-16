@@ -423,6 +423,9 @@ end
 -- skips the empty edges); no collision. Short grass and flowers: two sheets crossing in the
 -- middle. Crops: four sheets in a # like Java's crop model. Farmland: 15/16 high.
 local FARMLAND: { Box } = { { 0, 0, 0, 1, 15 / 16, 1 } }
+-- Cactus (Java): 1/16 in from every side; you can walk 1/16 into it (and get pricked)
+local CACTUS_BOX: { Box } = { { 1 / 16, 0, 1 / 16, 15 / 16, 1, 15 / 16 } }
+local CACTUS_COLLISION: { Box } = { { 1 / 16, 0, 1 / 16, 15 / 16, 15 / 16, 15 / 16 } }
 local PLANT_PLANES: { Box } = { { 0.5, 0, 0, 0.5, 1, 1 }, { 0, 0, 0.5, 1, 1, 0.5 } }
 local CROP_PLANES: { Box } = {
 	{ 4 / 16, 0, 0, 4 / 16, 1, 1 }, { 12 / 16, 0, 0, 12 / 16, 1, 1 },
@@ -436,6 +439,10 @@ function Shapes.outline(id: number, get: Getter): { Box }
 	if d and d.shape == "plant" then
 		if d.state.flower then
 			return { { 5 / 16, 0, 5 / 16, 11 / 16, 10 / 16, 11 / 16 } }
+		elseif d.state.sapling then
+			return { { 2 / 16, 0, 2 / 16, 14 / 16, 12 / 16, 14 / 16 } }
+		elseif d.state.cane then
+			return { { 2 / 16, 0, 2 / 16, 14 / 16, 1, 14 / 16 } }
 		end
 		return { { 2 / 16, 0, 2 / 16, 14 / 16, 13 / 16, 14 / 16 } }
 	elseif d and d.shape == "crop" then
@@ -486,6 +493,8 @@ function Shapes.boxes(id: number, get: Getter, collision: boolean): { Box }
 		return if collision then NONE else vineBoxes(st.faces)
 	elseif shape == "farmland" then
 		return FARMLAND
+	elseif shape == "cactus" then
+		return if collision then CACTUS_COLLISION else CACTUS_BOX
 	elseif shape == "plant" then
 		return if collision then NONE else PLANT_PLANES
 	elseif shape == "crop" then

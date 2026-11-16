@@ -85,7 +85,8 @@ end
 
 -- Append the quads of one plant block at section-local (x, y, z) to `list`. `kind` is "cross"
 -- (short grass, flowers) or "crop". Returns the number of quads.
-function PlantGeometry.emit(list: { number }, tex: number, kind: string, x: number, y: number, z: number, bright: number): number
+-- `clip` (0..1, optional): show only the bottom part of the art, this high (young stems).
+function PlantGeometry.emit(list: { number }, tex: number, kind: string, x: number, y: number, z: number, bright: number, clip: number?): number
 	local n = 0
 	local function quad(d: number, k: number, i: number, j: number, w: number, h: number, r: Rect)
 		local o = #list
@@ -93,7 +94,14 @@ function PlantGeometry.emit(list: { number }, tex: number, kind: string, x: numb
 		list[o + 7], list[o + 8], list[o + 9], list[o + 10] = bright, r[1] + r[3] * 32, r[2] + r[4] * 32, bright
 		n += 1
 	end
-	for _, r in PlantGeometry.rects(tex) do
+	local top = if clip then 16 - math.floor(clip * 16 + 0.5) else 0
+	for _, full in PlantGeometry.rects(tex) do
+		local r = full
+		if r[4] <= top then
+			continue -- entirely above the clip
+		elseif r[2] < top then
+			r = { r[1], top, r[3], r[4] }
+		end
 		local s0, s1 = r[1] / 16, r[3] / 16
 		local k, h = y + (1 - r[4] / 16), (r[4] - r[2]) / 16
 		local w = s1 - s0

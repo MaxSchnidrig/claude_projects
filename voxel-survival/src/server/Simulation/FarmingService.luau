@@ -24,6 +24,7 @@ local BlockUpdates = require(script.Parent.Parent.World.BlockUpdates)
 local RandomTicks = require(script.Parent.Parent.World.RandomTicks)
 local ItemEntityService = require(script.Parent.Parent.World.ItemEntityService)
 local InventoryService = require(script.Parent.Parent.Player.InventoryService)
+local Trees = require(Shared.World.Features.Trees)
 
 local BS = Config.BLOCK_SIZE
 local H = Config.WORLD_HEIGHT
@@ -123,9 +124,29 @@ local function farmlandTick(x: number, y: number, z: number, id: number)
 	end
 end
 
+local FACINGS = { north = { 0, -1 }, east = { 1, 0 }, south = { 0, 1 }, west = { -1, 0 } }
+local FACING_ORDER = { "north", "east", "south", "west" }
+
+-- A ripe stem grows its fruit on a free cell beside it (Java StemBlock), and bends toward it.
+local function growFruit(x: number, y: number, z: number, fruitName: string)
+	local facing = FACING_ORDER[rng:NextInteger(1, 4)]
+	local d = FACINGS[facing]
+	local fx, fz = x + d[1], z + d[2]
+	if get(fx, y, fz) == AIR and Farming.fruitSoil(get(fx, y - 1, fz)) then
+		BlockUpdates.set(fx, y, fz, BlockRegistry.id(fruitName))
+		BlockUpdates.set(x, y, z, BlockRegistry.id(`attached_{fruitName}_stem_{facing}`))
+		FarmingService.stats.grown += 1
+	end
+end
+
 local function cropTick(x: number, y: number, z: number, id: number)
 	local info = Farming.crop(id)
-	if not info or info.age >= info.maxAge then
+	if not info then
+		return
+	end
+	local def = byId[id]
+	local stem = def.state.stem == true
+	if info.age >= info.maxAge and not stem then
 		return
 	end
 	if lightAt(x, y, z) < 9 then
@@ -136,11 +157,94 @@ local function cropTick(x: number, y: number, z: number, id: number)
 	end
 	local speed = Farming.growthSpeed(info.crop, x, y, z, get)
 	if rng:NextInteger(0, math.floor(25.0 / speed)) == 0 then
+		if info.age >= info.maxAge then
+			growFruit(x, y, z, def.state.fruit)
+			return
+		end
 		local nextId = Farming.cropId(info.crop, info.age + 1)
 		if nextId then
 			BlockUpdates.set(x, y, z, nextId)
 			FarmingService.stats.grown += 1
 		end
+	end
+end
+
+-- Sugar cane and cactus (Java): with air above and fewer than 3 in the column, age +1 each
+-- random tick; at 15 a new block grows on top and the age starts over.
+local function columnTick(x: number, y: number, z: number, id: number)
+	if get(x, y + 1, z) ~= AIR then
+		return
+	end
+	local d = byId[id]
+	local same = if d.shape == "cactus" then Farming.isCactus else Farming.isCane
+	local height = 1
+	while same(get(x, y - height, z)) do
+		height += 1
+	end
+	if height >= 3 then
+		return
+	end
+	local family = d.family
+	local age = d.state.age
+	if age >= 15 then
+		BlockUpdates.set(x, y + 1, z, BlockRegistry.id(family))
+		BlockUpdates.set(x, y, z, BlockRegistry.id(family))
+		FarmingService.stats.grown += 1
+	else
+		BlockUpdates.set(x, y, z, BlockRegistry.id(`{family}_age_{age + 1}`))
+	end
+end
+
+-- A sapling grows into its tree if there is room (Java: the tree feature fails when blocked).
+function FarmingService.growTree(x: number, y: number, z: number, wood: string): boolean
+	local tree = Trees.make(wood, x, y - 1, z, rng:NextInteger(0, 1000))
+	if not tree then
+		return false
+	end
+	local pieces = Trees.shape(rng:NextInteger(0, 2 ^ 30), tree)
+	for _, p in pieces do
+		if p.kind == "log" then
+			local here = get(p.x, p.y, p.z)
+			local hd = here and byId[here]
+			if here == nil or not (here == AIR or Trees.LEAVES[here] or (p.y == y and p.x == x and p.z == z)
+				or (hd and hd.replaceable)) then
+				return false -- no room
+			end
+		end
+	end
+	for _, p in pieces do
+		local here = get(p.x, p.y, p.z)
+		local hd = here and byId[here]
+		if p.kind == "leaf" then
+			if here == AIR or (hd and hd.replaceable) then
+				BlockUpdates.set(p.x, p.y, p.z, p.id)
+			end
+		elseif p.kind == "log" then
+			BlockUpdates.set(p.x, p.y, p.z, p.id)
+		elseif here == GRASS or here == BlockRegistry.id("snowy_grass_block") or Farming.isFarmland(here) then
+			BlockUpdates.set(p.x, p.y, p.z, DIRT)
+		end
+	end
+	FarmingService.stats.grown += 1
+	return true
+end
+
+-- Java SaplingBlock.advanceTree: stage 0 -> 1, stage 1 -> a tree.
+local function advanceSapling(x: number, y: number, z: number, id: number)
+	local wood, stage = Farming.sapling(id)
+	if not wood then
+		return
+	end
+	if stage == 0 then
+		BlockUpdates.set(x, y, z, Farming.saplingId(wood, 1) :: number)
+	else
+		FarmingService.growTree(x, y, z, wood)
+	end
+end
+
+local function saplingTick(x: number, y: number, z: number, id: number)
+	if lightAt(x, y + 1, z) >= 9 and rng:NextInteger(0, 6) == 0 then
+		advanceSapling(x, y, z, id)
 	end
 end
 
@@ -178,10 +282,19 @@ local function supportCheck(x: number, y: number, z: number)
 	if not d then
 		return
 	end
-	if d.shape == "plant" or d.shape == "crop" then
-		local below = get(x, y - 1, z)
-		if below ~= nil and not Farming.survives(id, below) then
+	if d.shape == "plant" or d.shape == "crop" or d.shape == "cactus" then
+		if not Farming.survivesAt(id, x, y, z, get) then
 			breakWithDrops(x, y, z, id)
+			return
+		end
+		-- an attached stem whose fruit was taken goes back to a ripe stem
+		local fruit = d.state.attachedStem
+		if fruit then
+			local f = FACINGS[d.state.facing]
+			local there = get(x + f[1], y, z + f[2])
+			if there ~= nil and there ~= BlockRegistry.id(fruit) then
+				BlockUpdates.set(x, y, z, Farming.cropId(`{fruit}_stem`, 7) :: number)
+			end
 		end
 	elseif d.shape == "farmland" then
 		local above = get(x, y + 1, z)
@@ -246,6 +359,12 @@ function FarmingService.use(p: Player, item: string?, x: number, y: number, z: n
 		elseif clicked == GRASS and get(x, y + 1, z) == AIR then
 			bonemealGrass(x, y, z)
 			used = true
+		elseif (Farming.sapling(clicked)) then
+			-- Java: 45 % chance to advance the sapling (the bone meal is used either way)
+			if rng:NextNumber() < 0.45 then
+				advanceSapling(x, y, z, clicked)
+			end
+			used = true
 		end
 		if used then
 			InventoryService.consumeSelected(p, 1)
@@ -292,6 +411,10 @@ function FarmingService.randomTick(x: number, y: number, z: number)
 		cropTick(x, y, z, id)
 	elseif id == GRASS then
 		grassTick(x, y, z, id)
+	elseif Farming.isCane(id) or Farming.isCactus(id) then
+		columnTick(x, y, z, id)
+	elseif (Farming.sapling(id)) then
+		saplingTick(x, y, z, id)
 	end
 end
 FarmingService.supportCheck = supportCheck
@@ -309,10 +432,20 @@ function FarmingService.init()
 	RandomTicks.register(farmland, farmlandTick)
 	RandomTicks.register(crops, cropTick)
 	RandomTicks.register({ GRASS }, grassTick)
+	local columns, saplings = {}, {}
+	for id, d in byId do
+		if d.shape == "cactus" or (d.shape == "plant" and d.state.cane) then
+			table.insert(columns, id)
+		elseif d.shape == "plant" and d.state.sapling then
+			table.insert(saplings, id)
+		end
+	end
+	RandomTicks.register(columns, columnTick)
+	RandomTicks.register(saplings, saplingTick)
 
 	local NEEDS_CHECK: { [number]: boolean } = {}
 	for id, d in byId do
-		if d.shape == "plant" or d.shape == "crop" or d.shape == "farmland" then
+		if d.shape == "plant" or d.shape == "crop" or d.shape == "farmland" or d.shape == "cactus" then
 			NEEDS_CHECK[id] = true
 		end
 	end

@@ -272,13 +272,15 @@ function Placement.resolve(itemBlock: number, ctx: Ctx, get: (number, number, nu
 		x, y, z = hx, hy, hz
 	end
 
-	if shape == "plant" or shape == "crop" then
-		-- short grass and flowers on grass / dirt / farmland; crops (from seeds, carrots,
-		-- potatoes) on farmland only
+	if shape == "plant" or shape == "crop" or shape == "cactus" then
+		-- short grass, flowers, saplings on grass / dirt / farmland; crops and stems (from seeds,
+		-- carrots, potatoes) on farmland only; sugar cane beside water; cactus on sand, alone
 		if not replaceable(get(x, y, z)) or isLiquid[(get(x, y, z) or 0) + 1] then
 			return nil, "cell occupied"
 		end
-		if not Farming.survives(itemBlock, get(x, y - 1, z)) then
+		if not Farming.survivesAt(itemBlock, x, y, z, function(gx, gy, gz)
+			return get(gx, gy, gz) or 0
+		end) then
 			return nil, "can't grow here"
 		end
 		return { { x = x, y = y, z = z, id = itemBlock } }
@@ -480,10 +482,9 @@ function Placement.supported(id: number, x: number, y: number, z: number, get: (
 		local od = other and byId[other]
 		local ok = other == nil or (od ~= nil and od.family == d.family and od.state.part ~= d.state.part)
 		return ok, d.state.part == "head"
-	elseif shape == "plant" or shape == "crop" then
+	elseif shape == "plant" or shape == "crop" or shape == "cactus" then
 		-- (their drops come from Gameplay/Farming, the caller handles them)
-		local below = get(x, y - 1, z)
-		return below == nil or Farming.survives(id, below), false
+		return Farming.survivesAt(id, x, y, z, get), false
 	elseif shape == "hanging_sign" then
 		local above = get(x, y + 1, z)
 		return above == nil or isSolid[above + 1], true

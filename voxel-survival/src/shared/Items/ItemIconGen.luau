@@ -367,6 +367,7 @@ local SHAPE_OF: { [string]: string } = {
 	bucket = "bucket", water_bucket = "water_bucket", lava_bucket = "lava_bucket",
 	wheat_seeds = "seeds", beetroot_seeds = "seeds", bone_meal = "dust", wheat = "sheaf",
 	beetroot = "fruit", bowl = "bowl", beetroot_soup = "soup", poisonous_potato = "lump",
+	pumpkin_seeds = "seeds", melon_seeds = "seeds", melon_slice = "fruit", sugar = "dust", paper = "bar",
 }
 
 local function texel(tex: buffer, x: number, y: number, f: number?): { number }

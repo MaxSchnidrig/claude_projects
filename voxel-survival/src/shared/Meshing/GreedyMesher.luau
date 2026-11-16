@@ -142,11 +142,15 @@ local OPP = { 2, 1, 4, 3, 6, 5 }
 local glassPane = PaneMesher.isPane
 -- Plants and crops: drawn from their pixels (Meshing/PlantGeometry), not as boxes.
 local plantKind: { [number]: string } = {}
+local plantClip: { [number]: number } = {} -- stems show only their bottom part while young
 for id, def in BlockRegistry.byId do
 	if def.shape == "plant" then
 		plantKind[id] = "cross"
 	elseif def.shape == "crop" then
 		plantKind[id] = "crop"
+		if def.state.stem then
+			plantClip[id] = (def.state.age + 1) * 2 / 16 -- Java: 2/16 taller each age
+		end
 	end
 end
 local CURVE_REF: { number } = {}
@@ -171,7 +175,7 @@ local function emitShapes(padded: buffer, light: buffer?, groups: { [number]: { 
 					end
 					local own = if light then buffer.readu8(light, p) else 15
 					local bright = if light then math.floor(CURVE_REF[own * 4 + 1] * 255 + 0.5) else 255
-					local n = PlantGeometry.emit(glist, tex, plantKind[b], x, y, z, bright)
+					local n = PlantGeometry.emit(glist, tex, plantKind[b], x, y, z, bright, plantClip[b])
 					quads += n
 					faces += n
 				elseif b ~= 0 and isBoxShape[b + 1] then

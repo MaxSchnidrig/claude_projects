@@ -263,7 +263,8 @@ local function tryUse(): boolean
 	local tool = def and def.tool
 	local crop = Farming.crop(hit.id)
 	local useIt = (tool ~= nil and tool.kind == "hoe" and hit.ny ~= -1 and Farming.tillable(hit.id) and above == AIR)
-		or (held == "bone_meal" and ((crop ~= nil and crop.age < crop.maxAge) or (hit.id == GRASS_BLOCK and above == AIR)))
+		or (held == "bone_meal" and ((crop ~= nil and crop.age < crop.maxAge) or (hit.id == GRASS_BLOCK and above == AIR)
+			or (Farming.sapling(hit.id)) ~= nil))
 	if useIt then
 		Remotes.get("UseItem"):FireServer({ x = hit.x, y = hit.y, z = hit.z, nx = hit.nx, ny = hit.ny, nz = hit.nz })
 		BlockInteraction.used:Fire(held or "", hit.id)

@@ -36,6 +36,9 @@ local shaped: { Shaped } = {
 	-- Farming (Phase 9a)
 	{ pattern = { "WWW" }, key = { W = "wheat" }, result = { item = "bread", count = 1 } },
 	{ pattern = { "P P", " P " }, key = { P = "#planks" }, result = { item = "bowl", count = 4 } },
+	-- Phase 9b
+	{ pattern = { "MMM", "MMM", "MMM" }, key = { M = "melon_slice" }, result = { item = "melon", count = 1 } },
+	{ pattern = { "SSS" }, key = { S = "sugar_cane" }, result = { item = "paper", count = 3 } },
 }
 
 -- Building blocks (Phase 8b)
@@ -124,6 +127,9 @@ local shapeless: { Shapeless } = {
 	{ ingredients = { "birch_log" }, result = { item = "birch_planks", count = 4 } },
 	{ ingredients = { "spruce_log" }, result = { item = "spruce_planks", count = 4 } },
 	{ ingredients = { "bone" }, result = { item = "bone_meal", count = 3 } },
+	{ ingredients = { "pumpkin" }, result = { item = "pumpkin_seeds", count = 4 } },
+	{ ingredients = { "melon_slice" }, result = { item = "melon_seeds", count = 1 } },
+	{ ingredients = { "sugar_cane" }, result = { item = "sugar", count = 1 } },
 	{ ingredients = { "beetroot", "beetroot", "beetroot", "beetroot", "beetroot", "beetroot", "bowl" }, result = { item = "beetroot_soup", count = 1 } },
 }
 

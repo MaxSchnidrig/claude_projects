@@ -77,18 +77,77 @@ function Farming.plantSoil(below: number?): boolean
 	return below ~= nil and (below == GRASS or below == SNOWY_GRASS or below == DIRT or MOISTURE[below] ~= nil)
 end
 
+local SAND = byKey.sand.id
+local CANE: { [number]: boolean } = {}
+local CACTUS: { [number]: boolean } = {}
+for id, d in byId do
+	if d.shape == "plant" and d.state.cane then
+		CANE[id] = true
+	elseif d.shape == "cactus" then
+		CACTUS[id] = true
+	end
+end
+Farming.isCane = function(id: number?): boolean
+	return id ~= nil and CANE[id] == true
+end
+Farming.isCactus = function(id: number?): boolean
+	return id ~= nil and CACTUS[id] == true
+end
+
 -- Does the block with this id survive on the block below it? (Plants and crops only; others: true.)
+-- Sugar cane and cactus also look at their neighbours: use survivesAt.
 function Farming.survives(id: number, below: number?): boolean
 	local d = byId[id]
 	if not d then
 		return true
 	end
-	if d.shape == "crop" then
+	if d.shape == "crop" or (d.shape == "plant" and d.state.attachedStem) then
 		return Farming.isFarmland(below)
 	elseif d.shape == "plant" then
 		return Farming.plantSoil(below)
 	end
 	return true
+end
+
+local H4 = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }
+
+-- Can the block with this id stay at (x, y, z)? Unloaded neighbours (nil) count as fine.
+--   sugar cane  on sugar cane, or on grass / dirt / sand with water right beside that block
+--   cactus      on sand or cactus, and nothing solid beside it (Java)
+function Farming.survivesAt(id: number, x: number, y: number, z: number, get: (number, number, number) -> number?): boolean
+	local below = get(x, y - 1, z)
+	if below == nil then
+		return true
+	end
+	if CANE[id] then
+		if CANE[below] then
+			return true
+		end
+		if not (below == GRASS or below == SNOWY_GRASS or below == DIRT or below == SAND) then
+			return false
+		end
+		for _, d in H4 do
+			local n = get(x + d[1], y - 1, z + d[2])
+			local nd = n and byId[n]
+			if n == nil or (nd and nd.fluid == "water") then
+				return true
+			end
+		end
+		return false
+	elseif CACTUS[id] then
+		if not (below == SAND or CACTUS[below]) then
+			return false
+		end
+		for _, d in H4 do
+			local n = get(x + d[1], y, z + d[2])
+			local nd = n and byId[n]
+			if n ~= nil and (BlockRegistry.isSolid[n + 1] or (nd and nd.fluid == "lava")) then
+				return false
+			end
+		end
+		return true
+	end
+	return Farming.survives(id, below)
 end
 
 -- A hoe turns this block into farmland (when the block above is air).
@@ -180,9 +239,28 @@ function Farming.drops(id: number, toolKind: string?, rand: () -> number): { Sta
 		end
 		return if rand() < 0.125 then { { item = "wheat_seeds", count = 1 } } else {}
 	end
+	if d.shape == "plant" and d.state.attachedStem then
+		local n = 0
+		for _ = 1, 3 do
+			if rand() < 8 / 15 then
+				n += 1
+			end
+		end
+		return { { item = `{d.state.attachedStem}_seeds`, count = n } }
+	end
 	local c = CROP[id]
 	if not c then
 		return nil
+	end
+	if d.state.stem then
+		-- Java: 3 tries at (age + 1) / 15 for a seed
+		local n = 0
+		for _ = 1, 3 do
+			if rand() < (c.age + 1) / 15 then
+				n += 1
+			end
+		end
+		return { { item = `{d.state.fruit}_seeds`, count = n } }
 	end
 	local ripe = c.age >= c.maxAge
 	if c.crop == "wheat" then
@@ -201,6 +279,25 @@ function Farming.drops(id: number, toolKind: string?, rand: () -> number): { Sta
 		return out
 	end
 	return nil
+end
+
+-- Saplings: (wood, stage) or nil.
+function Farming.sapling(id: number?): (string?, number)
+	local d = id and byId[id]
+	if d and d.shape == "plant" and d.state.sapling then
+		return d.state.sapling, d.state.stage
+	end
+	return nil, 0
+end
+
+function Farming.saplingId(wood: string, stage: number): number?
+	local d = byKey[if stage == 0 then `{wood}_sapling` else `{wood}_sapling_stage_1`]
+	return d and d.id
+end
+
+-- A pumpkin / melon grows on a free cell beside its ripe stem with dirt, grass or farmland under it.
+function Farming.fruitSoil(below: number?): boolean
+	return below == GRASS or below == SNOWY_GRASS or below == DIRT or (below ~= nil and MOISTURE[below] ~= nil)
 end
 
 -- Farmland trampling: chance that landing after falling `fall` blocks turns it into dirt.

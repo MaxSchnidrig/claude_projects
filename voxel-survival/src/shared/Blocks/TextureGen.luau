@@ -1034,6 +1034,199 @@ for stage = 0, 3 do
 	end
 end
 
+-- Phase 9b ------------------------------------------------------------------------------------
+
+-- More flowers (our own pixel designs): stem with leaves and a head.
+local function petals(seed: number, colour: RGB, centre: RGB, shape: string): Img
+	return flower(seed, function(img, cx, cy)
+		if shape == "cluster" then
+			-- a tight bunch of small pale heads (azure bluet)
+			for dy = -1, 1 do
+				for dx = -1, 1 do
+					local dot = (dx + dy) % 2 == 0
+					put(img, cx + dx, cy + dy, if dot then centre else shade(colour, 0.9 + rnd(seed, dx, dy, 48) * 0.15))
+				end
+			end
+		elseif shape == "daisy" then
+			for dy = -2, 2 do
+				for dx = -2, 2 do
+					if math.abs(dx) + math.abs(dy) <= 3 and not (dx == 0 and dy == 0) then
+						put(img, cx + dx, cy + dy, shade(colour, 0.9 + rnd(seed, dx, dy, 48) * 0.15))
+					end
+				end
+			end
+			put(img, cx, cy, centre)
+		elseif shape == "cup" then
+			-- a tulip cup
+			for dy = -2, 1 do
+				for dx = -1, 1 do
+					put(img, cx + dx, cy + dy, shade(colour, 0.85 + rnd(seed, dx, dy, 48) * 0.3))
+				end
+			end
+			put(img, cx - 2, cy - 2, colour)
+			put(img, cx + 2, cy - 2, colour)
+		else -- "spiky" (cornflower): a ragged head with a dark heart and a tip
+			for dy = -1, 1 do
+				for dx = -1, 1 do
+					put(img, cx + dx, cy + dy, shade(colour, 0.8 + rnd(seed, dx, dy, 48) * 0.35))
+				end
+			end
+			put(img, cx, cy - 2, shade(colour, 1.1))
+			put(img, cx, cy, centre)
+		end
+	end)
+end
+recipes.azure_bluet = function(seed)
+	return petals(seed, { 236, 240, 248 }, { 236, 210, 80 }, "cluster")
+end
+recipes.oxeye_daisy = function(seed)
+	return petals(seed, { 246, 246, 240 }, { 240, 196, 40 }, "daisy")
+end
+recipes.cornflower = function(seed)
+	return petals(seed, { 70, 110, 220 }, { 40, 60, 150 }, "spiky")
+end
+recipes.red_tulip = function(seed)
+	return petals(seed, { 220, 40, 36 }, { 220, 40, 36 }, "cup")
+end
+
+-- Saplings: a short trunk with a small crown of leaves (each wood's colours).
+local function sapling(seed: number, bark: RGB, leaf: RGB, tall: boolean): Img
+	local img = new()
+	for y = 10, 15 do
+		put(img, 7, y, shade(bark, 0.85 + rnd(seed, 7, y) * 0.25))
+	end
+	local top = if tall then 2 else 4
+	for x = 4, 11 do
+		local h = if math.abs(x - 7.5) < 2 then top else top + 2
+		for y = h, 9 do
+			put(img, x, y, shade(leaf, 0.8 + rnd(seed, x, y, 49) * 0.4))
+		end
+	end
+	return img
+end
+recipes.oak_sapling = function(seed)
+	return sapling(seed, P.oakBark, P.oakLeaves, false)
+end
+recipes.birch_sapling = function(seed)
+	return sapling(seed, P.birchBark, P.birchLeaves, false)
+end
+recipes.spruce_sapling = function(seed)
+	return sapling(seed, P.spruceBark, P.spruceLeaves, true)
+end
+
+-- Sugar cane: three jointed green stalks.
+recipes.sugar_cane = function(seed)
+	local img = new()
+	local cane = { 140, 200, 90 }
+	for b, x0 in { 3, 7, 11 } do
+		for y = 0, 15 do
+			local joint = (y + b * 2) % 5 == 0
+			put(img, x0, y, if joint then shade(cane, 0.7) else shade(cane, 0.9 + rnd(seed, b, y, 50) * 0.2))
+			put(img, x0 + 1, y, if joint then shade(cane, 0.65) else shade(cane, 0.75))
+		end
+	end
+	return img
+end
+
+-- Cactus: ribs and spines on the sides, a rim on top.
+local CACTUS: RGB = { 62, 130, 52 }
+recipes.cactus_side = function(seed)
+	local img = noisy(seed, CACTUS, 0.1, 0.1)
+	for y = 0, N - 1 do
+		for _, x in { 0, 5, 10, 15 } do
+			put(img, x, y, shade(CACTUS, 0.7))
+		end
+		if y % 4 == 1 then
+			for _, x in { 3, 8, 13 } do
+				put(img, x, y, { 220, 220, 180 }) -- spines
+			end
+		end
+	end
+	return img
+end
+recipes.cactus_top = function(seed)
+	local img = noisy(seed, shade(CACTUS, 1.1), 0.1, 0.1)
+	for i = 0, N - 1 do
+		put(img, i, 0, shade(CACTUS, 0.75)); put(img, i, 15, shade(CACTUS, 0.75))
+		put(img, 0, i, shade(CACTUS, 0.75)); put(img, 15, i, shade(CACTUS, 0.75))
+	end
+	for _, p in { { 5, 5 }, { 10, 5 }, { 5, 10 }, { 10, 10 }, { 7, 8 } } do
+		put(img, p[1], p[2], { 220, 220, 180 })
+	end
+	return img
+end
+recipes.cactus_bottom = function(seed)
+	return noisy(seed, shade(CACTUS, 0.85), 0.12, 0.1)
+end
+
+-- Pumpkin and melon: ribbed rinds, a stalk scar on top.
+recipes.pumpkin_side = function(seed)
+	local base: RGB = { 226, 130, 30 }
+	local img = noisy(seed, base, 0.1, 0.12)
+	for y = 0, N - 1 do
+		for _, x in { 0, 4, 8, 12 } do
+			put(img, x, y, shade(base, 0.72))
+		end
+	end
+	return img
+end
+recipes.pumpkin_top = function(seed)
+	local base: RGB = { 214, 122, 28 }
+	local img = noisy(seed, base, 0.1, 0.12)
+	for i = 0, N - 1 do
+		put(img, i, 7, shade(base, 0.75)); put(img, 7, i, shade(base, 0.75))
+	end
+	for y = 6, 9 do
+		for x = 6, 9 do
+			put(img, x, y, { 110, 90, 40 })
+		end
+	end
+	return img
+end
+recipes.melon_side = function(seed)
+	local base: RGB = { 110, 160, 40 }
+	local img = noisy(seed, base, 0.12, 0.15)
+	for y = 0, N - 1 do
+		for _, x in { 1, 2, 6, 7, 11, 12 } do
+			put(img, x, y, shade({ 70, 120, 30 }, 0.9 + rnd(seed, x, y, 51) * 0.2))
+		end
+	end
+	return img
+end
+recipes.melon_top = function(seed)
+	local base: RGB = { 120, 168, 44 }
+	local img = noisy(seed, base, 0.12, 0.15)
+	for y = 6, 9 do
+		for x = 6, 9 do
+			put(img, x, y, shade(base, 0.7))
+		end
+	end
+	return img
+end
+
+-- Stems: a straight green stalk (cut by age), and the bent one attached to a fruit.
+recipes.stem = function(seed)
+	local img = new()
+	for y = 0, 15 do
+		put(img, 7, y, shade({ 120, 170, 60 }, 0.8 + (y / 15) * 0.15 + rnd(seed, 7, y) * 0.1))
+		put(img, 8, y, shade({ 110, 150, 50 }, 0.8))
+	end
+	return img
+end
+recipes.attached_stem = function(seed)
+	local img = new()
+	local c: RGB = { 150, 150, 60 }
+	for y = 6, 15 do
+		put(img, 7, y, shade(c, 0.85 + rnd(seed, 7, y) * 0.1))
+		put(img, 8, y, shade(c, 0.75))
+	end
+	for x = 9, 15 do
+		put(img, x, 6, shade(c, 0.9))
+		put(img, x, 7, shade(c, 0.75))
+	end
+	return img
+end
+
 -- Public -------------------------------------------------------------------------------------
 
 -- Fallback for texture keys without a recipe: noisy fill of the average colour.

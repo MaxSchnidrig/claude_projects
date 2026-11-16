@@ -24,6 +24,13 @@
 --   749..756  carrots       age 0..7
 --   757..764  potatoes      age 0..7
 --   765..768  beetroots     age 0..3
+--   769..772  flowers       azure bluet, oxeye daisy, cornflower, red tulip (Phase 9b)
+--   773..778  saplings      oak, birch, spruce x stage 0..1
+--   779..794  sugar cane    age 0..15
+--   795..810  cactus        age 0..15
+--   811, 812  pumpkin, melon
+--   813..820  pumpkin stem  age 0..7;  821..824 attached pumpkin stem facing N, E, S, W
+--   825..832  melon stem    age 0..7;  833..836 attached melon stem facing N, E, S, W
 
 local ShapedDefs = {}
 
@@ -300,6 +307,76 @@ function ShapedDefs.list(): { Def }
 		{ family = "beetroots", name = "Beetroots", base = 765, maxAge = 3, stages = { 0, 1, 2, 3 } },
 	}
 	ShapedDefs.CROPS = CROPS
+	-- Phase 9b ------------------------------------------------------------------------------
+	for i, f in {
+		{ key = "azure_bluet", name = "Azure Bluet" }, { key = "oxeye_daisy", name = "Oxeye Daisy" },
+		{ key = "cornflower", name = "Cornflower" }, { key = "red_tulip", name = "Red Tulip" },
+	} do
+		table.insert(out, {
+			id = 768 + i, key = f.key, name = f.name, hardness = 0, textures = { all = f.key },
+			transparent = true, opacity = 0, solid = false, shape = "plant", state = { flower = true },
+			icon = "plant", sound = "grass", flammable = { 60, 100 },
+		})
+	end
+	-- saplings: stage 0 -> 1 -> a tree (random ticks / bone meal)
+	for i, w in { "oak", "birch", "spruce" } do
+		for stage = 0, 1 do
+			local family = `{w}_sapling`
+			table.insert(out, {
+				id = 773 + (i - 1) * 2 + stage, key = if stage == 0 then family else `{family}_stage_1`,
+				name = string.upper(string.sub(w, 1, 1)) .. string.sub(w, 2) .. " Sapling",
+				hardness = 0, drop = family, textures = { all = family }, transparent = true, opacity = 0,
+				solid = false, shape = "plant", state = { sapling = w, stage = stage }, family = family,
+				noItem = stage ~= 0, icon = "plant", sound = "grass",
+			})
+		end
+	end
+	-- sugar cane and cactus: age 0..15, a new block on top at 15, up to 3 tall
+	for age = 0, 15 do
+		table.insert(out, {
+			id = 779 + age, key = if age == 0 then "sugar_cane" else `sugar_cane_age_{age}`, name = "Sugar Cane",
+			hardness = 0, drop = "sugar_cane", textures = { all = "sugar_cane" }, transparent = true, opacity = 0,
+			solid = false, shape = "plant", state = { cane = true, age = age }, family = "sugar_cane",
+			noItem = age ~= 0, icon = "plant", sound = "grass",
+		})
+	end
+	for age = 0, 15 do
+		table.insert(out, {
+			id = 795 + age, key = if age == 0 then "cactus" else `cactus_age_{age}`, name = "Cactus",
+			hardness = 0.4, drop = "cactus", textures = { top = "cactus_top", side = "cactus_side", bottom = "cactus_bottom" },
+			transparent = true, opacity = 0, shape = "cactus", state = { age = age }, family = "cactus",
+			noItem = age ~= 0, sound = "wool",
+		})
+	end
+	table.insert(out, {
+		id = 811, key = "pumpkin", name = "Pumpkin", hardness = 1.0, tool = "axe",
+		textures = { top = "pumpkin_top", side = "pumpkin_side", bottom = "pumpkin_top" }, sound = "wood",
+	})
+	table.insert(out, {
+		id = 812, key = "melon", name = "Melon", hardness = 1.0, tool = "axe", drop = "melon_slice", dropMin = 3, dropMax = 7,
+		textures = { top = "melon_top", side = "melon_side", bottom = "melon_top" }, sound = "wood",
+	})
+	-- stems (planted from seeds on farmland): grow like crops, then grow their fruit beside them
+	for s, fruit in { "pumpkin", "melon" } do
+		local base = if s == 1 then 813 else 825
+		for age = 0, 7 do
+			table.insert(out, {
+				id = base + age, key = if age == 0 then `{fruit}_stem` else `{fruit}_stem_age_{age}`,
+				name = string.upper(string.sub(fruit, 1, 1)) .. string.sub(fruit, 2) .. " Stem",
+				hardness = 0, drop = false, textures = { all = "stem" }, transparent = true, opacity = 0, solid = false,
+				shape = "crop", state = { crop = `{fruit}_stem`, age = age, maxAge = 7, fruit = fruit, stem = true },
+				family = `{fruit}_stem`, noItem = true, sound = "wood",
+			})
+		end
+		for f, facing in { "north", "east", "south", "west" } do
+			table.insert(out, {
+				id = base + 7 + f, key = `attached_{fruit}_stem_{facing}`, name = "Attached Stem",
+				hardness = 0, drop = false, textures = { all = "attached_stem" }, transparent = true, opacity = 0,
+				solid = false, shape = "plant", state = { attachedStem = fruit, facing = facing },
+				family = `attached_{fruit}_stem`, noItem = true, sound = "wood",
+			})
+		end
+	end
 	for _, c in CROPS do
 		for age = 0, c.maxAge do
 			table.insert(out, {

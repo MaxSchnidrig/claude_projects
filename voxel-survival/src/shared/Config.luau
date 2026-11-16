@@ -86,7 +86,7 @@ Config.TEXTURES = true
 -- bigger with an ATLAS_GUTTER pixel border (stops neighbours bleeding in). Slots =
 -- (1024 // (16 * scale + 2 * gutter))^2; the tests check every texture fits.
 Config.ATLAS_SIZE = 1024
-Config.ATLAS_SCALE = 5
+Config.ATLAS_SCALE = 4 -- (5 until Phase 9b: 121 slots were full; 4 gives 169)
 Config.ATLAS_GUTTER = 6
 Config.MESH_MAX_TRIANGLES = 19000 -- split a section into several meshes above this
 Config.TORCH_POINT_LIGHTS = 24 -- nearest torches that also carry a Roblox PointLight

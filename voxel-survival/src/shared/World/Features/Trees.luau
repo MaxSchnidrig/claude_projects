@@ -92,28 +92,16 @@ function Trees.candidates(gen: any, cx: number, cz: number): { Tree }
 	return list
 end
 
--- Write one tree's blocks that fall inside `chunk`.
-local function place(gen: any, chunk: any, tree: Tree)
-	local blocks: buffer = chunk.blocks
-	local ox, oz = chunk.cx * CS, chunk.cz * CS
-	local seed = gen.seed
+-- One tree's blocks, in the order they're written: leaves (only into air), then logs (into air
+-- or leaves), then the grass under the trunk turns into dirt. `kind` is "leaf" | "log" | "base".
+-- Shared by world generation and by saplings growing into trees.
+export type Piece = { x: number, y: number, z: number, id: number, kind: string }
+function Trees.shape(seed: number, tree: Tree): { Piece }
+	local out: { Piece } = {}
 	local kind = tree.kind
-
-	local function inChunk(wx: number, y: number, wz: number): number?
-		local lx, lz = wx - ox, wz - oz
-		if lx < 0 or lx >= CS or lz < 0 or lz >= CS or y < 0 or y >= H then
-			return nil
-		end
-		return lx + lz * CS + y * LAYER
-	end
-
 	local function leaf(wx: number, y: number, wz: number)
-		local idx = inChunk(wx, y, wz)
-		if idx and buffer.readu16(blocks, idx * 2) == AIR then
-			buffer.writeu16(blocks, idx * 2, kind.leaves)
-		end
+		table.insert(out, { x = wx, y = y, z = wz, id = kind.leaves, kind = "leaf" })
 	end
-
 	-- A ring of leaves. corners: "keep" | "drop" | "random"
 	local function ring(y: number, r: number, corners: string)
 		for dz = -r, r do
@@ -133,7 +121,6 @@ local function place(gen: any, chunk: any, tree: Tree)
 			end
 		end
 	end
-
 	local top = tree.y + tree.height -- highest log block
 	if kind.shape == "round" then
 		ring(top - 2, 2, "random")
@@ -148,22 +135,44 @@ local function place(gen: any, chunk: any, tree: Tree)
 			r = if r == 1 then 2 else 1
 		end
 	end
-
-	-- Trunk (after leaves so logs win), and turn the grass under it into dirt.
 	for y = tree.y + 1, top do
-		local idx = inChunk(tree.x, y, tree.z)
-		if idx then
-			local cur = buffer.readu16(blocks, idx * 2)
-			if cur == AIR or LEAVES[cur] then
-				buffer.writeu16(blocks, idx * 2, kind.log)
-			end
-		end
+		table.insert(out, { x = tree.x, y = y, z = tree.z, id = kind.log, kind = "log" })
 	end
-	local base = inChunk(tree.x, tree.y, tree.z)
-	if base then
-		local cur = buffer.readu16(blocks, base * 2)
-		if cur == GRASS or cur == SNOWY_GRASS then
-			buffer.writeu16(blocks, base * 2, DIRT)
+	table.insert(out, { x = tree.x, y = tree.y, z = tree.z, id = DIRT, kind = "base" })
+	return out
+end
+
+-- A tree of the named kind ("oak" | "birch" | "spruce") on the block at (x, y, z), with a
+-- height picked by `roll` (any integer), like the generated ones.
+function Trees.make(kindName: string, x: number, y: number, z: number, roll: number): Tree?
+	local kind = KINDS[kindName]
+	if not kind then
+		return nil
+	end
+	return { x = x, y = y, z = z, kind = kind, height = kind.minHeight + roll % kind.heightRange }
+end
+Trees.LEAVES = LEAVES
+
+-- Write one tree's blocks that fall inside `chunk`.
+local function place(gen: any, chunk: any, tree: Tree)
+	local blocks: buffer = chunk.blocks
+	local ox, oz = chunk.cx * CS, chunk.cz * CS
+	for _, p in Trees.shape(gen.seed, tree) do
+		local lx, lz = p.x - ox, p.z - oz
+		if lx >= 0 and lx < CS and lz >= 0 and lz < CS and p.y >= 0 and p.y < H then
+			local idx = lx + lz * CS + p.y * LAYER
+			local cur = buffer.readu16(blocks, idx * 2)
+			if p.kind == "leaf" then
+				if cur == AIR then
+					buffer.writeu16(blocks, idx * 2, p.id)
+				end
+			elseif p.kind == "log" then
+				if cur == AIR or LEAVES[cur] then
+					buffer.writeu16(blocks, idx * 2, p.id)
+				end
+			elseif cur == GRASS or cur == SNOWY_GRASS then
+				buffer.writeu16(blocks, idx * 2, p.id) -- the grass under the trunk becomes dirt
+			end
 		end
 	end
 end

@@ -99,7 +99,7 @@ local isCube = table.create(4096, true) :: { boolean }
 local BOX_SHAPES = {
 	slab = true, stairs = true, fence = true, door = true, ladder = true,
 	trapdoor = true, fence_gate = true, wall = true, pane = true, vine = true, bed = true,
-	plant = true, crop = true, farmland = true,
+	plant = true, crop = true, farmland = true, cactus = true,
 }
 local isBoxShape = table.create(4096, false) :: { boolean }
 

@@ -85,6 +85,12 @@ local defs: { ItemDefInput } = {
 	{ key = "beetroot_soup", name = "Beetroot Soup", stack = 1, color = { 180, 40, 50 }, food = { hunger = 6, saturation = 7.2, remainder = "bowl" } },
 	{ key = "bowl", name = "Bowl", color = { 140, 100, 60 } },
 	{ key = "bone_meal", name = "Bone Meal", color = { 236, 236, 228 } },
+	-- Phase 9b
+	{ key = "pumpkin_seeds", name = "Pumpkin Seeds", color = { 226, 214, 150 }, places = "pumpkin_stem" },
+	{ key = "melon_seeds", name = "Melon Seeds", color = { 40, 30, 24 }, places = "melon_stem" },
+	{ key = "melon_slice", name = "Melon Slice", color = { 214, 60, 50 }, food = { hunger = 2, saturation = 1.2 } },
+	{ key = "sugar", name = "Sugar", color = { 240, 240, 244 } },
+	{ key = "paper", name = "Paper", color = { 236, 232, 216 } },
 	-- (Java: 60 % chance of Poison; status effects come later in phase 9)
 	{ key = "poisonous_potato", name = "Poisonous Potato", color = { 170, 190, 80 }, food = { hunger = 2, saturation = 1.2 } },
 	{ key = "baked_potato", name = "Baked Potato", color = { 214, 160, 70 }, food = { hunger = 5, saturation = 6 } },
