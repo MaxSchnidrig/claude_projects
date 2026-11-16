@@ -29,7 +29,9 @@ local RenderStyle = require(script.Parent.RenderStyle)
 
 local BS = Config.BLOCK_SIZE
 local SHADE = Config.FACE_SHADE
-local DIR_SHADE = { SHADE.east, SHADE.west, SHADE.top, SHADE.bottom, SHADE.south, SHADE.north }
+-- 7..14: plant sheets (Meshing/PlantGeometry), lit evenly like Java's plants
+local DIR_SHADE = { SHADE.east, SHADE.west, SHADE.top, SHADE.bottom, SHADE.south, SHADE.north, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9 }
+local R2 = math.sqrt(0.5)
 local DIR_NORMALS = {
 	Vector3.new(1, 0, 0),
 	Vector3.new(-1, 0, 0),
@@ -37,6 +39,10 @@ local DIR_NORMALS = {
 	Vector3.new(0, -1, 0),
 	Vector3.new(0, 0, 1),
 	Vector3.new(0, 0, -1),
+	Vector3.new(-R2, 0, R2), Vector3.new(R2, 0, -R2), -- X sheet "\" front / back
+	Vector3.new(R2, 0, R2), Vector3.new(-R2, 0, -R2), -- X sheet "/" front / back
+	Vector3.new(-1, 0, 0), Vector3.new(1, 0, 0), -- # sheets along z
+	Vector3.new(0, 0, 1), Vector3.new(0, 0, -1), -- # sheets along x
 }
 -- Rough per-element cost for the overlay's memory estimate of live meshes (not an official figure).
 local EST_BYTES_PER_VERTEX = 48
@@ -221,9 +227,30 @@ local function appendQuads(
 		local vIds = table.create(4, 0)
 		local uvs = table.create(4, 0)
 		local cols = table.create(4, 0)
+		local plant = d >= 7
+		local plantST: { number }? = nil
+		if plant then
+			-- the texture rectangle this piece shows; the same pixels on both sides
+			local px0, px1 = quads[q + 7] % 32, quads[q + 7] // 32
+			local py0, py1 = quads[q + 8] % 32, quads[q + 8] // 32
+			plantST = if d % 2 == 1
+				then { px0, py1, px1, py1, px1, py0, px0, py0 }
+				else { px0, py1, px0, py0, px1, py0, px1, py1 }
+		end
 		for k = 0, 3 do
 			local x, y, z = c[k * 3 + 1], c[k * 3 + 2], c[k * 3 + 3]
 			vIds[k + 1] = em:AddVertex(Vector3.new((x - cx) * BS, (y - cy) * BS, (z - cz) * BS))
+			if plantST then
+				-- a quarter pixel inside the rectangle: texture filtering never reaches the
+				-- (unseen) pixels around it
+				local s = plantST[k * 2 + 1] / 16
+				local t = plantST[k * 2 + 2] / 16
+				local sIn = if plantST[k * 2 + 1] == math.min(plantST[1], plantST[3], plantST[5], plantST[7]) then 1 else -1
+				local tIn = if plantST[k * 2 + 2] == math.min(plantST[2], plantST[4], plantST[6], plantST[8]) then 1 else -1
+				uvs[k + 1] = fracUV(s + sIn / 64, t + tIn / 64)
+				cols[k + 1] = color(d, quads[q + 6])
+				continue
+			end
 			if textured and frac then
 				local s, t = tileST(d, x, y, z, bx, by, bz)
 				uvs[k + 1] = fracUV(s, t)
@@ -246,7 +273,7 @@ local function appendQuads(
 		end
 		-- split along the brighter diagonal so ambient occlusion shades evenly
 		local b0, b1, b2, b3 = quads[q + 6] or 255, quads[q + 7] or 255, quads[q + 8] or 255, quads[q + 9] or 255
-		local rot = b0 + b2 < b1 + b3
+		local rot = not plant and b0 + b2 < b1 + b3
 		local i1, i2, i3, i4 = 1, 2, 3, 4
 		if rot then
 			i1, i2, i3, i4 = 2, 3, 4, 1

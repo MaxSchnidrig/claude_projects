@@ -202,6 +202,7 @@ Config.DEBUG_KEY_BACKEND = "F4" -- switch render backend (A/B test)
 Config.DEBUG_KEY_KEEP_TEMP = "F6" -- keep edited sections on their live mesh (compare to baked)
 -- Letter keys: F-keys collide with Roblox/Studio/macOS shortcuts (F9 opens the Dev Console).
 Config.DEBUG_KEY_SKIP_TIME = "J" -- Studio only: +6 game hours (quarter day)
+Config.DEBUG_KEY_FAST_TICKS = "H" -- Studio only: random ticks x10 (crops grow, grass spreads); again: normal
 Config.DEBUG_KEY_HURT_SELF = "K" -- Studio only: take 3 damage
 Config.DEBUG_KEY_SPAWN_MOB = "L" -- Studio only: spawn the next mob type in front of you
 Config.DEBUG_KEY_SPECTATOR = "N" -- Studio only: spectator flying (no collision); Space up, Shift down, double-tap W sprints

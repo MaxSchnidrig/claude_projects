@@ -859,22 +859,24 @@ end
 
 -- Plants and farming (Phase 9a): our own pixel designs on a transparent background --------------
 
--- A stalk from the bottom row up `h` pixels, drifting `lean` pixels sideways on the way up.
-local function stalk(img: Img, x0: number, h: number, lean: number, c: RGB, seed: number, k: number)
-	for i = 0, h - 1 do
-		local t = i / math.max(1, h - 1)
-		local x = math.floor(x0 + lean * t * t + 0.5)
-		put(img, x, 15 - i, shade(c, 0.78 + 0.35 * t + (rnd(seed, k, i, 41) - 0.5) * 0.12))
+-- A straight stalk `width` pixels wide from the bottom row up `h` pixels, darker at the foot.
+-- (Plants are drawn from their solid pixel strips, Meshing/PlantGeometry: straight stalks keep
+-- that to one strip each.)
+local function stalk(img: Img, x0: number, h: number, c: RGB, seed: number, k: number, width: number?)
+	for dx = 0, (width or 1) - 1 do
+		for i = 0, h - 1 do
+			local t = i / math.max(1, h - 1)
+			put(img, x0 + dx, 15 - i, shade(c, 0.72 + 0.4 * t + (rnd(seed, k * 3 + dx, i, 41) - 0.5) * 0.14 - dx * 0.08))
+		end
 	end
 end
 
 recipes.short_grass = function(seed)
 	local img = new()
-	for b = 1, 9 do
-		local x0 = 1 + math.floor((b - 1) * 1.6 + rnd(seed, b, 0, 40) * 1.5)
-		local h = 6 + math.floor(rnd(seed, b, 1, 40) * 8)
-		local lean = (rnd(seed, b, 2, 40) - 0.5) * 5
-		stalk(img, x0, h, lean, P.grass, seed, b)
+	-- six blades on separate columns, different heights
+	for b, x0 in { 1, 3, 6, 8, 11, 13 } do
+		local h = 6 + math.floor(rnd(seed, b, 1, 40) * 9)
+		stalk(img, x0, h, P.grass, seed, b, if b % 3 == 0 then 2 else 1)
 	end
 	return img
 end
@@ -886,11 +888,13 @@ local function flower(seed: number, head: (Img, number, number) -> ()): Img
 	for y = 7, 15 do
 		put(img, 7, y, shade(green, 0.85 + (rnd(seed, 7, y) * 0.2)))
 	end
-	for _, l in { { 5, 12 }, { 6, 11 }, { 9, 13 }, { 10, 12 } } do
-		put(img, l[1], l[2], shade(green, 1.1))
+	-- two leaves: short bars beside the stem
+	for x = 5, 6 do
+		put(img, x, 12, shade(green, 1.05 - (6 - x) * 0.1))
 	end
-	put(img, 6, 12, shade(green, 0.9))
-	put(img, 8, 13, shade(green, 0.9))
+	for x = 8, 9 do
+		put(img, x, 11, shade(green, 1.05 - (x - 8) * 0.1))
+	end
 	head(img, 7, 5)
 	return img
 end
@@ -951,13 +955,14 @@ recipes.farmland_wet = function(seed)
 	return farmland(seed, true)
 end
 
--- Crops in rows of stalks; `stage` 0 (just planted) .. last (ripe).
-local function cropRows(seed: number, count: number, height: number, c: RGB, lean: number): Img
+-- Crops in rows of straight stalks; `stage` 0 (just planted) .. last (ripe).
+local function cropRows(seed: number, count: number, height: number, c: RGB, width: number?): Img
 	local img = new()
+	local step = 16 / count
 	for b = 1, count do
-		local x0 = 1 + math.floor((b - 1) * (14 / count) + rnd(seed, b, 0, 46) * 1.5)
+		local x0 = math.floor((b - 1) * step + step / 2 - 0.5)
 		local h = math.max(1, math.floor(height * (0.75 + rnd(seed, b, 1, 46) * 0.25) + 0.5))
-		stalk(img, x0, h, (rnd(seed, b, 2, 46) - 0.5) * lean, c, seed, b)
+		stalk(img, x0, h, c, seed, b, width)
 	end
 	return img
 end
@@ -968,14 +973,18 @@ for stage = 0, 7 do
 		local green = { 70, 150, 44 }
 		local gold = { 214, 182, 76 }
 		local c = if stage == 7 then gold else mix(green, { 150, 170, 60 }, t * 0.6)
-		local img = cropRows(seed, 7, 2 + stage * 1.8, c, 2.5)
+		local img = cropRows(seed, 6, 2 + stage * 1.8, c, 1)
 		if stage >= 5 then
-			-- heads of grain on the tallest stalks
-			for b = 1, 7 do
-				local x = 1 + math.floor((b - 1) * 2 + rnd(seed, b, 0, 46) * 1.5)
-				for y = 16 - math.floor(2 + stage * 1.8), 18 - math.floor(2 + stage * 1.8) do
-					if y >= 0 and rnd(seed, b, y, 47) > 0.3 then
-						put(img, x, y, if stage == 7 then { 236, 206, 110 } else { 170, 176, 70 })
+			-- heads of grain: the top 3 pixels of each stalk, lighter
+			local step = 16 / 6
+			for b = 1, 6 do
+				local x = math.floor((b - 1) * step + step / 2 - 0.5)
+				for y = 0, 15 do
+					if buffer.readu8(img, (y * N + x) * 4 + 3) > 0 then
+						for yy = y, math.min(15, y + 2) do
+							put(img, x, yy, if stage == 7 then { 236, 206, 110 } else { 170, 176, 70 })
+						end
+						break
 					end
 				end
 			end
@@ -984,31 +993,30 @@ for stage = 0, 7 do
 	end
 end
 
--- Root crops: leafy tops, the root showing at the bottom when ripe.
+-- Root crops: leafy stalks two pixels wide, the root showing at the foot when ripe.
 local function rootCrop(seed: number, stage: number, leaf: RGB, root: RGB?, stem: RGB?): Img
 	local heights = { 3, 6, 9, 11 }
-	local img = cropRows(seed, 5, heights[stage + 1], leaf, 4)
-	if stem then
-		for b = 1, 5 do
-			local x0 = 1 + math.floor((b - 1) * 2.8 + rnd(seed, b, 0, 46) * 1.5)
-			put(img, x0, 15, stem)
-			put(img, x0, 14, stem)
-		end
-	end
-	-- leaves: small clusters near the top of each stalk
-	for b = 1, 5 do
-		local x0 = 1 + math.floor((b - 1) * 2.8 + rnd(seed, b, 0, 46) * 1.5)
-		local top = 16 - heights[stage + 1]
-		put(img, x0 - 1, top + 1, shade(leaf, 1.1))
-		put(img, x0 + 1, top + 1, shade(leaf, 0.95))
-		put(img, x0, top, shade(leaf, 1.2))
-	end
-	if stage == 3 and root then
-		for b = 1, 5 do
-			local x0 = 1 + math.floor((b - 1) * 2.8 + rnd(seed, b, 0, 46) * 1.5)
-			put(img, x0, 15, root)
-			put(img, x0 + 1, 15, shade(root, 0.85))
-			put(img, x0, 14, shade(root, 1.1))
+	local img = cropRows(seed, 4, heights[stage + 1], leaf, 2)
+	local step = 16 / 4
+	for b = 1, 4 do
+		local x0 = math.floor((b - 1) * step + step / 2 - 0.5)
+		for dx = 0, 1 do
+			local x = x0 + dx
+			-- the top of each stalk is a lighter leaf
+			for y = 0, 15 do
+				if buffer.readu8(img, (y * N + x) * 4 + 3) > 0 then
+					put(img, x, y, shade(leaf, 1.25 - dx * 0.1))
+					break
+				end
+			end
+			if stem then
+				put(img, x, 15, stem)
+				put(img, x, 14, shade(stem, 0.9))
+			end
+			if stage == 3 and root then
+				put(img, x, 15, shade(root, 0.9 + dx * 0.1))
+				put(img, x, 14, root)
+			end
 		end
 	end
 	return img
@@ -1088,5 +1096,50 @@ function TextureGen.average(img: Img): RGB
 end
 
 TextureGen.get = get
+
+-- A copy where every fully see-through pixel takes the colour of its nearest visible neighbour
+-- (alpha stays 0). Texture filtering then never blends a dark (0, 0, 0) border into the edges of
+-- plants and other cut-out art.
+function TextureGen.bleed(img: Img): Img
+	local out = buffer.create(N * N * 4)
+	buffer.copy(out, 0, img, 0, N * N * 4)
+	local filled = table.create(N * N, false)
+	local any = false
+	for i = 0, N * N - 1 do
+		filled[i + 1] = buffer.readu8(img, i * 4 + 3) > 0
+		any = any or filled[i + 1]
+	end
+	if not any then
+		return out
+	end
+	for _ = 1, N do
+		local changed = false
+		local nextFilled = table.clone(filled)
+		for y = 0, N - 1 do
+			for x = 0, N - 1 do
+				local i = y * N + x
+				if not filled[i + 1] then
+					for _, d in { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } } do
+						local nx, ny = x + d[1], y + d[2]
+						if nx >= 0 and ny >= 0 and nx < N and ny < N and filled[ny * N + nx + 1] then
+							local o = (ny * N + nx) * 4
+							buffer.writeu8(out, i * 4, buffer.readu8(out, o))
+							buffer.writeu8(out, i * 4 + 1, buffer.readu8(out, o + 1))
+							buffer.writeu8(out, i * 4 + 2, buffer.readu8(out, o + 2))
+							nextFilled[i + 1] = true
+							changed = true
+							break
+						end
+					end
+				end
+			end
+		end
+		filled = nextFilled
+		if not changed then
+			break
+		end
+	end
+	return out
+end
 
 return TextureGen

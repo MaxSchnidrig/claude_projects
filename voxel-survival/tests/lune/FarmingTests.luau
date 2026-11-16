@@ -154,9 +154,38 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		eq(Shapes.boxes(FARM0, get, true)[1][5], 15 / 16)
 	end)
 
-	test("farming mesh: crops are 4 two-sided sheets, grass 2; no empty faces; farmland top lower", function()
+	test("farming mesh: plants are drawn only where their pixels are (X for grass, # for crops)", function()
 		local GreedyMesher = Loader.require("src/shared/Meshing/GreedyMesher")
 		local SectionSampler = Loader.require("src/shared/Meshing/SectionSampler")
+		local PlantGeometry = Loader.require("src/shared/Meshing/PlantGeometry")
+		local TextureGen = Loader.require("src/shared/Blocks/TextureGen")
+		-- every plant texture: the rectangles cover each solid pixel exactly once and nothing else
+		for idx, key in BlockRegistry.textureKeys do
+			local isPlant = false
+			for _, d in BlockRegistry.byId do
+				if (d.shape == "plant" or d.shape == "crop") and BlockRegistry.textureKeys[d.faceTexture[1]] == key then
+					isPlant = true
+				end
+			end
+			if isPlant then
+				local img = TextureGen.generate(key)
+				local hits = table.create(256, 0)
+				local rects = PlantGeometry.rects(idx)
+				assert(#rects <= 8, `{key}: {#rects} strips (keep plants cheap)`)
+				for _, r in rects do
+					for y = r[2], r[4] - 1 do
+						for x = r[1], r[3] - 1 do
+							assert(buffer.readu8(img, (y * 16 + x) * 4 + 3) >= 128, `{key}: a strip shows a see-through pixel`)
+							hits[y * 16 + x + 1] += 1
+						end
+					end
+				end
+				for i = 0, 255 do
+					local solid = buffer.readu8(img, i * 4 + 3) >= 128
+					eq(hits[i + 1], if solid then 1 else 0, `{key}: pixel {i} drawn once if solid`)
+				end
+			end
+		end
 		local P = SectionSampler.SIZE
 		local function meshOne(block: number, below: number?)
 			local padded = buffer.create(SectionSampler.BYTES)
@@ -168,32 +197,45 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 			buffer.fill(light, 0, 15)
 			return GreedyMesher.meshLit(padded, light, {})
 		end
-		local function quads(r)
-			local out = {}
-			for _, list in r.groups do
-				for q = 1, #list, GreedyMesher.QUAD do
-					table.insert(out, { list[q], list[q + 1], list[q + 2], list[q + 3], list[q + 4], list[q + 5] })
+		local function byDir(r, tex)
+			local count = {}
+			local list = r.groups[tex] or {}
+			for q = 1, #list, GreedyMesher.QUAD do
+				local d = list[q]
+				count[d] = (count[d] or 0) + 1
+				if d >= 7 then
+					local c = GreedyMesher.quadCorners(d, list[q + 1], list[q + 2], list[q + 3], list[q + 4], list[q + 5])
+					for v = 1, 12, 3 do
+						assert(c[v] >= 5 - 1e-9 and c[v] <= 6 + 1e-9 and c[v + 2] >= 5 - 1e-9 and c[v + 2] <= 6 + 1e-9, "inside its block")
+						assert(c[v + 1] >= 5 - 1e-9 and c[v + 1] <= 6 + 1e-9, "no taller than the block")
+					end
 				end
 			end
-			return out
+			return count
 		end
-		local q = quads(meshOne(WHEAT0, FARM0))
-		local sheets = 0
-		for _, f in q do
-			assert(f[5] > 0 and f[6] > 0, "no empty quads")
-			if f[2] % 1 ~= 0 then
-				sheets += 1
-			end
+		local grassTex = BlockRegistry.byId[id("short_grass")].faceTexture[1]
+		local strips = #PlantGeometry.rects(grassTex)
+		local g = byDir(meshOne(id("short_grass"), GRASS), grassTex)
+		for d = 7, 10 do
+			eq(g[d], strips, `X sheet {d}: one piece per strip`)
 		end
-		eq(sheets, 8 + 1, "4 sheets x 2 sides, plus the farmland top at 15/16")
-		q = quads(meshOne(id("short_grass"), GRASS))
-		local grassSheets = 0
-		for _, f in q do
-			if f[2] % 1 ~= 0 then
-				grassSheets += 1
-			end
+		eq(g[11], nil)
+		local wheatTex = BlockRegistry.byId[WHEAT0].faceTexture[1]
+		local w = byDir(meshOne(WHEAT0, FARM0), wheatTex)
+		for d = 11, 14 do
+			eq(w[d], 2 * #PlantGeometry.rects(wheatTex), `# sheet {d}: two sheets, one piece per strip`)
 		end
-		eq(grassSheets, 4, "2 sheets x 2 sides")
+		-- front and back of each sheet face opposite ways
+		local function normal(d)
+			local c = GreedyMesher.quadCorners(d, 0, 0, 0, 1, 1)
+			local ux, uy, uz = c[4] - c[1], c[5] - c[2], c[6] - c[3]
+			local vx, vy, vz = c[10] - c[1], c[11] - c[2], c[12] - c[3]
+			return { uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx }
+		end
+		for d = 7, 13, 2 do
+			local a, b = normal(d), normal(d + 1)
+			assert(math.abs(a[1] + b[1]) < 1e-9 and math.abs(a[3] + b[3]) < 1e-9 and (a[1] ~= 0 or a[3] ~= 0), `sides of {d}`)
+		end
 	end)
 
 	test("world generation: grass and flowers only on grass, everything else unchanged", function()
@@ -233,6 +275,94 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		TerrainGen.generate(gen, a)
 		TerrainGen.generate(TerrainGen.new(1337), b)
 		eq(buffer.tostring(a.blocks) == buffer.tostring(b.blocks), true)
+	end)
+
+	test("server random ticks: 3 picks per section near players reach the crops and grow them", function()
+		local G = Fake.newGame()
+		for k, v in G.env do
+			Loader.globals[k] = v
+		end
+		Loader.forget("src/server/")
+		local ChunkData = Loader.require("src/shared/World/ChunkData")
+		local chunk = ChunkData.new(0, 0)
+		local FLOOR = 64
+		for z = 0, 15 do
+			for x = 0, 15 do
+				for y = 0, FLOOR - 1 do
+					ChunkData.set(chunk, x, y, z, STONE)
+				end
+				ChunkData.set(chunk, x, FLOOR - 1, z, FARM7)
+				ChunkData.set(chunk, x, FLOOR, z, WHEAT0)
+			end
+		end
+		local tickFns = {}
+		Loader.stubs["src/server/World/WorldService.luau"] = {
+			getChunk = function(key)
+				return if key == ChunkData.key(0, 0) then chunk else nil
+			end,
+			getBlockIfLoaded = function(x, y, z)
+				if x < 0 or x > 15 or z < 0 or z > 15 then
+					return nil
+				end
+				return ChunkData.get(chunk, x, y, z)
+			end,
+			blockLightAt = function()
+				return 0
+			end,
+		}
+		Loader.stubs["src/server/World/BlockUpdates.luau"] = {
+			set = function(x, y, z, b)
+				ChunkData.set(chunk, x, y, z, b)
+			end,
+			schedule = function() end,
+			register = function() end,
+			onNeighbourChanged = function() end,
+			onTick = function(fn)
+				table.insert(tickFns, fn)
+			end,
+		}
+		Loader.stubs["src/server/World/ItemEntityService.luau"] = { spawn = function() end }
+		Loader.stubs["src/server/Player/InventoryService.luau"] = {}
+		Loader.stubs["src/shared/Net/Remotes.luau"] = { get = function() return Fake.Instance.new("RemoteEvent") end }
+		Fake.mount(G.game:GetService("ReplicatedStorage"), "Shared", Loader.node("src/shared"))
+		local RandomTicks = Loader.require("src/server/World/RandomTicks")
+		local FS = Loader.require("src/server/Simulation/FarmingService")
+		RandomTicks.init()
+		FS.init()
+		-- a player standing in the field (random ticks only run near players)
+		local c = Fake.newCharacter("Tester", Fake.CFrame.new(8 * 3, (FLOOR + 1) * 3 + 3, 8 * 3))
+		c.Parent = G.workspace
+		G.player.Character = c
+		-- 6000 game ticks = 5 minutes
+		for _ = 1, 6000 do
+			for _, fn in tickFns do
+				fn()
+			end
+		end
+		local grown, ripe = 0, 0
+		for z = 0, 15 do
+			for x = 0, 15 do
+				local info = Farming.crop(ChunkData.get(chunk, x, FLOOR, z))
+				if info and info.age > 0 then
+					grown += 1
+				end
+				if info and info.age == 7 then
+					ripe += 1
+				end
+			end
+		end
+		print(`       5 minutes near a 16x16 wheat field: {grown} of 256 grew, {ripe} ripe ({RandomTicks.stats.chunks} chunk ticking)`)
+		-- Java: each block gets 6000 x 3 / 4096 = 4.4 random ticks; a crop in a full field grows
+		-- with chance 1 in 6 (speed 10 halved for crops on both sides): about 55 % grow once
+		assert(grown > 256 * 0.35 and grown < 256 * 0.75, `about half grew ({grown})`)
+		assert(ripe < 256, "but not all ripe yet (Java: about half an hour)")
+		for _, path in {
+			"src/server/World/WorldService.luau", "src/server/World/BlockUpdates.luau", "src/server/World/ItemEntityService.luau",
+			"src/server/Player/InventoryService.luau", "src/shared/Net/Remotes.luau",
+		} do
+			Loader.stubs[path] = nil
+		end
+		Loader.forget("src/server/")
 	end)
 
 	test("server farming: growth by random ticks, farmland dries / wets, hoe, bone meal, trampling, popping off", function()

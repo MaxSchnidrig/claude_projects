@@ -133,6 +133,12 @@ are fine.
   poisonous potato (status effects); rain wetting farmland (weather). The texture atlas is at
   116 / 121: the next textures need a bigger atlas (planned for 9b).
 
+- 0.9.1: plants are drawn only where their pixels are (solid strips as sheet pieces: Roblox
+  drew the see-through parts of the texture as dark squares); short grass and flowers use
+  Java's X, crops the #; plant art redrawn as straight stalks (4-7 strips each). A block
+  appearing around the player (trampled farmland -> dirt) pushes them up. Studio key H: random
+  ticks x10 for testing growth (like Java's randomTickSpeed rule).
+
 ## Phase 8 – Survival foundations (XL)
 
 **Liquids and gravity blocks**

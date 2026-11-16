@@ -575,6 +575,46 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		cleanup()
 	end)
 
+	test("client: farmland under you turning into dirt pushes you up (no falling through)", function()
+		local FARM = BlockRegistry.id("farmland")
+		local cells = {}
+		for x = -1, 3 do
+			for z = -1, 3 do
+				cells[`{x},{FLOOR},{z}`] = FARM
+			end
+		end
+		local T = boot(cells)
+		spawn(T, 1.5, FLOOR + 1, 1.5)
+		frames(T, 60)
+		near(feet(T).Y, FLOOR + 15 / 16, 1e-6, "standing on farmland (15/16)")
+		-- trampled: the server turns it into dirt under our feet
+		for x = -1, 3 do
+			for z = -1, 3 do
+				cells[`{x},{FLOOR},{z}`] = BlockRegistry.id("dirt")
+			end
+		end
+		frames(T, 30)
+		near(feet(T).Y, FLOOR + 1, 1e-6, "pushed up onto the dirt")
+		frames(T, 120)
+		near(feet(T).Y, FLOOR + 1, 1e-6, "and stays there")
+		-- jumping on farmland reports a landing for trampling
+		for x = -1, 3 do
+			for z = -1, 3 do
+				cells[`{x},{FLOOR},{z}`] = FARM
+			end
+		end
+		frames(T, 30)
+		local before = #T.survival.tramples
+		T.G.press(Fake.Enum.KeyCode.Space)
+		frames(T, 5)
+		T.G.release(Fake.Enum.KeyCode.Space)
+		frames(T, 60)
+		eq(#T.survival.tramples, before + 1, "the landing was reported")
+		local t = T.survival.tramples[#T.survival.tramples]
+		eq(t[2], FLOOR); assert(t[4] > 0.5, "fall distance of a jump")
+		cleanup()
+	end)
+
 	test("client: our touch controls walk, sprint (double tap) and jump like the keys", function()
 		local T = boot()
 		spawn(T, 0.5, FLOOR, 0.5)

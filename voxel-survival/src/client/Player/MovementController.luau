@@ -250,6 +250,10 @@ end
 -- One Java tick of the local player, and what follows from it.
 local function tick(b: Body, forward: number, strafe: number, jumpHeld: boolean, fx: number, fz: number)
 	local st = b.st
+	-- a block appeared around the box (trampled farmland turning into a full dirt block, a
+	-- block placed at your feet): Java pushes you out of it (up, the short way) instead of
+	-- letting you fall through it
+	PlayerMotor.settle(st, world, MovementController.sneaking)
 	b.px, b.py, b.pz = st.x, st.y, st.z
 	local r = PlayerMotor.tick(st, {
 		forward = forward, strafe = strafe, lookX = fx, lookZ = fz, jump = jumpHeld,

@@ -6,10 +6,12 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local ChunkData = require(Shared.World.ChunkData)
+local Remotes = require(Shared.Net.Remotes)
 local WorldService = require(script.Parent.WorldService)
 local BlockUpdates = require(script.Parent.BlockUpdates)
 
@@ -55,7 +57,7 @@ local function nearChunks(): { number }
 end
 
 function RandomTicks.step()
-	local picks = Config.RANDOM_TICK_SPEED
+	local picks = RandomTicks.speed
 	if picks <= 0 then
 		return
 	end
@@ -83,8 +85,18 @@ function RandomTicks.step()
 	RandomTicks.stats.ticked += ticked
 end
 
+-- Studio test aid (key H): random ticks x10, like Java's /gamerule randomTickSpeed 30.
+RandomTicks.speed = Config.RANDOM_TICK_SPEED
+
 function RandomTicks.init()
 	BlockUpdates.onTick(RandomTicks.step)
+	Remotes.get("DebugAction").OnServerEvent:Connect(function(_p: Player, a: any)
+		if RunService:IsStudio() and typeof(a) == "table" and a.type == "fastTicks" then
+			RandomTicks.speed = if RandomTicks.speed == Config.RANDOM_TICK_SPEED then Config.RANDOM_TICK_SPEED * 10 else Config.RANDOM_TICK_SPEED
+			ReplicatedStorage:SetAttribute("RandomTickSpeed", RandomTicks.speed)
+			print(`[RandomTicks] random tick speed {RandomTicks.speed}`)
+		end
+	end)
 end
 
 return RandomTicks

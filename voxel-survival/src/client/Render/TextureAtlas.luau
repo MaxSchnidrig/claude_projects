@@ -92,7 +92,7 @@ function TextureAtlas.init()
 		if shared then
 			cells[index] = shared -- fluid levels share their fluid's cell
 		else
-			local c = nextCell(img)
+			local c = nextCell(TextureGen.bleed(img))
 			cells[index] = c
 			byBase[base] = c
 		end

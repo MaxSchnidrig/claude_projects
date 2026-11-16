@@ -25,7 +25,17 @@ Backend.stats = { parts = 0 }
 
 -- Merge key for one cell: its block id if any face is visible, WILDCARD if it's an opaque block
 -- buried on all 6 sides (never seen, so any box may cover it), else 0 (skip).
+local PLANT: { [number]: boolean } = {}
+for pid, def in BlockRegistry.byId do
+	if def.shape == "plant" or def.shape == "crop" then
+		PLANT[pid] = true
+	end
+end
+
 function Backend.partKey(padded: buffer, id: number, p: number): number
+	if PLANT[id] then
+		return 0 -- (the low-detail fallback doesn't draw plants; it would make them cubes)
+	end
 	for i = 1, 6 do
 		local n = buffer.readu16(padded, (p + OFFS[i]) * 2)
 		if n == 0 or (not isOpaque[n + 1] and n ~= id and not (isLiquid[id + 1] and isLiquid[n + 1])) then

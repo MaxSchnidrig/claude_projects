@@ -20,6 +20,7 @@ local BlockRegistry = require(Shared.Blocks.BlockRegistry)
 local SectionSampler = require(script.Parent.SectionSampler)
 local Shapes = require(Shared.Blocks.Shapes)
 local PaneMesher = require(script.Parent.PaneMesher)
+local PlantGeometry = require(script.Parent.PlantGeometry)
 
 local SS = Config.SECTION_SIZE
 local P = SectionSampler.SIZE
@@ -139,6 +140,15 @@ local OPP = { 2, 1, 4, 3, 6, 5 }
 -- Glass panes are not meshed box by box: PaneMesher emits the outer faces of all of a section's
 -- panes together (faces between the pieces would show as lines through the glass).
 local glassPane = PaneMesher.isPane
+-- Plants and crops: drawn from their pixels (Meshing/PlantGeometry), not as boxes.
+local plantKind: { [number]: string } = {}
+for id, def in BlockRegistry.byId do
+	if def.shape == "plant" then
+		plantKind[id] = "cross"
+	elseif def.shape == "crop" then
+		plantKind[id] = "crop"
+	end
+end
 local CURVE_REF: { number } = {}
 local function emitShapes(padded: buffer, light: buffer?, groups: { [number]: { number } }): (number, number)
 	local quads, faces = 0, 0
@@ -152,6 +162,18 @@ local function emitShapes(padded: buffer, light: buffer?, groups: { [number]: { 
 					local list = panes or {}
 					panes = list
 					table.insert(list, p)
+				elseif plantKind[b] then
+					local tex = faceTex[b * 6 + 1]
+					local glist = groups[tex]
+					if not glist then
+						glist = {}
+						groups[tex] = glist
+					end
+					local own = if light then buffer.readu8(light, p) else 15
+					local bright = if light then math.floor(CURVE_REF[own * 4 + 1] * 255 + 0.5) else 255
+					local n = PlantGeometry.emit(glist, tex, plantKind[b], x, y, z, bright)
+					quads += n
+					faces += n
 				elseif b ~= 0 and isBoxShape[b + 1] then
 					local function get(dx: number, dy: number, dz: number): number?
 						return buffer.readu16(padded, (p + dx + dz * P + dy * P2) * 2)
@@ -509,7 +531,33 @@ end
 -- Corner positions (section-local block units) of a quad, in counter-clockwise order seen from
 -- the side the normal points to. Returns 12 numbers: x0,y0,z0, x1,y1,z1, x2,y2,z2, x3,y3,z3.
 -- Triangles are (0,1,2) and (0,2,3).
+-- Plant sheet quads (directions 7..14, see Meshing/PlantGeometry): corners base, +u, +u+v, +v on
+-- the front (odd d), base, +v, +u+v, +u on the back, with u along the sheet and v up.
+local PLANT_U = {
+	[7] = { 1, 0, 1 }, [8] = { 1, 0, 1 }, [9] = { 1, 0, -1 }, [10] = { 1, 0, -1 },
+	[11] = { 0, 0, 1 }, [12] = { 0, 0, 1 }, [13] = { 1, 0, 0 }, [14] = { 1, 0, 0 },
+}
+GreedyMesher.PLANT_U = PLANT_U
+
 function GreedyMesher.quadCorners(d: number, k: number, i: number, j: number, w: number, h: number): { number }
+	if d >= 7 then
+		local u = PLANT_U[d]
+		local ux, uz = u[1] * w, u[3] * w
+		if d % 2 == 1 then
+			return {
+				i, k, j,
+				i + ux, k, j + uz,
+				i + ux, k + h, j + uz,
+				i, k + h, j,
+			}
+		end
+		return {
+			i, k, j,
+			i, k + h, j,
+			i + ux, k + h, j + uz,
+			i + ux, k, j + uz,
+		}
+	end
 	local dir = DIRS[d]
 	local plane = if dir.sign > 0 then k + 1 else k
 	local base = { 0, 0, 0 }
