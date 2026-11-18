@@ -8,19 +8,15 @@ Every sound lives in `src/shared/Audio/SoundConfig.luau`. To fill one in:
 
 Only licensed audio: Roblox's built-in sounds, Creator Store audio, CC0 packs you upload, or your own files. Never another game's sound files or music, edits of them, or recreations of their melodies or creature sounds.
 
+Footsteps: which block makes which step sound is the `SoundConfig.footsteps` list (soft / wood / stone). To give, say, sand its own sound: add a `step.sand` entry and a `sand = { "sand" }` group (taking "sand" out of `soft`).
+
 Entries marked *built in* already work (Roblox's own default character sounds). Empty entries are silent until filled.
 
 | Sound | Search for | Current |
 |---|---|---|
-| `step.stone` | footstep stone hard | — |
-| `step.wood` | footstep wood plank | — |
-| `step.gravel` | footstep gravel dirt | — |
-| `step.grass` | footstep grass | — |
-| `step.sand` | footstep sand | — |
-| `step.snow` | footstep snow crunch | — |
-| `step.glass` | footstep glass tile | — |
-| `step.wool` | footstep carpet cloth | — |
-| `step.default` | (built in) | built in |
+| `step.soft` | footstep grass soft dirt | built in (temporary: Roblox step, low and muffled) |
+| `step.wood` | footstep wood plank | built in (temporary: Roblox step) |
+| `step.stone` | footstep stone hard | built in (temporary: Roblox step, high and bright) |
 | `dig.stone` | stone hit pick chip | — |
 | `dig.wood` | wood hit knock | — |
 | `dig.gravel` | dirt shovel hit | — |

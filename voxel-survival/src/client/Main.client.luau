@@ -108,6 +108,9 @@ Startup.run("client", {
 	system("ItemEntityVisuals", function()
 		return client.World.ItemEntityVisuals
 	end),
+	system("HeldItems", function()
+		return client.Player.HeldItems
+	end),
 	system("MobClient", function()
 		return client.Mobs.MobClient
 	end),

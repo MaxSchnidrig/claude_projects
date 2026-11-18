@@ -162,6 +162,19 @@ are fine.
   Left for later: potions and the other effects (speed, slowness, jump boost...), thrown eggs
   and chicks, cake, cookies, stews, honey, nuggets from smelting gold gear, milk / egg sounds.
 
+- 0.9.4 (item graphics + footsteps, a small phase before 9d): every item icon redrawn as our own
+  16x16 pixel art (Items/ItemSprites: silhouettes of material letters, one shared shading and
+  outline style); block items show 3D icons in the inventory (Items/BlockIconGen: cube, slab,
+  stairs, wall, fence, cactus, campfire). Items are 3D everywhere else (Render/ItemMeshes, one
+  cached mesh per item): flat items as their icon extruded 1 pixel deep (vertex colours, faces
+  merged), blocks as small textured blocks; used for the first-person hand, items in every
+  player's hands (Player/HeldItems, from the server's HeldItem / HeldOff attributes) and dropped
+  items (Java's 1-5 copies by stack size, spin and bob; F3 shows the counts; Studio key U drops
+  200 stacks to test). Footsteps: Roblox's own character sounds switched off (the "echo"), Java
+  step pace (every 1/0.6 blocks), only on the ground and moving (silent sneaking like Java),
+  3 temporary groups soft / wood / stone mapped for every block in SoundConfig.footsteps.
+  Left for the big graphics phase: final art and sounds.
+
 ## Phase 8 – Survival foundations (XL)
 
 **Liquids and gravity blocks**

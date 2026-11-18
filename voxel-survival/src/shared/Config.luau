@@ -210,5 +210,6 @@ Config.SPECTATOR_SPEED = 10.92 -- blocks/s (Java flying speed; Ctrl doubles it)
 Config.TERRAIN_MATERIAL = "Plastic" -- rougher than SmoothPlastic: less shine on blocks
 Config.DEBUG_KEY_ITEM_MENU = "C" -- Studio only: menu with every block and item (click = full stack)
 Config.DEBUG_KEY_GIVE_KIT = "G" -- Studio only: test kit (torches, coal, buckets, flint and steel, TNT, sand, gravel, campfires, beef, planks)
+Config.DEBUG_KEY_DROP_PILE = "U" -- Studio only: drop 200 stacks of random items around you (dropped-item performance)
 
 return Config

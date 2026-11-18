@@ -22,6 +22,10 @@ local PartsBackend = require(script.Parent.Parent.Render.PartsBackend)
 local CollisionBuilder = require(script.Parent.Parent.Render.CollisionBuilder)
 local LiveEditPool = require(script.Parent.Parent.Render.LiveEditPool)
 local SpecialPartsBackend = require(script.Parent.Parent.Render.SpecialPartsBackend)
+local ItemMeshes = require(script.Parent.Parent.Render.ItemMeshes)
+local ItemEntityVisuals = require(script.Parent.Parent.World.ItemEntityVisuals)
+local HeldItems = require(script.Parent.Parent.Player.HeldItems)
+local AudioClient = require(script.Parent.Parent.Audio.AudioClient)
 local Hotbar = require(script.Parent.Parent.UI.Hotbar)
 local SurvivalClient = require(script.Parent.Parent.Survival.SurvivalClient)
 local DayNightClient = require(script.Parent.Parent.Survival.DayNightClient)
@@ -198,6 +202,8 @@ function DebugOverlay.init()
 			print(`[Sky] mode: {DayNight.mode}`)
 		elseif input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_GIVE_KIT] and RunService:IsStudio() then
 			Remotes.get("DebugAction"):FireServer({ type = "giveKit" })
+		elseif input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_DROP_PILE] and RunService:IsStudio() then
+			Remotes.get("DebugAction"):FireServer({ type = "dropPile" })
 		elseif input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_SPAWN_MOB] and RunService:IsStudio() then
 			Remotes.get("DebugAction"):FireServer({ type = "spawnMob" })
 		elseif input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_KEEP_TEMP] then
@@ -278,6 +284,7 @@ function DebugOverlay.init()
 			`MeshParts {es.meshParts}   triangles {es.triangles}   uploads {es.uploadsInFlight} in flight / {es.uploadsQueued} queued`,
 			`sections: {rs.sectionsEditable} mesh, {rs.sectionsParts} parts   fallbacks {rs.fallbacks}   demotions {rs.demotions}`,
 			`render Parts {PartsBackend.stats.parts}   water/ice/glass/lava Parts {SpecialPartsBackend.stats.parts} in {SpecialPartsBackend.stats.sections} sections   collision Parts {CollisionBuilder.stats.parts}`,
+			`dropped items {ItemEntityVisuals.stats.items} ({ItemEntityVisuals.stats.meshParts} mesh parts, {ItemEntityVisuals.stats.waiting} waiting)   item meshes cached {ItemMeshes.stats.templates} ({ItemMeshes.stats.triangles} tris, {ItemMeshes.stats.building} building, {ItemMeshes.stats.failed} failed)   held shown {HeldItems.stats.shown}   steps {AudioClient.steps}`,
 			string.format("live edit pool: %d slots (%d meshes), %d in use, no free slot %dx%s",
 				ls.slots, ls.meshes, ls.inUse, ls.noSlot, if ls.createError ~= "" then `, error: {ls.createError}` else ""),
 			string.format("instant edit %.2f ms avg (live write %.2f ms)   edit->baked hand-over %.2f s avg (%d)   F6 keep live: %s",

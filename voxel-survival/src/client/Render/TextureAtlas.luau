@@ -20,12 +20,14 @@ local TexturePalette = require(Shared.Blocks.TexturePalette)
 local TextureGen = require(Shared.Blocks.TextureGen)
 local ItemRegistry = require(Shared.Items.ItemRegistry)
 local ItemIconGen = require(Shared.Items.ItemIconGen)
+local BlockIconGen = require(Shared.Items.BlockIconGen)
 local Config = require(Shared.Config)
 
 local TextureAtlas = {}
 TextureAtlas.ready = false
 TextureAtlas.content = nil :: Content?
 TextureAtlas.iconContent = nil :: Content?
+TextureAtlas.blockIconContent = nil :: Content? -- 3D block item icons (BlockIconGen)
 TextureAtlas.size = 1024
 TextureAtlas.stats = { baked = false, error = "" }
 
@@ -41,6 +43,10 @@ local crackCell: { [number]: number } = {} -- stage -> cell
 local pixels: { [number]: buffer } = {} -- texture index -> 16x16 RGBA (particles, held blocks)
 local iconCells: { [string]: number } = {}
 local ICON_COLS = 16
+local blockIconCells: { [string]: number } = {}
+local BLOCK_ICON_COLS = 16
+local BI = BlockIconGen.SIZE
+local iconPixels: { [string]: buffer } = {} -- item key -> its flat 16x16 icon (item meshes)
 
 local function bake(image: any): Content
 	local ok, res, content = pcall(function()
@@ -111,11 +117,33 @@ function TextureAtlas.init()
 	image:WritePixelsBuffer(Vector2.zero, Vector2.new(SIZE, SIZE), data)
 	TextureAtlas.content = bake(image)
 
-	-- item icons
+	-- item icons: flat 16x16 ones, and 3D icons for block items with a block shape
 	local items = {}
+	local blockItems = {}
 	for _, def in ItemRegistry.list() do
-		if not def.block or def.icon then
+		if BlockIconGen.shapeForItem(def) then
+			table.insert(blockItems, def)
+		else
 			table.insert(items, def)
+		end
+	end
+	if #blockItems > 0 then
+		local brows = math.ceil(#blockItems / BLOCK_ICON_COLS)
+		local bw, bh = BLOCK_ICON_COLS * BI, brows * BI
+		local bsheet = buffer.create(bw * bh * 4)
+		for i, def in blockItems do
+			local cell = i - 1
+			blockIconCells[def.key] = cell
+			local icon = BlockIconGen.render(def.block :: number, BlockIconGen.shapeForItem(def) :: string)
+			local ox, oy = (cell % BLOCK_ICON_COLS) * BI, (cell // BLOCK_ICON_COLS) * BI
+			for y = 0, BI - 1 do
+				buffer.copy(bsheet, ((oy + y) * bw + ox) * 4, icon, y * BI * 4, BI * 4)
+			end
+		end
+		local bimg = AssetService:CreateEditableImage({ Size = Vector2.new(bw, bh) })
+		if bimg then
+			bimg:WritePixelsBuffer(Vector2.zero, Vector2.new(bw, bh), bsheet)
+			TextureAtlas.blockIconContent = bake(bimg)
 		end
 	end
 	local rows = math.max(1, math.ceil(#items / ICON_COLS))
@@ -125,6 +153,7 @@ function TextureAtlas.init()
 		local cell = i - 1
 		iconCells[def.key] = cell
 		local icon = ItemIconGen.generate(def)
+		iconPixels[def.key] = icon
 		local ox, oy = (cell % ICON_COLS) * 16, (cell // ICON_COLS) * 16
 		for y = 0, 15 do
 			buffer.copy(sheet, ((oy + y) * w + ox) * 4, icon, y * 64, 64)
@@ -165,6 +194,29 @@ function TextureAtlas.iconRect(itemKey: string): (Vector2?, Vector2?)
 		return nil, nil
 	end
 	return Vector2.new((cell % ICON_COLS) * 16, (cell // ICON_COLS) * 16), Vector2.new(16, 16)
+end
+
+-- 3D block icon rectangle in the block icon sheet, or nil (flat items).
+function TextureAtlas.blockIconRect(itemKey: string): (Vector2?, Vector2?)
+	local cell = blockIconCells[itemKey]
+	if not cell then
+		return nil, nil
+	end
+	return Vector2.new((cell % BLOCK_ICON_COLS) * BI, (cell // BLOCK_ICON_COLS) * BI), Vector2.new(BI, BI)
+end
+
+-- The flat 16x16 icon pixels of an item (made on first use for items not in the sheet).
+function TextureAtlas.iconPixels(itemKey: string): buffer?
+	local p = iconPixels[itemKey]
+	if not p then
+		local def = ItemRegistry.get(itemKey)
+		if not def then
+			return nil
+		end
+		p = ItemIconGen.generate(def)
+		iconPixels[itemKey] = p
+	end
+	return p
 end
 
 -- The 16x16 RGBA pixels of a texture (break particles, held block colours).

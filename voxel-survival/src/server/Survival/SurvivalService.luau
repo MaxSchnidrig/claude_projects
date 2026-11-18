@@ -709,6 +709,19 @@ function SurvivalService.init()
 			if def then
 				InventoryService.add(p, def.key, math.min(n, def.stack))
 			end
+		elseif a.type == "dropPile" then
+			-- 200 random stacks in a 9 x 9 block square around the player (dropped-item
+			-- performance check; they're ordinary dropped items and despawn as usual)
+			local root = p.Character and p.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
+			if root then
+				local items = ItemRegistry.list()
+				local Drops = require(script.Parent.Parent.World.ItemEntityService)
+				for _ = 1, 200 do
+					local def = items[math.random(1, #items)]
+					local pos = root.Position + Vector3.new(math.random(-12, 12), 3, math.random(-12, 12))
+					Drops.spawn({ item = def.key, count = math.random(1, math.min(64, def.stack)) }, pos, 3)
+				end
+			end
 		elseif a.type == "giveKit" then
 			InventoryService.add(p, "torch", 64)
 			InventoryService.add(p, "coal", 16)

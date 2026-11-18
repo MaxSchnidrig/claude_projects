@@ -12,7 +12,7 @@
 -- Fields: id, volume (0-1), pitch = { min, max } (random each play), search.
 -- 3D sounds (blocks, mobs, footsteps) are heard from their position; the rest are 2D.
 
-export type Entry = { id: string, volume: number, pitch: { number }?, search: string }
+export type Entry = { id: string, volume: number, pitch: { number }?, search: string, eq: { number }? }
 
 local E = function(id: string, volume: number, pitchMin: number, pitchMax: number, search: string): Entry
 	return { id = id, volume = volume, pitch = { pitchMin, pitchMax }, search = search }
@@ -24,17 +24,16 @@ local SoundConfig = {}
 SoundConfig.materials = { "stone", "wood", "gravel", "grass", "sand", "snow", "glass", "wool", "water", "lava" }
 
 SoundConfig.sounds = {
-	-- footsteps (one step about every block walked)
-	["step.stone"] = E("", 0.35, 0.9, 1.1, "footstep stone hard"),
-	["step.wood"] = E("", 0.35, 0.9, 1.1, "footstep wood plank"),
-	["step.gravel"] = E("", 0.35, 0.9, 1.1, "footstep gravel dirt"),
-	["step.grass"] = E("", 0.3, 0.9, 1.1, "footstep grass"),
-	["step.sand"] = E("", 0.3, 0.9, 1.1, "footstep sand"),
-	["step.snow"] = E("", 0.3, 0.9, 1.1, "footstep snow crunch"),
-	["step.glass"] = E("", 0.3, 0.9, 1.1, "footstep glass tile"),
-	["step.wool"] = E("", 0.3, 0.9, 1.1, "footstep carpet cloth"),
-	-- Roblox's own default footstep (ships with the Roblox client): a fallback for every material
-	["step.default"] = E("rbxasset://sounds/action_footsteps_plastic.mp3", 0.25, 0.9, 1.1, "(built in)"),
+	-- Footsteps: 3 groups for now (SoundConfig.footsteps says which block uses which). All three are
+	-- TEMPORARY: Roblox's own built-in footstep (ships with every Roblox client) shaped with pitch
+	-- and an equalizer. Replace an `id` with a licensed Creator Store sound to upgrade one group.
+	-- `eq` = { low, mid, high } gain in dB (an EqualizerSoundEffect on the sound).
+	["step.soft"] = { id = "rbxasset://sounds/action_footsteps_plastic.mp3", volume = 0.22, pitch = { 0.62, 0.7 },
+		eq = { 2, -6, -30 }, search = "footstep grass soft dirt" },
+	["step.wood"] = { id = "rbxasset://sounds/action_footsteps_plastic.mp3", volume = 0.25, pitch = { 0.9, 1.05 },
+		search = "footstep wood plank" },
+	["step.stone"] = { id = "rbxasset://sounds/action_footsteps_plastic.mp3", volume = 0.25, pitch = { 1.3, 1.45 },
+		eq = { -12, 0, 6 }, search = "footstep stone hard" },
 
 	-- digging hits while mining (quieter, every 4 ticks)
 	["dig.stone"] = E("", 0.25, 0.5, 0.6, "stone hit pick chip"),
@@ -153,6 +152,78 @@ SoundConfig.music = {
 		{ id = "", name = "Night", search = "night ambient piano slow" },
 	},
 }
+
+-- Which footstep sound each block makes (by block family: all states of stairs, doors, crops...
+-- share one entry). Every block is listed so groups can be split later: move names into a new
+-- list and add its "step.<group>" sound above. "none": no footstep (liquids, fire).
+local WOODS = { "oak", "birch", "spruce" }
+local COLORS = { "white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray", "light_gray",
+	"cyan", "purple", "blue", "brown", "green", "red", "black" }
+local function with(list: { string }, extra: { string }): { string }
+	for _, e in extra do
+		table.insert(list, e)
+	end
+	return list
+end
+local function woods(suffixes: { string }): { string }
+	local out = {}
+	for _, w in WOODS do
+		for _, s in suffixes do
+			table.insert(out, `{w}_{s}`)
+		end
+	end
+	return out
+end
+local function beds(): { string }
+	local out = {}
+	for _, c in COLORS do
+		table.insert(out, `{c}_bed`)
+	end
+	return out
+end
+local function fluid(name: string): { string }
+	local out = { name, `{name}_falling` }
+	for i = 1, 7 do
+		table.insert(out, `{name}_flowing_{i}`)
+	end
+	return out
+end
+
+SoundConfig.footsteps = {
+	soft = with(with({
+		"grass_block", "snowy_grass_block", "dirt", "farmland", "sand", "gravel", "clay", "snow_block",
+		"white_wool", "cactus", "tnt",
+		-- plants (you can't stand on them; listed so every block has a group)
+		"short_grass", "dandelion", "poppy", "azure_bluet", "oxeye_daisy", "cornflower", "red_tulip",
+		"wheat", "carrots", "potatoes", "beetroots", "sugar_cane", "vine",
+	}, woods({ "leaves", "sapling" })), beds()),
+	wood = with(woods({ "planks", "log", "slab", "stairs", "fence", "fence_gate", "door", "trapdoor", "sign", "hanging_sign" }), {
+		"crafting_table", "chest", "ladder", "campfire", "campfire_unlit", "torch",
+		"wall_torch_north", "wall_torch_east", "wall_torch_south", "wall_torch_west",
+		"pumpkin", "melon", "pumpkin_stem", "melon_stem", "attached_pumpkin_stem", "attached_melon_stem",
+	}),
+	stone = {
+		"stone", "stone_slab", "stone_stairs", "cobblestone", "cobblestone_slab", "cobblestone_stairs", "cobblestone_wall",
+		"sandstone", "sandstone_slab", "sandstone_stairs", "sandstone_wall", "bedrock", "obsidian", "furnace",
+		"coal_ore", "iron_ore", "gold_ore", "copper_ore", "diamond_ore", "emerald_ore", "lapis_ore", "volt_ore",
+		"glass", "glass_pane", "ice", "iron_bars", "iron_door", "iron_trapdoor",
+	},
+	none = with(with(fluid("water"), fluid("lava")), { "fire" }),
+} :: { [string]: { string } }
+
+local stepOf: { [string]: string } = {}
+for group, list in SoundConfig.footsteps do
+	for _, family in list do
+		assert(stepOf[family] == nil, `SoundConfig: {family} is in two footstep groups`)
+		stepOf[family] = group
+	end
+end
+-- Footstep group of a block family (a block added later without an entry: by its material).
+local BY_MATERIAL = { stone = "stone", glass = "stone", wood = "wood" }
+function SoundConfig.stepGroup(family: string, material: string?): string
+	return stepOf[family] or (material and BY_MATERIAL[material]) or "soft"
+end
+SoundConfig.stepOf = stepOf
 
 function SoundConfig.get(name: string): Entry?
 	return SoundConfig.sounds[name]

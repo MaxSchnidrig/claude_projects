@@ -616,6 +616,7 @@ end
 Backend.appendQuads = appendQuads
 Backend.groupKey = groupKey
 Backend.MESH_OPTIONS = MESH_OPTIONS
+Backend.upload = upload -- (item meshes, Render/ItemMeshes)
 
 -- Call every frame: starts queued uploads up to the concurrency cap.
 function Backend.pump()

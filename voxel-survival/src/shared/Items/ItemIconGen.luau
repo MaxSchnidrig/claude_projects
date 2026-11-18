@@ -1,10 +1,11 @@
 --!strict
--- ROCRAFT's own 16x16 item icons for non-block items, drawn from simple shape recipes (pure,
--- deterministic). Tools: a diagonal handle with a head shape per kind in the tier colour.
--- Materials and food: a shape per item family (bar, lump, gem, dust, stick, round fruit, meat...).
+-- ROCRAFT's own 16x16 item icons (pure, deterministic): every non-block item is a pixel-art
+-- sprite from Items/ItemSprites; block items with a shape icon (doors, plants, beds...) are drawn
+-- here from their textures. Full blocks get 3D icons (Items/BlockIconGen).
 -- Output: 16 x 16 RGBA buffer, transparent background. Blocks use their face texture instead.
 
 local TextureGen = require(script.Parent.Parent.Blocks.TextureGen)
+local ItemSprites = require(script.Parent.ItemSprites)
 
 local ItemIconGen = {}
 
@@ -584,156 +585,14 @@ function ItemIconGen.generate(def: any): buffer
 		outline(img, { 30, 26, 24 })
 		return img
 	end
-	local armor = def.armor
-	if armor then
-		-- armour pieces (our own pixel shapes) in the material colour
-		local img = new()
-		local c = def.color or { 200, 200, 200 }
-		local dark = shade(c, 0.7)
-		local function rect(x0: number, y0: number, x1: number, y1: number, col: { number })
-			for y = y0, y1 do
-				for x = x0, x1 do
-					put(img, x, y, col)
-				end
-			end
-		end
-		if armor.slot == "head" then
-			rect(3, 4, 12, 7, c)
-			rect(3, 8, 5, 11, c)
-			rect(10, 8, 12, 11, c)
-			rect(4, 4, 11, 4, shade(c, 1.15))
-		elseif armor.slot == "chest" then
-			rect(2, 3, 5, 6, c)
-			rect(10, 3, 13, 6, c)
-			rect(4, 4, 11, 13, c)
-			rect(7, 4, 8, 6, { 0, 0, 0 })
-			rect(4, 13, 11, 13, dark)
-		elseif armor.slot == "legs" then
-			rect(4, 2, 11, 5, c)
-			rect(4, 6, 6, 14, c)
-			rect(9, 6, 11, 14, c)
-			rect(4, 2, 11, 2, shade(c, 1.15))
-		else
-			rect(3, 7, 6, 12, c)
-			rect(9, 7, 12, 12, c)
-			rect(2, 11, 6, 12, dark)
-			rect(9, 11, 13, 12, dark)
-		end
-		outline(img, { 30, 26, 24 })
-		return img
+	local sprite = ItemSprites.icon(def.key)
+	if sprite then
+		return sprite
 	end
-	if def.key == "shield" then
-		local img = new()
-		local wood = { 140, 104, 64 }
-		for y = 1, 14 do
-			for x = 3, 12 do
-				local edge = x == 3 or x == 12 or y == 1 or y == 14
-				put(img, x, y, if edge then { 150, 150, 156 } else shade(wood, 0.9 + ((x + y * 3) % 4) * 0.04))
-			end
-		end
-		for y = 2, 13 do
-			put(img, 7, y, { 120, 120, 128 }) -- iron band
-			put(img, 8, y, { 150, 150, 156 })
-		end
-		outline(img, { 30, 26, 24 })
-		return img
-	end
-	if def.key == "bow" or def.key == "crossbow" or def.key == "crossbow_loaded" then
-		local img = new()
-		local wood = { 130, 92, 52 }
-		if def.key == "bow" then
-			for i = 0, 11 do
-				local x = 3 + i
-				local y = 12 - i + math.floor(((i - 5.5) / 5.5) ^ 2 * -2.5 + 2.5)
-				put(img, x, y, wood)
-				put(img, x, y + 1, shade(wood, 0.8))
-			end
-			for i = 0, 10 do
-				put(img, 3 + i, 13 - i, { 230, 230, 230 }) -- string
-			end
-		else
-			for i = 0, 11 do
-				put(img, 2 + i, 13 - i, wood) -- stock
-				put(img, 3 + i, 13 - i, shade(wood, 0.8))
-			end
-			for i = 0, 8 do
-				put(img, 4 + i, 4 + i // 3, { 150, 150, 156 }) -- limbs
-				put(img, 4 + i // 3, 4 + i, { 150, 150, 156 })
-			end
-			if def.key == "crossbow_loaded" then
-				for i = 0, 6 do
-					put(img, 6 + i, 9 - i, { 220, 220, 220 }) -- the arrow on it
-				end
-				put(img, 13, 2, { 200, 200, 206 })
-			end
-		end
-		outline(img, { 30, 26, 24 })
-		return img
-	end
-	if def.key == "tripwire_hook" then
-		local img = new()
-		for y = 2, 9 do
-			put(img, 7, y, { 160, 160, 166 })
-			put(img, 8, y, { 130, 130, 136 })
-		end
-		for y = 10, 14 do
-			put(img, 7, y, { 140, 104, 60 })
-			put(img, 8, y, { 120, 88, 50 })
-		end
-		for x = 5, 10 do
-			put(img, x, 3, { 180, 180, 186 })
-		end
-		outline(img, { 30, 26, 24 })
-		return img
-	end
-	if def.key == "item_frame" or def.key == "glow_item_frame" then
-		local glow = def.key == "glow_item_frame"
-		-- a wooden frame around a leather backing (our own design)
-		local img = new()
-		for y = 1, 14 do
-			for x = 1, 14 do
-				local border = x <= 2 or x >= 13 or y <= 2 or y >= 13
-				local wood = if glow then { 150, 190, 150 } else { 150, 108, 64 }
-				put(img, x, y, if border then shade(wood, 0.9 + ((x * 7 + y * 3) % 5) * 0.04)
-					elseif glow then { 70, 170, 150 } else { 132, 82, 48 })
-			end
-		end
-		outline(img, { 30, 26, 24 })
-		return img
-	end
+	-- (every item has a sprite - tested; this is only a safety net for new items)
 	local img = new()
-	local color = def.color or { 200, 200, 200 }
-	local tool = def.tool
-	local seed = 0
-	for i = 1, #def.key do
-		seed += string.byte(def.key, i) * i
-	end
-	if tool and tools[tool.kind] then
-		tools[tool.kind](img, color)
-	elseif tool and tool.kind == "flint_and_steel" then
-		-- a dark flint chip and a curved steel striker
-		for y = 8, 13 do
-			for x = 2, 6 do
-				if (x - 4) ^ 2 + (y - 10.5) ^ 2 < 7 then
-					put(img, x, y, { 54, 54, 58 })
-				end
-			end
-		end
-		for i = 0, 6 do
-			put(img, 8 + i, 3 + math.floor(math.abs(i - 3) * 0.7), { 190, 190, 196 })
-			put(img, 8 + i, 4 + math.floor(math.abs(i - 3) * 0.7), { 140, 140, 146 })
-		end
-	elseif tool and tool.kind == "shears" then
-		for i = 0, 5 do
-			put(img, 4 + i, 4 + i, { 200, 200, 206 })
-			put(img, 11 - i, 4 + i, { 170, 170, 176 })
-		end
-		put(img, 3, 12, { 160, 40, 40 })
-		put(img, 12, 12, { 160, 40, 40 })
-	else
-		local shape = SHAPES[SHAPE_OF[def.key] or "lump"]
-		shape(img, color, seed)
-	end
+	local shape = SHAPES[SHAPE_OF[def.key] or "lump"]
+	shape(img, def.color or { 200, 200, 200 }, 0)
 	outline(img, { 30, 26, 24 })
 	return img
 end

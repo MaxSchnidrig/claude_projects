@@ -881,6 +881,33 @@ function InventoryService.init()
 	end)
 	Remotes.get("InventoryAction").OnServerEvent:Connect(onAction)
 
+	-- What each player holds, as attributes on their character ("HeldItem", "HeldOff"), so every
+	-- client can draw it in their hands (Player/HeldItems). Checked 10 times a second.
+	local heldAcc = 0
+	game:GetService("RunService").Heartbeat:Connect(function(dt)
+		heldAcc += dt
+		if heldAcc < 0.1 then
+			return
+		end
+		heldAcc = 0
+		for _, player in Players:GetPlayers() do
+			local c = player.Character
+			if c then
+				local i = inv(player)
+				local main = i.slots[i.selected]
+				local off = i.slots[OFFHAND]
+				local mk = if main then main.item else ""
+				local ok = if off then off.item else ""
+				if c:GetAttribute("HeldItem") ~= mk then
+					c:SetAttribute("HeldItem", mk)
+				end
+				if c:GetAttribute("HeldOff") ~= ok then
+					c:SetAttribute("HeldOff", ok)
+				end
+			end
+		end
+	end)
+
 	local function onPlayer(player: Player)
 		inv(player)
 	end

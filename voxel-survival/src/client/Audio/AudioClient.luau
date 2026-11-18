@@ -1,7 +1,11 @@
 --!strict
 -- Plays ROCRAFT's sounds and music (every id lives in Shared/Audio/SoundConfig).
 --
---   footsteps   about one step per block walked on the ground, by the material underfoot
+--   footsteps   Java timing: one step every 1/0.6 blocks walked (Entity.moveDist), only on the
+--               ground and moving, never while sneaking (Java's "discrete" movement is silent),
+--               swimming, spectating or in bed; the sound is the block underfoot's group
+--               (SoundConfig.footsteps: soft / wood / stone). Roblox's own character sounds are
+--               switched off (client/RbxCharacterSounds), so only ours plays: no doubled "echo".
 --   blocks      dig hits while mining, break and place sounds by material
 --   player      eating (every 4 ticks while eating), hurt, landing
 --   containers  chest open / close when the window opens / closes
@@ -64,6 +68,12 @@ function AudioClient.play(name: string, pos: Vector3?, volumeScale: number?): bo
 	if p then
 		s.PlaybackSpeed = p[1] + math.random() * (p[2] - p[1])
 	end
+	local eq = e.eq
+	if eq then
+		local fx = Instance.new("EqualizerSoundEffect")
+		fx.LowGain, fx.MidGain, fx.HighGain = eq[1], eq[2], eq[3]
+		fx.Parent = s
+	end
 	if pos then
 		local a = Instance.new("Attachment")
 		a.WorldPosition = pos
@@ -97,6 +107,57 @@ local function playMaterial(kind: string, id: number?, pos: Vector3?, fallback: 
 	end
 end
 
+-- Footstep group of the block the feet stand on (Java getOnPos: 0.2 below the feet), or nil
+-- when there's nothing to step on.
+local stepWorld: any = nil
+local function stepGroupAt(feet: Vector3): string?
+	local id = stepWorld and stepWorld.getBlock(math.floor(feet.X / BS), math.floor((feet.Y - 0.2 * BS) / BS), math.floor(feet.Z / BS))
+	local def = id and BlockRegistry.byId[id]
+	if not def or id == 0 then
+		return nil
+	end
+	local g = SoundConfig.stepGroup(def.family, def.sound)
+	return if g == "none" then nil else g
+end
+AudioClient.stepGroupAt = stepGroupAt
+
+-- Java Entity.move: moveDist grows by 0.6 x the horizontal distance; a step plays each time it
+-- passes the next whole number. Distance only counts while footsteps can happen at all.
+local stepMover: any = nil
+local moveDist, nextStep = 0, 1
+AudioClient.steps = 0 -- (tests / F3)
+function AudioClient.stepTick(dt: number, velBlocks: Vector3, feet: Vector3)
+	local M = stepMover
+	if not M then
+		return
+	end
+	local silent = M.sneaking or M.inLiquid or M.spectating or M.sleeping
+		or Players.LocalPlayer:GetAttribute("Spectator") == true
+	if silent then
+		return
+	end
+	local horiz = Vector3.new(velBlocks.X, 0, velBlocks.Z).Magnitude * dt
+	if horiz < 1e-4 then
+		return -- standing still
+	end
+	moveDist += horiz * 0.6
+	if moveDist > nextStep and M.onGround then
+		local g = stepGroupAt(feet)
+		if g then
+			nextStep = math.floor(moveDist) + 1
+			AudioClient.steps += 1
+			AudioClient.play(`step.{g}`, feet)
+		end
+	end
+end
+
+-- Where footsteps read the world and the player's movement (init passes ClientWorld and
+-- MovementController; tests pass stand-ins).
+function AudioClient.setStepSources(world: any, mover: any)
+	stepWorld = world
+	stepMover = mover
+end
+
 local function blockCenter(x: number, y: number, z: number): Vector3
 	return (Vector3.new(x, y, z) + Vector3.new(0.5, 0.5, 0.5)) * BS
 end
@@ -124,6 +185,37 @@ function AudioClient.init(deps: { [string]: any })
 	local MovementController = deps.MovementController
 	local InventoryClient = deps.InventoryClient
 	local MobClient = deps.MobClient
+	AudioClient.setStepSources(ClientWorld, MovementController)
+	-- no reverb on anything (Java has none); and in case Roblox's default character sounds still
+	-- got in (an old place file), mute the sounds it puts in the body
+	SoundService.AmbientReverb = Enum.ReverbType.NoReverb
+	local DEFAULT_SOUNDS = { Running = true, Jumping = true, Landing = true, FreeFalling = true, Climbing = true,
+		GettingUp = true, Splash = true, Swimming = true, Died = true }
+	local function muteDefaults(character: Model)
+		local root = character:WaitForChild("HumanoidRootPart", 10)
+		if not root then
+			return
+		end
+		local function check(d: Instance)
+			if d:IsA("Sound") and DEFAULT_SOUNDS[d.Name] then
+				d.Volume = 0
+			end
+		end
+		for _, d in root:GetChildren() do
+			check(d)
+		end
+		root.ChildAdded:Connect(check)
+	end
+	local function watchPlayer(p: Player)
+		if p.Character then
+			task.spawn(muteDefaults, p.Character)
+		end
+		p.CharacterAdded:Connect(muteDefaults)
+	end
+	for _, p in Players:GetPlayers() do
+		watchPlayer(p)
+	end
+	Players.PlayerAdded:Connect(watchPlayer)
 
 	BlockInteraction.broken.Event:Connect(function(x, y, z, id)
 		playMaterial("break", id, blockCenter(x, y, z))
@@ -171,7 +263,6 @@ function AudioClient.init(deps: { [string]: any })
 	end
 
 	-- footsteps, landing, eating
-	local walked = 0
 	local wasGrounded = true
 	local lastVy = 0
 	local eatAcc = 0
@@ -185,14 +276,7 @@ function AudioClient.init(deps: { [string]: any })
 		local grounded = MovementController.onGround
 		local v = MovementController.velocity * 20 * BS -- studs/s
 		local feet = root.Position - Vector3.new(0, 3, 0)
-		if grounded and not MovementController.inLiquid and not MovementController.sneaking then
-			walked += Vector3.new(v.X, 0, v.Z).Magnitude * dt / BS
-			if walked >= 1 then
-				walked = 0
-				local id = ClientWorld.getBlock(math.floor(feet.X / BS), math.floor((feet.Y - 0.5) / BS), math.floor(feet.Z / BS))
-				playMaterial("step", id, feet, "step.default")
-			end
-		end
+		AudioClient.stepTick(dt, v / BS, feet)
 		-- landing: judged by the speed just before touching down
 		if grounded and not wasGrounded and lastVy < -40 then
 			AudioClient.play(if lastVy < -70 then "fall.big" else "fall.small", feet)

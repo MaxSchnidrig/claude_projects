@@ -834,6 +834,8 @@ CLASSES.MemoryStoreService = {
 		end,
 	},
 }
+CLASSES.SoundService = { parent = "Instance", props = { AmbientReverb = Enum.ReverbType.NoReverb } }
+
 -- Tweens finish at once when played (tests only need the end state).
 CLASSES.TweenService = {
 	parent = "Instance",

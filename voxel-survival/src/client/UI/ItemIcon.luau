@@ -1,14 +1,14 @@
 --!strict
 -- Item icons from ROCRAFT's generated pixel art (Render/TextureAtlas):
---   block items  -> the block's side texture from the block atlas
---   other items  -> the item's 16x16 icon from the icon sheet
+--   block items  -> a 3D icon of the block (Items/BlockIconGen), or a flat icon for doors,
+--                   plants, beds, torches...
+--   other items  -> the item's 16x16 pixel-art icon (Items/ItemSprites)
 -- Both are drawn with Pixelated resampling (sharp pixels). Until the atlas exists (or if
 -- textures are off) the old flat drawings below are used.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local ItemRegistry = require(Shared.Items.ItemRegistry)
-local BlockRegistry = require(Shared.Blocks.BlockRegistry)
 local TextureAtlas = require(script.Parent.Parent.Render.TextureAtlas)
 
 local ItemIcon = {}
@@ -28,12 +28,9 @@ end
 local function drawArt(icon: Frame, def: ItemRegistry.ItemDef): boolean
 	local content: Content? = nil
 	local offset: Vector2?, size: Vector2? = nil, nil
-	if def.block and not def.icon then
-		local b = BlockRegistry.byId[def.block]
-		content = TextureAtlas.content
-		if b then
-			offset, size = TextureAtlas.pixelRect(b.faceTexture[BlockRegistry.Dir.EAST])
-		end
+	offset, size = TextureAtlas.blockIconRect(def.key)
+	if offset then
+		content = TextureAtlas.blockIconContent -- 3D block icon
 	else
 		content = TextureAtlas.iconContent
 		offset, size = TextureAtlas.iconRect(def.key)

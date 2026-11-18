@@ -1,0 +1,4 @@
+--!strict
+-- Replaces Roblox's default character sound script (a LocalScript with this exact name in
+-- StarterPlayerScripts takes its place). Its running sound played on top of ROCRAFT's own
+-- footsteps (the "echo") and kept going in the air; Audio/AudioClient plays every player sound.

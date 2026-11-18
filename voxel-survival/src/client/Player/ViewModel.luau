@@ -2,8 +2,8 @@
 -- First-person hand, held item and view bobbing (first-person camera only).
 --
 --   hand       a blocky arm in the avatar's right-arm colour, lower right of the view
---   held item  blocks: a small textured cube (atlas tiles on each side); torches: stick + tip;
---              other items: their 16x16 icon on a thin card
+--   held item  its 3D mesh (Render/ItemMeshes): blocks as a small textured block, everything
+--              else as the 16x16 icon extruded one pixel deep (Java's item models)
 --   swing      Java's 6-tick arm swing on attacks, placements and while mining
 --   equip      the hand dips and comes back up when the held item changes
 --   bobbing    Java view bobbing: walking moves the view in a figure-eight (sin/cos of the
@@ -17,9 +17,7 @@ local RunService = game:GetService("RunService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local ItemRegistry = require(Shared.Items.ItemRegistry)
-local BlockRegistry = require(Shared.Blocks.BlockRegistry)
-local TorchRules = require(Shared.Blocks.TorchRules)
-local TextureAtlas = require(script.Parent.Parent.Render.TextureAtlas)
+local ItemMeshes = require(script.Parent.Parent.Render.ItemMeshes)
 local CameraController = require(script.Parent.CameraController)
 local InventoryClient = require(script.Parent.InventoryClient)
 
@@ -31,6 +29,8 @@ local model: Model
 local arm: Part
 local held: Model? = nil
 local heldKey: string? = nil
+local heldFinal = true
+local offFinal = true
 local offHeld: Model? = nil -- the off-hand item, lower left (Java shows it without an arm)
 local offKey: string? = nil
 local offEquipT = 1
@@ -54,77 +54,26 @@ local function part(size: Vector3, color: Color3, material: Enum.Material?): Par
 	return p
 end
 
-local function textured(p: Part, content: Content?, rectFn: ((Enum.NormalId) -> (Vector2?, Vector2?))?)
-	for _, face in Enum.NormalId:GetEnumItems() do
-		local offset, size = nil, nil
-		if rectFn then
-			offset, size = rectFn(face)
-		end
-		if offset and size and content then
-			local gui = Instance.new("SurfaceGui")
-			gui.Face = face
-			gui.CanvasSize = Vector2.new(64, 64)
-			gui.LightInfluence = 1
-			local img = Instance.new("ImageLabel")
-			img.Size = UDim2.fromScale(1, 1)
-			img.BackgroundTransparency = 1
-			img.ResampleMode = Enum.ResamplerMode.Pixelated
-			img.ImageRectOffset = offset
-			img.ImageRectSize = size
-			pcall(function()
-				(img :: any).ImageContent = content
-			end)
-			img.Parent = gui
-			gui.Parent = p
-		end
-	end
-end
-
-local function buildHeld(key: string?): Model?
+-- The held item as a model with a "Main" part: its 3D mesh (Render/ItemMeshes: extruded icon or
+-- a small block) or, until that's built, a plain stand-in. Second result: is it the final mesh?
+local VIEW_PIXEL = 0.8 / 16 -- flat items are 0.8 studs wide in the hand
+local VIEW_BLOCK = 0.62
+local function buildHeld(key: string?): (Model?, boolean)
 	if not key then
-		return nil
+		return nil, true
 	end
 	local def = ItemRegistry.get(key)
 	if not def then
-		return nil
+		return nil, true
 	end
 	local m = Instance.new("Model")
 	m.Name = "Held"
-	if def.block and TorchRules.isTorch(def.block) then
-		local stick = part(Vector3.new(0.12, 0.62, 0.12), Color3.fromRGB(116, 82, 44))
-		stick.Name = "Main"
-		stick.Parent = m
-		local tip = part(Vector3.new(0.14, 0.16, 0.14), Color3.fromRGB(255, 200, 90), Enum.Material.Neon)
-		tip.Name = "Tip"
-		tip.Parent = m
-	elseif def.block and not def.icon then
-		local b = BlockRegistry.byId[def.block]
-		local cube = part(Vector3.one * 0.62, Color3.new(1, 1, 1))
-		cube.Name = "Main"
-		cube.Transparency = if b and b.transparent then 0.4 else 0
-		textured(cube, TextureAtlas.content, function(face)
-			if not b then
-				return nil, nil
-			end
-			local dir = if face == Enum.NormalId.Top then BlockRegistry.Dir.TOP
-				elseif face == Enum.NormalId.Bottom then BlockRegistry.Dir.BOTTOM
-				else BlockRegistry.Dir.EAST
-			return TextureAtlas.pixelRect(b.faceTexture[dir])
-		end)
-		cube.Parent = m
-	else
-		local card = part(Vector3.new(0.75, 0.75, 0.04), Color3.new(1, 1, 1))
-		card.Name = "Main"
-		card.Transparency = 1
-		textured(card, TextureAtlas.iconContent, function(face)
-			if face == Enum.NormalId.Front or face == Enum.NormalId.Back then
-				return TextureAtlas.iconRect(def.key)
-			end
-			return nil, nil
-		end)
-		card.Parent = m
-	end
-	return m
+	local mesh = ItemMeshes.make(key, VIEW_PIXEL, VIEW_BLOCK)
+	local main: BasePart = mesh or ItemMeshes.standIn(key, VIEW_PIXEL, VIEW_BLOCK)
+	main.Name = "Main"
+	main.CastShadow = false
+	main.Parent = m
+	return m, mesh ~= nil
 end
 
 local function armColor(): Color3
@@ -192,16 +141,20 @@ function ViewModel.init(swingEvent: BindableEvent)
 
 		-- held item changes: dip and raise
 		local key = InventoryClient.heldItem()
-		if key ~= heldKey then
-			heldKey = key
-			if held then
-				(held :: Model):Destroy()
+		if key ~= heldKey or not heldFinal then
+			if key ~= heldKey then
+				equipT = 0
 			end
-			held = buildHeld(key)
-			if held then
-				(held :: Model).Parent = model
+			if key ~= heldKey or ItemMeshes.get(key :: string) then
+				heldKey = key
+				if held then
+					(held :: Model):Destroy()
+				end
+				held, heldFinal = buildHeld(key)
+				if held then
+					(held :: Model).Parent = model
+				end
 			end
-			equipT = 0
 		end
 		equipT = math.min(1, equipT + dt * 4)
 		arm.Color = armColor()
@@ -218,16 +171,20 @@ function ViewModel.init(swingEvent: BindableEvent)
 		-- off hand: the item mirrored at the lower left; a raised shield comes up toward the middle
 		local ok = InventoryClient.offhand()
 		local okKey = ok and ok.item
-		if okKey ~= offKey then
-			offKey = okKey
-			if offHeld then
-				(offHeld :: Model):Destroy()
+		if okKey ~= offKey or not offFinal then
+			if okKey ~= offKey then
+				offEquipT = 0
 			end
-			offHeld = buildHeld(okKey)
-			if offHeld then
-				(offHeld :: Model).Parent = model
+			if okKey ~= offKey or ItemMeshes.get(okKey :: string) then
+				offKey = okKey
+				if offHeld then
+					(offHeld :: Model):Destroy()
+				end
+				offHeld, offFinal = buildHeld(okKey)
+				if offHeld then
+					(offHeld :: Model).Parent = model
+				end
 			end
-			offEquipT = 0
 		end
 		offEquipT = math.min(1, offEquipT + dt * 4)
 		local oh = offHeld
