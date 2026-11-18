@@ -57,7 +57,7 @@ local DebugOverlay = {}
 local function healthText(): string
 	local c = Players.LocalPlayer.Character
 	local h = c and c:FindFirstChildOfClass("Humanoid")
-	return if h then string.format("%d/%d", math.ceil(h.Health), h.MaxHealth) else "-"
+	return if h then string.format("%.2f/%d", h.Health, h.MaxHealth) else "-"
 end
 
 local function yes(b: boolean): string
@@ -266,9 +266,11 @@ function DebugOverlay.init()
 				MobClient.stats.known, MobClient.stats.visible, MobClient.stats.packets, MobClient.stats.buildErrors,
 				if MobClient.stats.lastBuildError ~= "" then ` ({MobClient.stats.lastBuildError})` else "")
 				.. `   last hit: {MobClient.stats.lastHit}`,
-			string.format("survival: health %s  food %d  saturation %.1f  air %.1f s  sprint %s   time %s (tick %d)",
-				healthText(), SurvivalClient.food, SurvivalClient.saturation, SurvivalClient.air,
+			string.format("survival: health %s  air %.1f s  sprint %s   time %s (tick %d)",
+				healthText(), SurvivalClient.air,
 				if SurvivalClient.canSprint then "ok" else "too hungry", DayNightClient.clockText(), DayNightClient.timeOfDay),
+			string.format("food (Java FoodData): hunger %d  saturation %.3f  exhaustion %.3f  food tick timer %d",
+				SurvivalClient.food, SurvivalClient.saturation, SurvivalClient.exhaustion, SurvivalClient.foodTimer),
 			hotbarLines(),
 			`save: {game:GetService("ReplicatedStorage"):GetAttribute("SaveStatus") or "-"}`,
 			string.format("light: %d chunks lit, %.1f ms avg   textures: %s   torches %d",

@@ -12,7 +12,7 @@
 -- Fields: id, volume (0-1), pitch = { min, max } (random each play), search.
 -- 3D sounds (blocks, mobs, footsteps) are heard from their position; the rest are 2D.
 
-export type Entry = { id: string, volume: number, pitch: { number }?, search: string, eq: { number }? }
+export type Entry = { id: string, volume: number, pitch: { number }?, search: string, eq: { number }?, region: { number }? }
 
 local E = function(id: string, volume: number, pitchMin: number, pitchMax: number, search: string): Entry
 	return { id = id, volume = volume, pitch = { pitchMin, pitchMax }, search = search }
@@ -25,15 +25,19 @@ SoundConfig.materials = { "stone", "wood", "gravel", "grass", "sand", "snow", "g
 
 SoundConfig.sounds = {
 	-- Footsteps: 3 groups for now (SoundConfig.footsteps says which block uses which). All three are
-	-- TEMPORARY: Roblox's own built-in footstep (ships with every Roblox client) shaped with pitch
-	-- and an equalizer. Replace an `id` with a licensed Creator Store sound to upgrade one group.
-	-- `eq` = { low, mid, high } gain in dB (an EqualizerSoundEffect on the sound).
-	["step.soft"] = { id = "rbxasset://sounds/action_footsteps_plastic.mp3", volume = 0.22, pitch = { 0.62, 0.7 },
-		eq = { 2, -6, -30 }, search = "footstep grass soft dirt" },
-	["step.wood"] = { id = "rbxasset://sounds/action_footsteps_plastic.mp3", volume = 0.25, pitch = { 0.9, 1.05 },
-		search = "footstep wood plank" },
-	["step.stone"] = { id = "rbxasset://sounds/action_footsteps_plastic.mp3", volume = 0.25, pitch = { 1.3, 1.45 },
-		eq = { -12, 0, 6 }, search = "footstep stone hard" },
+	-- TEMPORARY, made from Roblox's own built-in sounds (they ship with every Roblox client):
+	--   Roblox's running sound is a LOOP with more than one footstep in it, so only its first
+	--   0.2 s is played (`region`) - playing all of it was the "echo".
+	--   soft = Roblox's landing thud, pitched up and muffled; wood = the step as it is;
+	--   stone = the step pitched up with the bass cut and the treble raised (clicky).
+	-- Replace an `id` (and drop `region`) with a licensed Creator Store sound to upgrade a group.
+	-- `eq` = { low, mid, high } gain in dB (an EqualizerSoundEffect); `region` = { from, to } seconds.
+	["step.soft"] = { id = "rbxasset://sounds/action_jump_land.mp3", volume = 0.16, pitch = { 1.45, 1.6 },
+		eq = { 0, -4, -24 }, search = "footstep grass soft dirt" },
+	["step.wood"] = { id = "rbxasset://sounds/action_footsteps_plastic.mp3", volume = 0.25, pitch = { 0.92, 1.02 },
+		region = { 0, 0.2 }, eq = { 3, 0, -6 }, search = "footstep wood plank" },
+	["step.stone"] = { id = "rbxasset://sounds/action_footsteps_plastic.mp3", volume = 0.22, pitch = { 1.5, 1.65 },
+		region = { 0, 0.2 }, eq = { -20, -2, 10 }, search = "footstep stone hard" },
 
 	-- digging hits while mining (quieter, every 4 ticks)
 	["dig.stone"] = E("", 0.25, 0.5, 0.6, "stone hit pick chip"),

@@ -14,9 +14,9 @@ Entries marked *built in* already work (Roblox's own default character sounds). 
 
 | Sound | Search for | Current |
 |---|---|---|
-| `step.soft` | footstep grass soft dirt | built in (temporary: Roblox step, low and muffled) |
-| `step.wood` | footstep wood plank | built in (temporary: Roblox step) |
-| `step.stone` | footstep stone hard | built in (temporary: Roblox step, high and bright) |
+| `step.soft` | footstep grass soft dirt | built in (temporary: Roblox's landing thud, high and muffled) |
+| `step.wood` | footstep wood plank | built in (temporary: first 0.2 s of Roblox's running loop) |
+| `step.stone` | footstep stone hard | built in (temporary: the same, pitched up, bass cut, treble up) |
 | `dig.stone` | stone hit pick chip | — |
 | `dig.wood` | wood hit knock | — |
 | `dig.gravel` | dirt shovel hit | — |

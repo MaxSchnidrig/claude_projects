@@ -68,6 +68,19 @@ function AudioClient.play(name: string, pos: Vector3?, volumeScale: number?): bo
 	if p then
 		s.PlaybackSpeed = p[1] + math.random() * (p[2] - p[1])
 	end
+	local region = e.region
+	if region then
+		-- only this part of the file (a single footstep out of Roblox's running loop)
+		local ok = pcall(function()
+			(s :: any).PlaybackRegionsEnabled = true;
+			(s :: any).PlaybackRegion = NumberRange.new(region[1], region[2])
+		end)
+		if not ok then
+			task.delay((region[2] - region[1]) / s.PlaybackSpeed, function()
+				s:Stop()
+			end)
+		end
+	end
 	local eq = e.eq
 	if eq then
 		local fx = Instance.new("EqualizerSoundEffect")

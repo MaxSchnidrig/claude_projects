@@ -86,6 +86,7 @@ export type Result = {
 	minorWall: boolean, -- ... and it was a glancing one (sprinting survives it)
 	onLadder: boolean,
 	fluid: string?, -- "water" | "lava" when in it
+	waterHeight: number, -- how high water reaches above the feet (blocks; 0 = not in water)
 	jumped: boolean,
 	bounced: boolean,
 }
@@ -201,6 +202,7 @@ end
 function PlayerMotor.tick(st: State, input: Input, w: World): Result
 	local res: Result = {
 		fall = nil, stepUp = 0, hitWall = false, minorWall = false, onLadder = false, fluid = nil, jumped = false, bounced = false,
+		waterHeight = 0,
 	}
 	local sneak = input.sneak
 	local h = if sneak then 1.5 else 1.8
@@ -230,6 +232,7 @@ function PlayerMotor.tick(st: State, input: Input, w: World): Result
 		st.vz += fz * 0.0023333333333333335
 	end
 	res.fluid = if inWater then "water" elseif inLava then "lava" else nil
+	res.waterHeight = waterH
 
 	-- LivingEntity.aiStep
 	if st.noJumpDelay > 0 then

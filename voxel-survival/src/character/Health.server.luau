@@ -1,0 +1,5 @@
+--!strict
+-- Replaces Roblox's default "Health" script (a Script with this exact name in
+-- StarterCharacterScripts takes its place). The default heals 1% of max health every second
+-- on top of ROCRAFT's Java hunger regeneration (Gameplay/SurvivalRules), which made healing
+-- too fast. Health changes only through server/Survival/SurvivalService.

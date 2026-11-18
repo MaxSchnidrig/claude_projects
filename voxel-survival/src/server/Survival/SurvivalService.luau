@@ -67,6 +67,9 @@ type State = {
 	effects: Effects.List, -- status effects (Phase 9c)
 	absorption: number, -- extra health from the absorption effect (taken before health)
 	effectAcc: number, -- seconds towards the next effect tick (20 per second)
+	ticks: number, -- game ticks this life (Java tickCount: Peaceful healing)
+	lastDebug: number, -- when exhaustion / timer were last sent (F3)
+	exhaustAt: number, -- when the client last reported movement exhaustion
 }
 
 local SurvivalService = {}
@@ -106,6 +109,9 @@ local function newState(): State
 		fireTimer = 0,
 		peaceHeal = 0,
 		peaceFood = 0,
+		ticks = 0,
+		lastDebug = 0,
+		exhaustAt = os.clock(),
 		effects = {},
 		absorption = 0,
 		effectAcc = 0,
@@ -154,7 +160,15 @@ local function sync(p: Player, event: string?, cause: string?)
 		end
 	end
 	local key = `{payload.food}|{payload.saturation}|{payload.air}|{payload.canSprint}|{payload.absorption}|{fxKey}`
-	if event or key ~= s.lastSent then
+	-- F3 values (exhaustion, the food tick timer) ride along at most 4 times a second
+	local payloadAny = payload :: any
+	payloadAny.exhaustion = math.floor(h.exhaustion * 1000 + 0.5) / 1000
+	payloadAny.foodTimer = h.tickTimer
+	payloadAny.saturation = math.floor(h.saturation * 1000 + 0.5) / 1000
+	local now = os.clock()
+	local debugDue = now - s.lastDebug >= 0.25
+	if event or key ~= s.lastSent or debugDue then
+		s.lastDebug = now
 		s.lastSent = key
 		Remotes.get("SurvivalSync"):FireClient(p, payload)
 	end
@@ -171,7 +185,7 @@ end
 -- difficulty first (Gameplay/Difficulty: Peaceful 0, Easy halved + 1, Hard x 1.5).
 -- `fire` = fire, lava, burning, campfires (fire resistance blocks it); `magic` = poison (no
 -- exhaustion, Java's magic damage type).
-export type DamageOpts = { armor: boolean?, source: Vector3?, scales: boolean?, fire: boolean?, magic: boolean? }
+export type DamageOpts = { armor: boolean?, source: Vector3?, scales: boolean?, fire: boolean?, magic: boolean?, starve: boolean? }
 -- Set by CombatGearService (avoids a require cycle): shield and armour.
 local gear: { block: (Player, number, DamageOpts) -> boolean, armor: (Player, number) -> number }? = nil
 function SurvivalService.setGear(g: { block: (Player, number, DamageOpts) -> boolean, armor: (Player, number) -> number })
@@ -210,15 +224,17 @@ function SurvivalService.damage(p: Player, amount: number, cause: string, bypass
 		dealt = gear.armor(p, dealt)
 	end
 	-- Java LivingEntity.actuallyHurt: armour, then resistance (not the void), then absorption
-	if not bypass then
-		dealt = Effects.resist(s.effects, dealt)
+	if not bypass and not (opts and opts.starve) then
+		dealt = Effects.resist(s.effects, dealt) -- (starvation ignores Resistance)
 	end
 	local absorbed = math.min(s.absorption, dealt)
 	s.absorption -= absorbed
 	local toHealth = dealt - absorbed
 	-- Java: getting hurt wakes a sleeping player
 	require(script.Parent.Parent.Player.BedService).onHurt(p)
-	if not (opts and opts.magic) then
+	-- Java: 0.1 exhaustion for damage types armour protects against (attacks, arrows,
+	-- explosions, fire, lava, cactus); falls, drowning, starving, the void and magic add none
+	if opts and opts.armor then
 		SurvivalRules.addExhaustion(s.hunger, SurvivalRules.EXHAUSTION.damage)
 	end
 	s.lastCause = cause
@@ -355,20 +371,11 @@ local function stepPlayer(p: Player, s: State, dt: number)
 		table.remove(s.heights, 1)
 	end
 
-	-- Exhaustion from jumping and sprinting.
-	local vy = root.AssemblyLinearVelocity.Y
-	if s.wasGrounded and not grounded and vy > 12 then
-		SurvivalRules.addExhaustion(s.hunger, if s.sprinting then SurvivalRules.EXHAUSTION.sprintJump else SurvivalRules.EXHAUSTION.jump)
-	end
+	-- (Movement exhaustion - sprinting, swimming, jumps - is measured by the client's Java
+	-- physics tick by tick and reported with the "exhaust" action.)
 	s.wasGrounded = grounded
 	s.grounded = grounded
 	s.inLiquid = isLiquid[feetBlock + 1] or isLiquid[bodyBlock + 1]
-	if s.lastPos and s.sprinting then
-		local d = Vector3.new(pos.X - s.lastPos.X, 0, pos.Z - s.lastPos.Z).Magnitude / BS
-		if d < 2 then -- ignore teleports
-			SurvivalRules.addExhaustion(s.hunger, d * SurvivalRules.EXHAUSTION.sprintPerBlock)
-		end
-	end
 	s.lastPos = pos
 	if s.sprinting and not SurvivalRules.canSprint(s.hunger) then
 		s.sprinting = false -- client is told via canSprint in the next sync
@@ -456,35 +463,27 @@ local function stepPlayer(p: Player, s: State, dt: number)
 		return
 	end
 
-	-- Regeneration / starvation
+	-- Hunger, regeneration, starvation: Java's FoodData, one call per game tick (stepPlayer
+	-- runs exactly once per tick, see init)
+	s.ticks += 1
 	local difficulty = WorldSettingsService.difficulty()
 	local peaceful = difficulty == "peaceful"
 	s.hunger.peaceful = peaceful
 	if peaceful then
-		-- Java Player.aiStep on Peaceful: +1 health every second, +1 food every half second
-		s.peaceHeal += dt
-		while s.peaceHeal >= Difficulty.PEACEFUL_HEAL_INTERVAL do
-			s.peaceHeal -= Difficulty.PEACEFUL_HEAL_INTERVAL
-			if humanoid.Health < humanoid.MaxHealth then
-				humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + 1)
-			end
+		-- Java Player.aiStep on Peaceful: +1 health on every 20th tick, +1 hunger on every 10th
+		if humanoid.Health < humanoid.MaxHealth and s.ticks % 20 == 0 then
+			humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + 1)
 		end
-		s.peaceFood += dt
-		while s.peaceFood >= Difficulty.PEACEFUL_FOOD_INTERVAL do
-			s.peaceFood -= Difficulty.PEACEFUL_FOOD_INTERVAL
-			if s.hunger.food < SurvivalRules.MAX_FOOD then
-				s.hunger.food += 1
-			end
+		if s.hunger.food < SurvivalRules.MAX_FOOD and s.ticks % 10 == 0 then
+			s.hunger.food += 1
 		end
-	else
-		s.peaceHeal, s.peaceFood = 0, 0
 	end
-	local heal, starve = SurvivalRules.tick(s.hunger, dt, humanoid.Health, humanoid.MaxHealth, Difficulty.starveFloor(difficulty))
+	local heal, starve = SurvivalRules.tickFood(s.hunger, humanoid.Health, humanoid.MaxHealth, difficulty)
 	if heal > 0 then
 		humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + heal)
 	end
 	if starve > 0 then
-		SurvivalService.damage(p, starve, "starved")
+		SurvivalService.damage(p, starve, "starved", nil, { starve = true })
 	end
 	sync(p)
 end
@@ -523,6 +522,18 @@ local function onAction(p: Player, a: any)
 			SurvivalService.damage(p, dmg, "fell from a high place")
 		end
 		table.clear(s.heights) -- a fall is only counted once
+	elseif t == "exhaust" then
+		-- Movement exhaustion the client's Java physics measured (sprinting on the ground,
+		-- swimming, jumps). Capped by the time since the last report (sprint-jumping is under
+		-- 1 a second), so a bad client can't starve itself in an instant.
+		local amount = a.amount
+		if typeof(amount) ~= "number" or amount ~= amount or amount <= 0 or s.dead or spectators[p] then
+			return
+		end
+		local now = os.clock()
+		local since = math.clamp(now - s.exhaustAt, 0, 2)
+		s.exhaustAt = now
+		SurvivalRules.addExhaustion(s.hunger, math.min(amount, since * 1.5 + 0.3))
 	elseif t == "sprint" then
 		s.sprinting = a.on == true and SurvivalRules.canSprint(s.hunger) and not s.sneaking
 	elseif t == "sneak" then
@@ -639,10 +650,18 @@ local function onCharacter(p: Player, character: Model)
 	s = fresh
 	local humanoid = character:WaitForChild("Humanoid") :: Humanoid
 	-- Roblox's default "Health" script regenerates 1% per second; our rules replace it.
-	local regen = character:FindFirstChild("Health")
-	if regen and regen:IsA("BaseScript") then
-		regen:Destroy()
+	-- (src/character/Health replaces it; any "Health" script that still shows up is switched off.)
+	for _, c in character:GetChildren() do
+		if c.Name == "Health" and c:IsA("BaseScript") then
+			(c :: BaseScript).Enabled = false
+		end
 	end
+	character.ChildAdded:Connect(function(c)
+		if c.Name == "Health" and c:IsA("BaseScript") then
+			(c :: BaseScript).Enabled = false
+		end
+	end)
+
 	humanoid.MaxHealth = SurvivalRules.MAX_HEALTH
 	humanoid.Health = SurvivalRules.MAX_HEALTH
 	local r = pendingRestore[p]
@@ -760,22 +779,27 @@ function SurvivalService.init()
 	end)
 
 	local acc = 0
+	-- Exactly 20 game ticks a second (Java's rate), each a step of 1/20 s; after a long hitch
+	-- at most 10 ticks catch up at once.
 	RunService.Heartbeat:Connect(function(dt)
 		acc += dt
-		if acc < 0.05 then
-			return
-		end
-		local step = math.min(acc, 0.5)
-		acc = 0
-		for p, s in states do
-			if p.Parent then
-				stepPlayer(p, s, step)
-				-- safety net: respawn if the death screen never answered
-				if s.dead and os.clock() - s.diedAt > Config.AUTO_RESPAWN_SECONDS then
-					s.diedAt = math.huge
-					SpawnService.respawn(p)
+		local n = 0
+		while acc >= SurvivalRules.TICK and n < 10 do
+			acc -= SurvivalRules.TICK
+			n += 1
+			for p, s in states do
+				if p.Parent then
+					stepPlayer(p, s, SurvivalRules.TICK)
+					-- safety net: respawn if the death screen never answered
+					if s.dead and os.clock() - s.diedAt > Config.AUTO_RESPAWN_SECONDS then
+						s.diedAt = math.huge
+						SpawnService.respawn(p)
+					end
 				end
 			end
+		end
+		if n >= 10 then
+			acc = 0
 		end
 	end)
 end

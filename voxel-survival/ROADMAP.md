@@ -175,6 +175,17 @@ are fine.
   3 temporary groups soft / wood / stone mapped for every block in SoundConfig.footsteps.
   Left for the big graphics phase: final art and sounds.
 
+- 0.9.5 (Java parity: hunger): Gameplay/SurvivalRules is now a tick-by-tick copy of Java's
+  FoodData (checked against the wiki's Food page): exhaustion above 4.0 costs one point per
+  tick (saturation first), capped at 40; one shared food tick timer (saturation boost every 10
+  ticks, natural regen every 80, starvation every 80 with Java's per-difficulty rule); the
+  server runs exactly 20 ticks a second. Movement exhaustion (sprinting on the ground 0.1/m,
+  swimming 0.01/m, jumps 0.05, sprint-jumps 0.2) is measured by the client's Java physics and
+  reported; damage costs 0.1 only for armour-protected damage types. Peaceful heals every 20th
+  tick and feeds every 10th. Roblox's default Health script (1%/s healing) replaced. F3 shows
+  hunger, saturation, exhaustion (3 decimals) and the food tick timer. Footsteps: a single
+  step instead of Roblox's running loop (the echo); more distinct temporary sounds.
+
 ## Phase 8 – Survival foundations (XL)
 
 **Liquids and gravity blocks**

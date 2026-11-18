@@ -45,6 +45,10 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		function T.survival.reportFall(blocks: number)
 			table.insert(T.survival.falls, blocks)
 		end
+		T.survival.exhausted = 0
+		function T.survival.exhaust(amount: number)
+			T.survival.exhausted += amount
+		end
 		T.survival.tramples = {}
 		function T.survival.trample(x: number, y: number, z: number, blocks: number)
 			table.insert(T.survival.tramples, { x, y, z, blocks })
@@ -191,8 +195,11 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		eq(T.MC.sprinting, true)
 		eq(T.survival.sprint[#T.survival.sprint], true)
 		x0 = feet(T).X
+		local ex0 = T.MC.stats.exhaustionSent
 		frames(T, 60)
 		near(feet(T).X - x0, 5.612, 0.03, "sprinting speed")
+		-- Java: 0.1 exhaustion a metre sprinted, measured by the client's ticks for the server
+		near(T.MC.stats.exhaustionSent - ex0, 0.5612, 0.06, "sprint exhaustion sent (1 s)")
 		near(T.G.workspace.CurrentCamera.FieldOfView, 80.5, 0.2, "sprint FOV")
 		-- letting go ends it; a slow double tap doesn't start it
 		T.G.release(Key.W)

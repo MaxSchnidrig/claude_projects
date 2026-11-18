@@ -55,22 +55,13 @@ function Difficulty.scaleMobDamage(name: Name, amount: number): number
 	return amount
 end
 
--- Starving stops at this much health (Java FoodData.tick).
-function Difficulty.starveFloor(name: Name): number
-	if name == "easy" then
-		return 10
-	elseif name == "hard" then
-		return 0
-	end
-	return 1 -- normal (peaceful never starves: food refills)
-end
+-- (Starvation per difficulty: Gameplay/SurvivalRules.starves, a copy of Java's FoodData.)
 
 function Difficulty.hostileMobs(name: Name): boolean
 	return name ~= "peaceful"
 end
 
--- Peaceful extras (Java Player.aiStep): every 20 ticks +1 health, every 10 ticks +1 food.
-Difficulty.PEACEFUL_HEAL_INTERVAL = 1 -- seconds
-Difficulty.PEACEFUL_FOOD_INTERVAL = 0.5
+-- (Peaceful extras, Java Player.aiStep - every 20th tick +1 health, every 10th +1 hunger - are in
+-- server/Survival/SurvivalService.)
 
 return Difficulty

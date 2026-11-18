@@ -422,7 +422,7 @@ function SaveFormat.decodePlayer(record: any, inventorySlots: number): PlayerSta
 		health = num(record.hp, 20, 0, 20),
 		food = math.floor(num(record.food, 20, 0, 20)),
 		saturation = num(record.sat, 5, 0, 20),
-		exhaustion = num(record.exh, 0, 0, 4),
+		exhaustion = num(record.exh, 0, 0, 40), -- (Java caps exhaustion at 40)
 		air = num(record.air, 15, 0, 15),
 		pos = pos,
 		yaw = num(record.yaw, 0, -1000, 1000),

@@ -14,6 +14,8 @@ SurvivalClient.saturation = SurvivalRules.START_SATURATION
 SurvivalClient.air = SurvivalRules.MAX_AIR
 SurvivalClient.maxAir = SurvivalRules.MAX_AIR
 SurvivalClient.canSprint = true
+SurvivalClient.exhaustion = 0 -- (F3: Java's foodExhaustionLevel and foodTickTimer)
+SurvivalClient.foodTimer = 0
 SurvivalClient.dead = false
 SurvivalClient.deathCause = ""
 SurvivalClient.absorption = 0 -- extra (gold) health from the absorption effect
@@ -43,6 +45,12 @@ function SurvivalClient.init()
 		end
 		if typeof(d.saturation) == "number" then
 			SurvivalClient.saturation = d.saturation
+		end
+		if typeof(d.exhaustion) == "number" then
+			SurvivalClient.exhaustion = d.exhaustion
+		end
+		if typeof(d.foodTimer) == "number" then
+			SurvivalClient.foodTimer = d.foodTimer
 		end
 		if typeof(d.air) == "number" then
 			SurvivalClient.air = d.air
@@ -105,6 +113,11 @@ end
 -- Landed on farmland at (x, y, z) after falling `blocks` (the server rolls the trample chance).
 function SurvivalClient.trample(x: number, y: number, z: number, blocks: number)
 	send({ type = "trample", x = x, y = y, z = z, fall = blocks })
+end
+
+-- Exhaustion from movement the client's Java physics measured (sprinting, swimming, jumps).
+function SurvivalClient.exhaust(amount: number)
+	send({ type = "exhaust", amount = amount })
 end
 
 function SurvivalClient.respawn()

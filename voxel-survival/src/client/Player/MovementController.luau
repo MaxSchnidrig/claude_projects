@@ -40,6 +40,7 @@ local Config = require(Shared.Config)
 local BlockRegistry = require(Shared.Blocks.BlockRegistry)
 local Shapes = require(Shared.Blocks.Shapes)
 local SurvivalClient = require(script.Parent.Parent.Survival.SurvivalClient)
+local SurvivalRules = require(Shared.Gameplay.SurvivalRules)
 local ClientWorld = require(script.Parent.Parent.World.ClientWorld)
 local InventoryClient = require(script.Parent.Parent.Player.InventoryClient)
 local SneakPose = require(Shared.Gameplay.SneakPose)
@@ -72,7 +73,7 @@ MovementController.lookYaw = 0 -- where the player looks (radians); CameraContro
 -- Our touch controls (UI/TouchControls) write here; nil = none (Roblox's own touch controls).
 MovementController.touch = nil :: { forward: number, strafe: number, jump: boolean }?
 -- Diagnostics for the F3 overlay and the headless tests.
-MovementController.stats = { ticks = 0, held = false, waitingForChunk = false }
+MovementController.stats = { ticks = 0, held = false, waitingForChunk = false, exhaustionSent = 0 }
 
 -- The local player's box: Java state (PlayerMotor, block units, doubles) and what the frame
 -- loop needs around it.
@@ -247,6 +248,8 @@ local function readInput(humanoid: Humanoid, fx: number, fz: number): (number, n
 	return math.clamp(forward, -1, 1), math.clamp(strafe, -1, 1), jump
 end
 
+local exhaustion, exhaustTicks = 0, 0
+
 -- One Java tick of the local player, and what follows from it.
 local function tick(b: Body, forward: number, strafe: number, jumpHeld: boolean, fx: number, fz: number)
 	local st = b.st
@@ -261,6 +264,29 @@ local function tick(b: Body, forward: number, strafe: number, jumpHeld: boolean,
 		usingItem = MovementController.usingItem,
 	}, world)
 	MovementController.stats.ticks += 1
+	-- Java exhaustion from this tick's movement (Player.checkMovementStatistics) and jumps;
+	-- added up and sent to the server a few times a second
+	do
+		local eye = if MovementController.sneaking then 1.27 else 1.62
+		exhaustion += SurvivalRules.movementExhaustion(st.x - b.px, st.y - b.py, st.z - b.pz, {
+			eyeInWater = r.waterHeight > eye,
+			inWater = r.waterHeight > 0,
+			onClimbable = r.onLadder,
+			onGround = st.onGround,
+			sprinting = MovementController.sprinting,
+		})
+		if r.jumped then
+			exhaustion += SurvivalRules.jumpExhaustion(MovementController.sprinting)
+		end
+		exhaustTicks += 1
+		if exhaustTicks >= 5 then
+			if exhaustion > 0 and not MovementController.spectating then
+				SurvivalClient.exhaust(exhaustion)
+			end
+			MovementController.stats.exhaustionSent += exhaustion
+			exhaustion, exhaustTicks = 0, 0
+		end
+	end
 	MovementController.inLiquid = r.fluid ~= nil
 	MovementController.onLadder = r.onLadder
 	MovementController.onGround = st.onGround

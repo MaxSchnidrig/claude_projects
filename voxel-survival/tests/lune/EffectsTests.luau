@@ -189,10 +189,14 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		eq(slots[1].item, "bucket")
 		eq(next(Survival.effects(player)), nil, "milk cleared the effects")
 
-		-- spider eye: poisoned, health drops but not below 1
+		-- spider eye: poisoned, health drops but poison never kills
 		h.Health = 3
-		while Survival.snapshot(player).food > 14 do
-			Survival.addExhaustion(player, 4) -- hungry enough that nothing heals
+		for _ = 1, 400 do -- hungry enough that nothing heals (one point used per tick, like Java)
+			if Survival.snapshot(player).food <= 14 then
+				break
+			end
+			Survival.addExhaustion(player, 4.1)
+			G.frame(0.05)
 		end
 		eat("spider_eye")
 		fx = Survival.effects(player)
@@ -200,7 +204,8 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		for _ = 1, 60 do
 			G.frame(0.1)
 		end
-		eq(h.Health >= 1, true)
+		-- Java: poison only hits above 1 health, so it stops at 1 or just below (1.6 -> 0.6)
+		assert(h.Health > 0 and h.Health <= 1, `poison stopped above 0 ({h.Health})`)
 		assert(h.Health < 3, `poison hurt ({h.Health})`)
 
 		-- enchanted golden apple: resistance and fire resistance
@@ -216,6 +221,16 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		Survival.damage(player, 20, "hit") -- resistance: 16, all into the 16 gold health
 		eq(h.Health, 20)
 		eq(fx.poison, nil, "milk earlier, poison ran out")
+
+		-- Java: damage armour protects against adds 0.1 exhaustion; a fall adds none
+		G.frame(1)
+		local e0 = Survival.snapshot(player).exhaustion
+		Survival.damage(player, 1, "fell from a high place")
+		eq(Survival.snapshot(player).exhaustion, e0, "falls cost no exhaustion")
+		G.frame(1)
+		local e1 = Survival.snapshot(player).exhaustion
+		Survival.damage(player, 1, "zombie", nil, { armor = true })
+		assert(math.abs(Survival.snapshot(player).exhaustion - e1 - 0.1) < 1e-9, "a hit costs 0.1")
 
 		-- effects are saved and come back
 		local snap = Survival.snapshot(player)
