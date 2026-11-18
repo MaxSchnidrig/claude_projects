@@ -31,6 +31,7 @@
 --   Bed           C -> S  { type = "use", x, y, z } | { type = "leave" }
 --                 S -> C  { type = "sleep", x, y, z, facing } | { type = "wake" } | { type = "message", text }
 --   StareMob      C -> S  (mobId)  the player has looked a voidling in the eyes for 5 ticks
+--   UseMob        C -> S  (mobId)  right-click on a mob with the held item (a bucket milks a cow)
 --   Knockback     S -> C  { dir = Vector3, strength } (Java hit knockback, blocks/tick) or
 --                         { add = Vector3 } (explosion push, blocks/tick)
 --   WorldSettings both    difficulty / friends of the running world (server/World/WorldSettingsService)
@@ -58,6 +59,7 @@ local NAMES = {
 	"AttackMob",
 	"Knockback",
 	"StareMob",
+	"UseMob",
 	"Lobby",
 	"BlockBatch",
 	"UseItem",

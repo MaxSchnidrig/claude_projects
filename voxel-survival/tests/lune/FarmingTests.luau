@@ -585,6 +585,73 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		Loader.forget("src/server/")
 	end)
 
+	test("stem harvest end-to-end: breaking the fruit straightens the stem through real block updates", function()
+		local G = Fake.newGame()
+		for k, v in G.env do
+			Loader.globals[k] = v
+		end
+		Loader.forget("src/server/")
+		local cells: { [string]: number } = {}
+		local FLOOR = 64
+		local function getb(x, y, z)
+			return cells[`{x},{y},{z}`] or (if y < FLOOR then STONE else 0)
+		end
+		local listeners = {}
+		local function setBlock(x, y, z, b)
+			local old = getb(x, y, z)
+			cells[`{x},{y},{z}`] = b
+			if old ~= b then
+				for _, fn in listeners do
+					fn(x, y, z, old, b)
+				end
+			end
+			return 0
+		end
+		Loader.stubs["src/server/World/WorldService.luau"] = {
+			getBlockIfLoaded = getb, getBlock = getb, blockLightAt = function() return 0 end, setBlock = setBlock,
+			onBlockChanged = function(fn) table.insert(listeners, fn) end,
+		}
+		Loader.stubs["src/server/World/ChunkStreamer.luau"] = { playersWithChunk = function() return {} end }
+		Loader.stubs["src/server/World/RandomTicks.luau"] = { register = function() end }
+		Loader.stubs["src/server/World/ItemEntityService.luau"] = { spawn = function() end }
+		Loader.stubs["src/server/Player/InventoryService.luau"] = { consumeSelected = function() return true end, damageSelectedTool = function() end }
+		Loader.stubs["src/shared/Net/Remotes.luau"] = { get = function() return Fake.Instance.new("RemoteEvent") end }
+		Fake.mount(G.game:GetService("ReplicatedStorage"), "Shared", Loader.node("src/shared"))
+		local BU = Loader.require("src/server/World/BlockUpdates")
+		local FS = Loader.require("src/server/Simulation/FarmingService")
+		BU.init()
+		FS.init()
+		for _, fruit in { "pumpkin", "melon" } do
+			for f, facing in { "north", "east", "south", "west" } do
+				local d = ({ { 0, -1 }, { 1, 0 }, { 0, 1 }, { -1, 0 } })[f]
+				local x = f * 10 + (if fruit == "melon" then 100 else 0)
+				setBlock(x, FLOOR - 1, 0, FARM7)
+				setBlock(x + d[1], FLOOR - 1, d[2], GRASS)
+				setBlock(x, FLOOR, 0, id(`attached_{fruit}_stem_{facing}`))
+				setBlock(x + d[1], FLOOR, d[2], id(fruit))
+				for _ = 1, 3 do
+					G.frame(0.05)
+				end
+				eq(getb(x, FLOOR, 0), id(`attached_{fruit}_stem_{facing}`), `{fruit} {facing}: still attached`)
+				setBlock(x + d[1], FLOOR, d[2], 0) -- the player breaks the fruit
+				for _ = 1, 3 do
+					G.frame(0.05)
+				end
+				eq(getb(x, FLOOR, 0), Farming.cropId(`{fruit}_stem`, 7), `{fruit} {facing}: stem straightened`)
+			end
+		end
+		for _, path in {
+			"src/server/World/WorldService.luau", "src/server/World/ChunkStreamer.luau", "src/server/World/RandomTicks.luau",
+			"src/server/World/ItemEntityService.luau", "src/server/Player/InventoryService.luau", "src/shared/Net/Remotes.luau",
+		} do
+			Loader.stubs[path] = nil
+		end
+		for _, k in { "game", "workspace", "Instance", "Enum", "CFrame", "Vector2", "Color3", "UDim2", "UDim", "task", "os", "time", "tick", "warn", "Random" } do
+			Loader.globals[k] = nil
+		end
+		Loader.forget("src/server/")
+	end)
+
 	test("server farming: growth by random ticks, farmland dries / wets, hoe, bone meal, trampling, popping off", function()
 		local G = Fake.newGame()
 		for k, v in G.env do

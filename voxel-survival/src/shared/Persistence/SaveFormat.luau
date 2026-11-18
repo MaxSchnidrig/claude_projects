@@ -375,6 +375,8 @@ export type PlayerState = {
 	bed: Vector3?, -- respawn point: the bed's head block (Phase 8c)
 	sinceRest: number?, -- ticks since the player last slept (the insomnia counter)
 	spectator: boolean?, -- died in a Hardcore world: only watches from now on (Phase 8d)
+	effects: { [string]: any }?, -- status effects (Gameplay/Effects.encode) (Phase 9c)
+	absorption: number?, -- extra health from absorption
 }
 
 function SaveFormat.encodePlayer(p: PlayerState): { [string]: any }
@@ -392,6 +394,8 @@ function SaveFormat.encodePlayer(p: PlayerState): { [string]: any }
 		bed = if p.bed then { p.bed.X, p.bed.Y, p.bed.Z } else nil,
 		rest = p.sinceRest,
 		spec = if p.spectator then true else nil,
+		fx = if p.effects and next(p.effects) then p.effects else nil,
+		abs = if p.absorption and p.absorption > 0 then p.absorption else nil,
 	}
 end
 
@@ -428,6 +432,8 @@ function SaveFormat.decodePlayer(record: any, inventorySlots: number): PlayerSta
 			else nil,
 		sinceRest = num(record.rest, 0, 0, 1e9),
 		spectator = record.spec == true,
+		effects = if typeof(record.fx) == "table" then record.fx else nil,
+		absorption = num(record.abs, 0, 0, 2048),
 	}
 end
 

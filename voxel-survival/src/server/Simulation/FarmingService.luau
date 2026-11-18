@@ -432,16 +432,22 @@ function FarmingService.init()
 	RandomTicks.register(farmland, farmlandTick)
 	RandomTicks.register(crops, cropTick)
 	RandomTicks.register({ GRASS }, grassTick)
-	local columns, saplings = {}, {}
+	local columns, saplings, attached = {}, {}, {}
 	for id, d in byId do
 		if d.shape == "cactus" or (d.shape == "plant" and d.state.cane) then
 			table.insert(columns, id)
 		elseif d.shape == "plant" and d.state.sapling then
 			table.insert(saplings, id)
+		elseif d.shape == "plant" and d.state.attachedStem then
+			table.insert(attached, id)
 		end
 	end
 	RandomTicks.register(columns, columnTick)
 	RandomTicks.register(saplings, saplingTick)
+	-- safety net: a bent stem whose fruit is gone also straightens on a random tick
+	RandomTicks.register(attached, function(x: number, y: number, z: number, _id: number)
+		supportCheck(x, y, z)
+	end)
 
 	local NEEDS_CHECK: { [number]: boolean } = {}
 	for id, d in byId do

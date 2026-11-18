@@ -2344,6 +2344,7 @@ require("./ServerBedTests")(test, eq)
 require("./ServerLobbyTests")(test, eq)
 require("./ServerSurvivalTests")(test, eq)
 require("./FarmingTests")(test, eq)
+require("./EffectsTests")(test, eq)
 
 print(`\n{passed} passed, {failed} failed`)
 if failed > 0 then

@@ -21,7 +21,9 @@ export type ToolDef = {
 
 -- Food values (classic): hunger points restored and saturation gained.
 -- `remainder`: what is left in your hand after eating (stews leave a bowl)
-export type FoodDef = { hunger: number, saturation: number, remainder: string? }
+-- `alwaysEat`: can be eaten with a full hunger bar (golden apples, milk)
+-- `clearsEffects`: removes every status effect (milk). Effects foods give: Gameplay/Effects.FOOD
+export type FoodDef = { hunger: number, saturation: number, remainder: string?, alwaysEat: boolean?, clearsEffects: boolean? }
 
 -- Armour (Java values): slot "head" | "chest" | "legs" | "feet", armour points, toughness.
 export type ArmorDef = { slot: string, defense: number, toughness: number, material: string }
@@ -91,7 +93,16 @@ local defs: { ItemDefInput } = {
 	{ key = "melon_slice", name = "Melon Slice", color = { 214, 60, 50 }, food = { hunger = 2, saturation = 1.2 } },
 	{ key = "sugar", name = "Sugar", color = { 240, 240, 244 } },
 	{ key = "paper", name = "Paper", color = { 236, 232, 216 } },
-	-- (Java: 60 % chance of Poison; status effects come later in phase 9)
+	-- Phase 9c
+	{ key = "gold_nugget", name = "Gold Nugget", color = { 250, 222, 90 } },
+	{ key = "golden_apple", name = "Golden Apple", color = { 246, 206, 50 }, food = { hunger = 4, saturation = 9.6, alwaysEat = true } },
+	{ key = "enchanted_golden_apple", name = "Enchanted Golden Apple", color = { 250, 170, 230 }, food = { hunger = 4, saturation = 9.6, alwaysEat = true } },
+	{ key = "golden_carrot", name = "Golden Carrot", color = { 248, 196, 60 }, food = { hunger = 6, saturation = 14.4 } },
+	{ key = "pumpkin_pie", name = "Pumpkin Pie", color = { 220, 140, 60 }, food = { hunger = 8, saturation = 4.8 } },
+	{ key = "egg", name = "Egg", stack = 16, color = { 236, 222, 190 } },
+	{ key = "milk_bucket", name = "Milk Bucket", stack = 1, color = { 244, 244, 240 },
+		food = { hunger = 0, saturation = 0, remainder = "bucket", alwaysEat = true, clearsEffects = true } },
+	-- (Java: 60 % chance of Poison, see Gameplay/Effects.FOOD)
 	{ key = "poisonous_potato", name = "Poisonous Potato", color = { 170, 190, 80 }, food = { hunger = 2, saturation = 1.2 } },
 	{ key = "baked_potato", name = "Baked Potato", color = { 214, 160, 70 }, food = { hunger = 5, saturation = 6 } },
 	{ key = "apple", name = "Apple", color = { 210, 40, 40 }, food = { hunger = 4, saturation = 2.4 } },

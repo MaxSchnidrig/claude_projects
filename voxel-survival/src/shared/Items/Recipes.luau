@@ -39,6 +39,10 @@ local shaped: { Shaped } = {
 	-- Phase 9b
 	{ pattern = { "MMM", "MMM", "MMM" }, key = { M = "melon_slice" }, result = { item = "melon", count = 1 } },
 	{ pattern = { "SSS" }, key = { S = "sugar_cane" }, result = { item = "paper", count = 3 } },
+	-- Phase 9c
+	{ pattern = { "GGG", "GAG", "GGG" }, key = { G = "gold_ingot", A = "apple" }, result = { item = "golden_apple", count = 1 } },
+	{ pattern = { "NNN", "NCN", "NNN" }, key = { N = "gold_nugget", C = "carrot" }, result = { item = "golden_carrot", count = 1 } },
+	{ pattern = { "NNN", "NNN", "NNN" }, key = { N = "gold_nugget" }, result = { item = "gold_ingot", count = 1 } },
 }
 
 -- Building blocks (Phase 8b)
@@ -130,6 +134,8 @@ local shapeless: { Shapeless } = {
 	{ ingredients = { "pumpkin" }, result = { item = "pumpkin_seeds", count = 4 } },
 	{ ingredients = { "melon_slice" }, result = { item = "melon_seeds", count = 1 } },
 	{ ingredients = { "sugar_cane" }, result = { item = "sugar", count = 1 } },
+	{ ingredients = { "gold_ingot" }, result = { item = "gold_nugget", count = 9 } },
+	{ ingredients = { "pumpkin", "sugar", "egg" }, result = { item = "pumpkin_pie", count = 1 } },
 	{ ingredients = { "beetroot", "beetroot", "beetroot", "beetroot", "beetroot", "beetroot", "bowl" }, result = { item = "beetroot_soup", count = 1 } },
 }
 

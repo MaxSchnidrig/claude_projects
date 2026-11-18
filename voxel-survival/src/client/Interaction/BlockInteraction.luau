@@ -113,6 +113,18 @@ local rayShape = Shapes.rayShapeFn(blockAt)
 -- (Java: charge > 0.9, falling, airborne, not sprinting, not in liquid); the server re-checks.
 local lastSwing = 0
 local lastHeld: string? = nil
+
+-- Right-click on the mob under the crosshair with an item it reacts to (Java mobInteract):
+-- a bucket on a cow. The server checks the mob and gives the milk. True if the click was used.
+local function useMob(): boolean
+	local id = BlockInteraction.mobTarget
+	if not id or InventoryClient.heldItem() ~= "bucket" or MobClient.keyOf(id) ~= "cow" then
+		return false
+	end
+	Remotes.get("UseMob"):FireServer(id)
+	BlockInteraction.swing:Fire()
+	return true
+end
 local function attackMob(id: number)
 	local item = InventoryClient.heldItem()
 	local _, attackSpeed = Combat.attackStats(item)
@@ -413,9 +425,17 @@ local function foodSlot(aimingAtBlock: boolean): number?
 	return nil
 end
 
+-- Golden apples and milk can be eaten / drunk with a full hunger bar (Java canAlwaysEat).
+local function alwaysEat(slot: number): boolean
+	local item = if slot == Config.OFFHAND_SLOT then (InventoryClient.offhand() or {} :: any).item else InventoryClient.heldItem()
+	local def = ItemRegistry.get(item)
+	return def ~= nil and def.food ~= nil and def.food.alwaysEat == true
+end
+
 local function updateEating(dt: number)
 	local slot = foodSlot(if eating then false else BlockInteraction.target ~= nil)
-	local canEat = useHeld and slot ~= nil and SurvivalClient.food < SurvivalRules.MAX_FOOD and not SurvivalClient.dead
+	local canEat = useHeld and slot ~= nil and (SurvivalClient.food < SurvivalRules.MAX_FOOD or alwaysEat(slot :: number))
+		and not SurvivalClient.dead
 	if not canEat or (eating and eating.slot ~= slot) then
 		stopEating()
 		return
@@ -790,7 +810,9 @@ touchStep = function()
 	local t = touchState
 	if t == "tap" then
 		touchState = nil
-		if BlockInteraction.mobTarget then
+		if useMob() then
+			-- tapping a cow with a bucket milks it
+		elseif BlockInteraction.mobTarget then
 			attackMob(BlockInteraction.mobTarget :: number)
 		else
 			pressUse()
@@ -833,6 +855,8 @@ function BlockInteraction.init()
 			BlockInteraction.swing:Fire()
 		elseif t == Enum.UserInputType.MouseButton1 or input.KeyCode == Enum.KeyCode.ButtonR2 then
 			breakHeld = true
+		elseif (t == Enum.UserInputType.MouseButton2 or input.KeyCode == Enum.KeyCode.ButtonL2) and useMob() then
+			-- a bucket on a cow (milk)
 		elseif t == Enum.UserInputType.MouseButton2 or input.KeyCode == Enum.KeyCode.ButtonL2 then
 			local hit = BlockInteraction.target
 			local shift = MovementController.sneaking or UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)

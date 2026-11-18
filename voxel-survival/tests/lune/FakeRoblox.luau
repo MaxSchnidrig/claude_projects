@@ -237,6 +237,23 @@ function COMMON_METHODS.Destroy(self)
 	setParent(self, nil)
 	rawset(self, "__destroyed", true)
 end
+-- A copy of the instance and its children (properties and attributes; signals are not copied,
+-- like Roblox's connections). The copy has no parent.
+function COMMON_METHODS.Clone(self)
+	local copy = Fake.Instance.new(rawget(self, "__class"))
+	for k, v in rawget(self, "__props") do
+		if k ~= "Parent" then
+			rawget(copy, "__props")[k] = v
+		end
+	end
+	for k, v in rawget(self, "__attrs") do
+		rawget(copy, "__attrs")[k] = v
+	end
+	for _, c in rawget(self, "__children") do
+		setParent(COMMON_METHODS.Clone(c), copy)
+	end
+	return copy
+end
 function COMMON_METHODS.ClearAllChildren(self)
 	for _, c in table.clone(rawget(self, "__children")) do
 		COMMON_METHODS.Destroy(c)
@@ -817,6 +834,23 @@ CLASSES.MemoryStoreService = {
 		end,
 	},
 }
+-- Tweens finish at once when played (tests only need the end state).
+CLASSES.TweenService = {
+	parent = "Instance",
+	methods = {
+		Create = function(_, inst: any, _info: any, goal: { [string]: any })
+			return {
+				Play = function()
+					for k, v in goal do
+						inst[k] = v
+					end
+				end,
+				Cancel = function() end,
+			}
+		end,
+	},
+}
+
 CLASSES.TextService = {
 	parent = "Instance",
 	methods = {

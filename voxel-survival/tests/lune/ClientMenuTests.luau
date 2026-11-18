@@ -413,6 +413,47 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		cleanup()
 	end)
 
+	test("survival HUD (real SurvivalClient): effect list, poison hearts, absorption row moves armour up", function()
+		local t = boot()
+		Loader.stubs["src/client/Survival/SurvivalClient.luau"] = nil
+		t.stubs.inventory.armorPoints = function()
+			return 6
+		end
+		local SurvivalClient = Loader.require("src/client/Survival/SurvivalClient")
+		SurvivalClient.init()
+		local HUD = Loader.require("src/client/Survival/SurvivalHUD")
+		HUD.init()
+		t.G.frame(1 / 60)
+		local gui = t.G.player.PlayerGui:FindFirstChild("SurvivalHUD")
+		assert(gui, "HUD")
+		eq(find(gui, "Poison"), nil)
+		local remote = t.remotes.SurvivalSync
+		remote.OnClientEvent:Fire({
+			food = 12, saturation = 0, air = 15, maxAir = 15, canSprint = true, absorption = 4,
+			effects = { { "regeneration", 1, 5 }, { "absorption", 0, 120 }, { "poison", 0, 4 }, { "bogus" } },
+		})
+		t.G.frame(1 / 60)
+		eq(SurvivalClient.absorption, 4)
+		eq(#SurvivalClient.effects, 3, "the malformed entry is dropped")
+		assert(find(gui, "Regeneration II"), "regeneration listed")
+		assert(find(gui, "Absorption"), "absorption listed")
+		eq(find(gui, "2:00") ~= nil, true, "time shown")
+		local list = gui:FindFirstChild("Effects")
+		local lines = 0
+		for _, c in list:GetChildren() do
+			if c:IsA("Frame") then
+				lines += 1
+			end
+		end
+		eq(lines, 3)
+		-- milk: the list empties
+		remote.OnClientEvent:Fire({ food = 12, saturation = 0, air = 15, maxAir = 15, canSprint = true, absorption = 0, effects = {} })
+		t.G.frame(1 / 60)
+		eq(find(gui, "Regeneration"), nil)
+		Loader.stubs["src/client/Survival/SurvivalClient.luau"] = t.stubs.survival
+		cleanup()
+	end)
+
 	for _, k in { "game", "workspace", "Instance", "Enum", "CFrame", "Vector2", "Color3", "UDim2", "UDim", "task", "os", "time", "tick", "warn", "Random" } do
 		Loader.globals[k] = nil
 	end

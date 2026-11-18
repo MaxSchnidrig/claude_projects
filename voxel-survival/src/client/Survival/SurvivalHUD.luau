@@ -5,11 +5,16 @@
 --   * air: 10 small blue rounds above the hunger row, only while it's not full
 --   * a red flash when hurt, an eating progress bar under the crosshair
 --   * death screen with the cause and a Respawn button (mouse unlocked while it shows)
+--   * status effects (Phase 9c): green health while poisoned, a wave while regenerating, gold
+--     extra pips for absorption (a row above health, armour moves up), a greenish hunger row
+--     with the hunger effect, and a list of active effects with their time at the top right
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Effects = require(ReplicatedStorage:WaitForChild("Shared").Gameplay.Effects)
 local SurvivalClient = require(script.Parent.SurvivalClient)
 local CameraController = require(script.Parent.Parent.Player.CameraController)
 local InventoryClient = require(script.Parent.Parent.Player.InventoryClient)
@@ -116,6 +121,86 @@ end
 
 local armorRow: Frame
 local armorPips: { Pip }
+local absorbRow: Frame
+local absorbPips: { Pip }
+local effectList: Frame
+
+local HEART = Color3.fromRGB(222, 44, 54)
+local HEART_POISON = Color3.fromRGB(140, 170, 40)
+local FOOD = Color3.fromRGB(218, 142, 40)
+local FOOD_HUNGER = Color3.fromRGB(130, 150, 60)
+local ABSORB = Color3.fromRGB(240, 196, 60)
+
+-- One line of the effect list: a badge in the effect's colour, its name and level, and the time.
+local function effectLine(parent: Instance, id: string, amp: number, secs: number, order: number)
+	local def = Effects.DEFS[id]
+	local c = if def then def.color else { 200, 200, 200 }
+	local line = Instance.new("Frame")
+	line.Name = id
+	line.BorderSizePixel = 0
+	line.BackgroundColor3 = Color3.fromRGB(20, 18, 22)
+	line.BackgroundTransparency = 0.35
+	line.Size = UDim2.fromOffset(190, 26)
+	line.LayoutOrder = order
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 4)
+	corner.Parent = line
+	local badge = Instance.new("Frame")
+	badge.BorderSizePixel = 0
+	badge.BackgroundColor3 = Color3.fromRGB(c[1], c[2], c[3])
+	badge.Position = UDim2.fromOffset(5, 5)
+	badge.Size = UDim2.fromOffset(16, 16)
+	local bc = Instance.new("UICorner")
+	bc.CornerRadius = UDim.new(0.5, 0)
+	bc.Parent = badge
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = if def and def.harmful then Color3.fromRGB(90, 20, 20) else Color3.fromRGB(250, 250, 240)
+	stroke.Thickness = 1.5
+	stroke.Parent = badge
+	badge.Parent = line
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Position = UDim2.fromOffset(28, 0)
+	label.Size = UDim2.new(1, -78, 1, 0)
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 13
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextColor3 = Color3.fromRGB(240, 240, 245)
+	label.Text = Effects.label(id, amp)
+	label.Parent = line
+	local time = Instance.new("TextLabel")
+	time.BackgroundTransparency = 1
+	time.AnchorPoint = Vector2.new(1, 0)
+	time.Position = UDim2.new(1, -6, 0, 0)
+	time.Size = UDim2.new(0, 46, 1, 0)
+	time.Font = Enum.Font.Gotham
+	time.TextSize = 13
+	time.TextXAlignment = Enum.TextXAlignment.Right
+	time.TextColor3 = Color3.fromRGB(200, 200, 210)
+	time.Text = Effects.timeText(secs * 20)
+	time.Parent = line
+	line.Parent = parent
+end
+
+local lastFx = ""
+local function refreshEffects()
+	local key = ""
+	for _, e in SurvivalClient.effects do
+		key ..= `{e[1]}{e[2]}:{e[3]},`
+	end
+	if key == lastFx then
+		return
+	end
+	lastFx = key
+	for _, c in effectList:GetChildren() do
+		if c:IsA("Frame") then
+			c:Destroy()
+		end
+	end
+	for i, e in SurvivalClient.effects do
+		effectLine(effectList, e[1], e[2], e[3], i)
+	end
+end
 
 function SurvivalHUD.init()
 	gui = Instance.new("ScreenGui")
@@ -130,11 +215,11 @@ function SurvivalHUD.init()
 	hud.Size = UDim2.fromOffset(HOTBAR_WIDTH, PIP * 2 + 6)
 	hud.Parent = gui
 
-	local hRow, hp = pipRow(hud, 10, Color3.fromRGB(222, 44, 54), false, false)
+	local hRow, hp = pipRow(hud, 10, HEART, false, false)
 	hRow.AnchorPoint = Vector2.new(0, 1)
 	hRow.Position = UDim2.fromScale(0, 1)
 	healthPips = hp
-	local fRow, fp = pipRow(hud, 10, Color3.fromRGB(218, 142, 40), false, true)
+	local fRow, fp = pipRow(hud, 10, FOOD, false, true)
 	fRow.AnchorPoint = Vector2.new(1, 1)
 	fRow.Position = UDim2.fromScale(1, 1)
 	hungerPips = fp
@@ -149,6 +234,25 @@ function SurvivalHUD.init()
 	arRow.Position = UDim2.new(0, 0, 1, -(PIP + 6))
 	armorRow = arRow
 	armorPips = arp
+	-- absorption (gold extra health): its own row right above the health row
+	local abRow, abp = pipRow(hud, 10, ABSORB, false, false)
+	abRow.AnchorPoint = Vector2.new(0, 1)
+	abRow.Position = UDim2.new(0, 0, 1, -(PIP + 6))
+	absorbRow = abRow
+	absorbPips = abp
+
+	-- active effects, top right (below Roblox's top bar)
+	effectList = Instance.new("Frame")
+	effectList.Name = "Effects"
+	effectList.BackgroundTransparency = 1
+	effectList.AnchorPoint = Vector2.new(1, 0)
+	effectList.Position = UDim2.new(1, -10, 0, 10)
+	effectList.Size = UDim2.fromOffset(190, 200)
+	local layout = Instance.new("UIListLayout")
+	layout.Padding = UDim.new(0, 4)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Parent = effectList
+	effectList.Parent = gui
 
 	flash = Instance.new("Frame")
 	flash.BorderSizePixel = 0
@@ -271,6 +375,25 @@ function SurvivalHUD.init()
 		local h = humanoid()
 		setPips(healthPips, if h then math.ceil(h.Health) else 0, false)
 		setPips(hungerPips, SurvivalClient.food, true)
+		-- effects on the bars
+		local poisoned = SurvivalClient.hasEffect("poison")
+		local regen = SurvivalClient.hasEffect("regeneration")
+		local t = os.clock()
+		for i, p in healthPips do
+			p.fill.BackgroundColor3 = if poisoned then HEART_POISON else HEART
+			-- regeneration: a wave runs along the hearts (our take on Java's bobbing hearts)
+			local slot = i - 1
+			local y = if regen and math.floor(t * 20) % 10 == slot % 10 then -3 else 0
+			p.bg.Position = UDim2.fromOffset(slot * (PIP + PIP_GAP), y)
+		end
+		local hungry = SurvivalClient.hasEffect("hunger")
+		for _, p in hungerPips do
+			p.fill.BackgroundColor3 = if hungry then FOOD_HUNGER else FOOD
+		end
+		local absorb = SurvivalClient.absorption
+		absorbRow.Visible = absorb > 0
+		setPips(absorbPips, absorb, false)
+		refreshEffects()
 		local air = SurvivalClient.air
 		local maxAir = SurvivalClient.maxAir
 		airRow.Visible = air < maxAir
@@ -278,6 +401,8 @@ function SurvivalHUD.init()
 		local armor = InventoryClient.armorPoints()
 		armorRow.Visible = armor > 0
 		setPips(armorPips, armor, false)
+		-- armour sits above the absorption row when there is one (Java stacks it above all hearts)
+		armorRow.Position = UDim2.new(0, 0, 1, -(PIP + 6) * (if absorb > 0 then 2 else 1))
 	end)
 end
 

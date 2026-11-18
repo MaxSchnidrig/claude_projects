@@ -309,6 +309,31 @@ local SHAPES: { [string]: (buffer, { number }, number) -> () } = {
 	lava_bucket = function(img, c)
 		bucket(img, c)
 	end,
+	milk_bucket = function(img, c)
+		bucket(img, c)
+	end,
+	-- a pie seen from the side: a wide crust with a filled top
+	pie = function(img, c)
+		local crust = { 200, 150, 90 }
+		for y = 7, 12 do
+			local inset = if y == 7 then 3 else 2
+			for x = inset, 15 - inset do
+				local col = if y <= 8 then c else crust
+				put(img, x, y, shade(col, if y == 12 then 0.75 else if (x + y) % 4 == 0 then 0.9 else 1))
+			end
+		end
+	end,
+	-- a smooth oval, lighter at the top left
+	egg = function(img, c)
+		for y = 3, 13 do
+			for x = 4, 11 do
+				local dx, dy = (x - 7.5) / 3.8, (y - 8.2) / (if y < 8 then 5.2 else 4.8)
+				if dx * dx + dy * dy <= 1 then
+					put(img, x, y, shade(c, if x < 7 and y < 7 then 1.08 else if x > 9 or y > 11 then 0.85 else 1))
+				end
+			end
+		end
+	end,
 	bar = function(img, c)
 		bar(img, c)
 	end,
@@ -368,6 +393,8 @@ local SHAPE_OF: { [string]: string } = {
 	wheat_seeds = "seeds", beetroot_seeds = "seeds", bone_meal = "dust", wheat = "sheaf",
 	beetroot = "fruit", bowl = "bowl", beetroot_soup = "soup", poisonous_potato = "lump",
 	pumpkin_seeds = "seeds", melon_seeds = "seeds", melon_slice = "fruit", sugar = "dust", paper = "bar",
+	gold_nugget = "ball", golden_apple = "fruit", enchanted_golden_apple = "fruit", golden_carrot = "stick",
+	pumpkin_pie = "pie", egg = "egg", milk_bucket = "milk_bucket",
 }
 
 local function texel(tex: buffer, x: number, y: number, f: number?): { number }

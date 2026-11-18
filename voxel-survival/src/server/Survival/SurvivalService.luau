@@ -25,6 +25,7 @@ local DayNightService = require(script.Parent.DayNightService)
 local WorldSettingsService = require(script.Parent.Parent.World.WorldSettingsService)
 local Difficulty = require(Shared.Gameplay.Difficulty)
 local Farming = require(Shared.Gameplay.Farming)
+local Effects = require(Shared.Gameplay.Effects)
 
 local BS = Config.BLOCK_SIZE
 local FEET_BELOW_ROOT = 3 -- R6: HumanoidRootPart centre is 3 studs above the feet
@@ -63,6 +64,9 @@ type State = {
 	fireTimer: number,
 	peaceHeal: number, -- Peaceful: time towards the next +1 health / +1 food
 	peaceFood: number,
+	effects: Effects.List, -- status effects (Phase 9c)
+	absorption: number, -- extra health from the absorption effect (taken before health)
+	effectAcc: number, -- seconds towards the next effect tick (20 per second)
 }
 
 local SurvivalService = {}
@@ -70,7 +74,10 @@ local states: { [Player]: State } = {}
 -- Hardcore: players who died in this world. They come back only as spectators (Java).
 local spectators: { [Player]: boolean } = {}
 -- Saved values to apply on the player's first spawn this session (Persistence).
-type Restore = { health: number, food: number, saturation: number, exhaustion: number, air: number }
+type Restore = {
+	health: number, food: number, saturation: number, exhaustion: number, air: number,
+	effects: { [string]: any }?, absorption: number?,
+}
 local pendingRestore: { [Player]: Restore } = {}
 
 local function newState(): State
@@ -99,6 +106,9 @@ local function newState(): State
 		fireTimer = 0,
 		peaceHeal = 0,
 		peaceFood = 0,
+		effects = {},
+		absorption = 0,
+		effectAcc = 0,
 	}
 end
 
@@ -130,8 +140,20 @@ local function sync(p: Player, event: string?, cause: string?)
 		canSprint = SurvivalRules.canSprint(h),
 		event = event,
 		cause = cause,
+		absorption = math.ceil(s.absorption),
+		-- { id, level (0 = I), seconds left } in display order
+		effects = {} :: { { any } },
 	}
-	local key = `{payload.food}|{payload.saturation}|{payload.air}|{payload.canSprint}`
+	local fxKey = ""
+	for _, id in Effects.ORDER do
+		local e = s.effects[id]
+		if e then
+			local secs = math.ceil(e.ticks / 20)
+			table.insert(payload.effects, { id, e.amp, secs })
+			fxKey ..= `{id}{e.amp}:{secs},`
+		end
+	end
+	local key = `{payload.food}|{payload.saturation}|{payload.air}|{payload.canSprint}|{payload.absorption}|{fxKey}`
 	if event or key ~= s.lastSent then
 		s.lastSent = key
 		Remotes.get("SurvivalSync"):FireClient(p, payload)
@@ -147,7 +169,9 @@ end
 -- units) so a raised shield in front can block it.
 -- `scales` = caused by a living mob (bites, its arrows, a Sneaker's blast): changed by the
 -- difficulty first (Gameplay/Difficulty: Peaceful 0, Easy halved + 1, Hard x 1.5).
-export type DamageOpts = { armor: boolean?, source: Vector3?, scales: boolean? }
+-- `fire` = fire, lava, burning, campfires (fire resistance blocks it); `magic` = poison (no
+-- exhaustion, Java's magic damage type).
+export type DamageOpts = { armor: boolean?, source: Vector3?, scales: boolean?, fire: boolean?, magic: boolean? }
 -- Set by CombatGearService (avoids a require cycle): shield and armour.
 local gear: { block: (Player, number, DamageOpts) -> boolean, armor: (Player, number) -> number }? = nil
 function SurvivalService.setGear(g: { block: (Player, number, DamageOpts) -> boolean, armor: (Player, number) -> number })
@@ -159,6 +183,9 @@ function SurvivalService.damage(p: Player, amount: number, cause: string, bypass
 	local s = state(p)
 	if not humanoid or s.dead or humanoid.Health <= 0 or amount <= 0 or spectators[p] then
 		return 0, false
+	end
+	if opts and opts.fire and s.effects.fire_resistance then
+		return 0, false -- Java: fire resistance ignores fire damage completely
 	end
 	if opts and opts.scales then
 		amount = Difficulty.scaleMobDamage(WorldSettingsService.difficulty(), amount)
@@ -182,11 +209,20 @@ function SurvivalService.damage(p: Player, amount: number, cause: string, bypass
 	if gear and opts and opts.armor then
 		dealt = gear.armor(p, dealt)
 	end
+	-- Java LivingEntity.actuallyHurt: armour, then resistance (not the void), then absorption
+	if not bypass then
+		dealt = Effects.resist(s.effects, dealt)
+	end
+	local absorbed = math.min(s.absorption, dealt)
+	s.absorption -= absorbed
+	local toHealth = dealt - absorbed
 	-- Java: getting hurt wakes a sleeping player
 	require(script.Parent.Parent.Player.BedService).onHurt(p)
-	SurvivalRules.addExhaustion(s.hunger, SurvivalRules.EXHAUSTION.damage)
+	if not (opts and opts.magic) then
+		SurvivalRules.addExhaustion(s.hunger, SurvivalRules.EXHAUSTION.damage)
+	end
 	s.lastCause = cause
-	humanoid.Health = math.max(0, humanoid.Health - dealt)
+	humanoid.Health = math.max(0, humanoid.Health - toHealth)
 	sync(p, "hurt", cause)
 	return dealt, fresh
 end
@@ -218,6 +254,8 @@ function SurvivalService.snapshot(p: Player): (Restore, boolean)
 		saturation = s.hunger.saturation,
 		exhaustion = s.hunger.exhaustion,
 		air = s.air,
+		effects = Effects.encode(s.effects),
+		absorption = s.absorption,
 	}, false
 end
 
@@ -237,6 +275,62 @@ end
 -- Block at world block coords (0 for out of range).
 local function block(x: number, y: number, z: number): number
 	return WorldService.getBlock(x, y, z)
+end
+
+-- One tick of status effects (Gameplay/Effects).
+local function stepEffects(p: Player, s: State, humanoid: Humanoid)
+	local ended = Effects.tick(s.effects, {
+		health = function()
+			return humanoid.Health
+		end,
+		maxHealth = function()
+			return humanoid.MaxHealth
+		end,
+		hurt = function(n: number)
+			SurvivalService.damage(p, n, "was killed by magic", nil, { magic = true })
+		end,
+		heal = function(n: number)
+			humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + n)
+		end,
+		exhaust = function(n: number)
+			SurvivalRules.addExhaustion(s.hunger, n)
+		end,
+		absorption = function()
+			return s.absorption
+		end,
+	})
+	-- the absorption hearts never exceed what the current level gives (0 once it's gone)
+	s.absorption = math.min(s.absorption, Effects.absorptionMax(s.effects))
+	if #ended > 0 then
+		sync(p)
+	end
+end
+
+-- Give a player an effect (Java addEffect). Absorption fills its hearts when given or raised.
+function SurvivalService.addEffect(p: Player, id: string, amp: number, ticks: number): boolean
+	local s = state(p)
+	if s.dead or spectators[p] then
+		return false
+	end
+	local changed = Effects.add(s.effects, id, amp, ticks)
+	if changed and id == "absorption" then
+		s.absorption = math.max(s.absorption, 4 * (amp + 1))
+	end
+	s.absorption = math.min(s.absorption, Effects.absorptionMax(s.effects))
+	sync(p)
+	return changed
+end
+
+-- Milk (Java removeAllEffects).
+function SurvivalService.clearEffects(p: Player)
+	local s = state(p)
+	Effects.clear(s.effects)
+	s.absorption = 0
+	sync(p)
+end
+
+function SurvivalService.effects(p: Player): Effects.List
+	return state(p).effects
 end
 
 local function stepPlayer(p: Player, s: State, dt: number)
@@ -299,24 +393,24 @@ local function stepPlayer(p: Player, s: State, dt: number)
 	-- fire burns 1 per second until it runs out or you step into water (Java).
 	if isLava(feetBlock) or isLava(bodyBlock) then
 		s.burning = 15
-		SurvivalService.damage(p, SurvivalRules.LAVA_DAMAGE, "tried to swim in lava", nil, { armor = true })
+		SurvivalService.damage(p, SurvivalRules.LAVA_DAMAGE, "tried to swim in lava", nil, { armor = true, fire = true })
 	elseif s.inLiquid then
 		s.burning = 0
 	elseif feetBlock == FIRE or bodyBlock == FIRE then
 		-- Java: standing in fire hurts 1 per hit and sets you on fire for 8 s
 		s.burning = math.max(s.burning, 8)
-		SurvivalService.damage(p, 1, "went up in flames", nil, { armor = true })
+		SurvivalService.damage(p, 1, "went up in flames", nil, { armor = true, fire = true })
 	end
 	-- Java: walking on a lit campfire hurts (1), unless sneaking
 	if grounded and not s.sneaking and block(bx, belowY, bz) == CAMPFIRE then
-		SurvivalService.damage(p, 1, "was burned on a campfire", nil, { armor = true })
+		SurvivalService.damage(p, 1, "was burned on a campfire", nil, { armor = true, fire = true })
 	end
 	if s.burning > 0 then
 		s.burning -= dt
 		s.fireTimer += dt
 		if s.fireTimer >= 1 then
 			s.fireTimer -= 1
-			SurvivalService.damage(p, 1, "burned to death", nil, { armor = true })
+			SurvivalService.damage(p, 1, "burned to death", nil, { armor = true, fire = true })
 		end
 	else
 		s.fireTimer = 0
@@ -343,6 +437,23 @@ local function stepPlayer(p: Player, s: State, dt: number)
 	-- Out of the world
 	if pos.Y < -64 then
 		SurvivalService.damage(p, 1000, "fell out of the world", true)
+	end
+
+	-- Status effects, one Java tick (1/20 s) at a time
+	s.effectAcc += dt
+	local fxTicks = 0
+	while s.effectAcc >= 0.05 and fxTicks < 10 do
+		s.effectAcc -= 0.05
+		fxTicks += 1
+		if next(s.effects) then
+			stepEffects(p, s, humanoid)
+		end
+	end
+	if fxTicks >= 10 then
+		s.effectAcc = 0
+	end
+	if humanoid.Health <= 0 or s.dead then
+		return
 	end
 
 	-- Regeneration / starvation
@@ -444,7 +555,7 @@ local function onAction(p: Player, a: any)
 		local stack = InventoryService.getSlot(p, slot)
 		local def = stack and ItemRegistry.get(stack.item)
 		local food = def and def.food
-		if not stack or not food or s.hunger.food >= SurvivalRules.MAX_FOOD then
+		if not stack or not food or (s.hunger.food >= SurvivalRules.MAX_FOOD and not food.alwaysEat) then
 			return
 		end
 		local st = stack :: InventoryService.Stack
@@ -462,7 +573,18 @@ local function onAction(p: Player, a: any)
 			end
 		end
 		do
-			SurvivalRules.eat(s.hunger, food.hunger, food.saturation)
+			if food.hunger > 0 or food.saturation > 0 then
+				SurvivalRules.eat(s.hunger, food.hunger, food.saturation)
+			end
+			if food.clearsEffects then
+				SurvivalService.clearEffects(p) -- milk
+			end
+			-- Java: the food's effects after its nutrition, each with its chance
+			for _, fx in Effects.FOOD[st.item] or {} do
+				if fx.chance >= 1 or math.random() < fx.chance then
+					SurvivalService.addEffect(p, fx.id, fx.amp, fx.ticks)
+				end
+			end
 			sync(p)
 		end
 	elseif t == "respawn" then
@@ -532,6 +654,10 @@ local function onCharacter(p: Player, character: Model)
 		s.hunger.saturation = r.saturation
 		s.hunger.exhaustion = r.exhaustion
 		s.air = r.air
+		if r.effects then
+			s.effects = Effects.decode(r.effects)
+			s.absorption = math.min(r.absorption or 0, Effects.absorptionMax(s.effects))
+		end
 	end
 	if spectators[p] then
 		applySpectator(p, character)

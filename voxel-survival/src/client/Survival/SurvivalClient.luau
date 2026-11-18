@@ -16,9 +16,22 @@ SurvivalClient.maxAir = SurvivalRules.MAX_AIR
 SurvivalClient.canSprint = true
 SurvivalClient.dead = false
 SurvivalClient.deathCause = ""
+SurvivalClient.absorption = 0 -- extra (gold) health from the absorption effect
+-- status effects from the server: { id, level (0 = I), seconds left } in display order
+SurvivalClient.effects = {} :: { { any } }
 
 local changed = Instance.new("BindableEvent")
 SurvivalClient.Changed = changed.Event -- fires (event: string?) with "hurt" | "died" | "spawned" | nil
+
+-- Does the player have this effect right now?
+function SurvivalClient.hasEffect(id: string): boolean
+	for _, e in SurvivalClient.effects do
+		if e[1] == id then
+			return true
+		end
+	end
+	return false
+end
 
 function SurvivalClient.init()
 	Remotes.get("SurvivalSync").OnClientEvent:Connect(function(d: any)
@@ -38,6 +51,18 @@ function SurvivalClient.init()
 			SurvivalClient.maxAir = d.maxAir
 		end
 		SurvivalClient.canSprint = d.canSprint ~= false
+		if typeof(d.absorption) == "number" then
+			SurvivalClient.absorption = d.absorption
+		end
+		if typeof(d.effects) == "table" then
+			local list = {}
+			for _, e in d.effects do
+				if typeof(e) == "table" and typeof(e[1]) == "string" and typeof(e[2]) == "number" and typeof(e[3]) == "number" then
+					table.insert(list, { e[1], e[2], e[3] })
+				end
+			end
+			SurvivalClient.effects = list
+		end
 		if d.event == "died" then
 			SurvivalClient.dead = true
 			SurvivalClient.deathCause = if typeof(d.cause) == "string" then d.cause else "died"

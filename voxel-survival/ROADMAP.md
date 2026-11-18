@@ -150,6 +150,18 @@ are fine.
   (eggs), dyes from flowers, cocoa, bamboo, berries, mushrooms, tall grass / ferns, items
   destroyed by cactus, mobs pricked by cactus.
 
+- 9c (0.9.3): status effects with Java rules (Gameplay/Effects): poison (can't kill),
+  regeneration, hunger, absorption (gold extra health, ends when used up), resistance, fire
+  resistance; Java's stacking rules (higher level replaces, the old one waits underneath).
+  Effects are saved with the player and cleared by death or milk. Foods: golden apple and
+  enchanted golden apple (edible when full), golden carrot, pumpkin pie, milk bucket (milk a cow
+  with a bucket); food effects on rotten flesh, spider eye, poisonous potato, raw chicken. Gold
+  nuggets (9 <-> 1 ingot). Chickens lay eggs every 5-10 minutes. HUD: green hearts while
+  poisoned, a wave while regenerating, a gold absorption row, greenish hunger bar, an effect
+  list with times. Fix: a bent stem also straightens on a random tick if its fruit is gone.
+  Left for later: potions and the other effects (speed, slowness, jump boost...), thrown eggs
+  and chicks, cake, cookies, stews, honey, nuggets from smelting gold gear, milk / egg sounds.
+
 ## Phase 8 – Survival foundations (XL)
 
 **Liquids and gravity blocks**

@@ -387,6 +387,8 @@ local function playerProducer(p: Player): (any) -> any
 		bed = require(script.Parent.Parent.Player.BedService).spawnOf(p),
 		sinceRest = require(script.Parent.Parent.Player.BedService).sinceRest(p),
 		spectator = SurvivalService.isSpectator(p),
+		effects = surv.effects,
+		absorption = surv.absorption,
 	}
 	local encoded = SaveFormat.encodePlayer(state)
 	return function(_old: any): any
@@ -450,6 +452,8 @@ local function onPlayer(p: Player)
 			saturation = state.saturation,
 			exhaustion = state.exhaustion,
 			air = state.air,
+			effects = state.effects,
+			absorption = state.absorption,
 		})
 		if state.pos then
 			SpawnService.setFirstSpawn(p, state.pos, state.yaw)

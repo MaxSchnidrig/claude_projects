@@ -90,6 +90,7 @@ export type Mob = {
 	pickup: boolean?,
 	damage: number?,
 	stuck: number?,
+	eggTime: number?, -- chickens: ticks until the next egg (Java 6000..11999)
 }
 
 local FLAG = { BURNING = 1, FUSING = 2, ANGRY = 4, PANIC = 8, STUCK = 32 }
@@ -491,6 +492,16 @@ local function stepPhysics(m: Mob, dt: number)
 	else
 		m.burnTimer = 0
 	end
+	-- Java Chicken.aiStep: an egg every 6000..11999 ticks (5..10 minutes)
+	if def.key == "chicken" and m.alive then
+		local t = (m.eggTime or (math.random(0, 5999) + 6000)) - math.max(1, math.floor(dt / TICK + 0.5))
+		if t <= 0 then
+			ItemEntityService.spawn({ item = "egg", count = 1 }, Vector3.new(m.x, m.y + 0.2, m.z) * BS)
+			broadcastEvent({ type = "egg", id = m.id }, Vector3.new(m.x, m.y, m.z))
+			t = math.random(0, 5999) + 6000
+		end
+		m.eggTime = t
+	end
 	if m.y < -64 then
 		MobService.remove(m)
 	end
@@ -675,6 +686,44 @@ local function onAttack(p: Player, id: any, critClaim: any)
 	end
 end
 
+-- Right-click on a mob (Java Mob.mobInteract). A bucket on a cow fills with milk: a lone bucket
+-- turns into the milk bucket, one from a stack goes to the inventory (dropped if it's full).
+local function onUseMob(p: Player, id: any)
+	if typeof(id) ~= "number" or p:GetAttribute("Spectator") == true then
+		return
+	end
+	local m = mobs[id]
+	local c = p.Character
+	local h = c and c:FindFirstChildOfClass("Humanoid")
+	local root = c and c:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not m or not m.alive or not c or not h or not root or h.Health <= 0 then
+		return
+	end
+	local eye = (root.Position + Vector3.new(0, SneakPose.eyeHeight(c), 0)) / BS
+	local hw = m.def.width / 2
+	local closest = Vector3.new(
+		math.clamp(eye.X, m.x - hw, m.x + hw),
+		math.clamp(eye.Y, m.y, m.y + m.def.height),
+		math.clamp(eye.Z, m.z - hw, m.z + hw)
+	)
+	if (closest - eye).Magnitude > Combat.MELEE_REACH + 1 then
+		return
+	end
+	local slot = InventoryService.selectedSlot(p)
+	local stack = InventoryService.getSlot(p, slot)
+	if m.def.key == "cow" and stack and stack.item == "bucket" then
+		if stack.count <= 1 then
+			InventoryService.setSlot(p, slot, { item = "milk_bucket", count = 1 })
+		else
+			InventoryService.setSlot(p, slot, { item = "bucket", count = stack.count - 1 })
+			if InventoryService.add(p, "milk_bucket", 1) > 0 then
+				ItemEntityService.spawn({ item = "milk_bucket", count = 1 }, root.Position)
+			end
+		end
+		broadcastEvent({ type = "milk", id = m.id }, Vector3.new(m.x, m.y, m.z))
+	end
+end
+
 -- A player reports staring a voidling in the eyes (5 ticks). The server checks range (64) and
 -- that no block with collision is in the way.
 local function onStare(p: Player, id: any)
@@ -777,6 +826,7 @@ function MobService.init()
 
 	Remotes.get("AttackMob").OnServerEvent:Connect(onAttack)
 	Remotes.get("StareMob").OnServerEvent:Connect(onStare)
+	Remotes.get("UseMob").OnServerEvent:Connect(onUseMob)
 	Players.PlayerRemoving:Connect(function(p)
 		lastSwing[p] = nil
 		heldItem[p] = nil
