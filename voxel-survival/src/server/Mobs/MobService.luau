@@ -34,6 +34,7 @@ local MobSnapshotCodec = require(Shared.Mobs.MobSnapshotCodec)
 local SneakPose = require(Shared.Gameplay.SneakPose)
 local WorldService = require(script.Parent.Parent.World.WorldService)
 local ItemEntityService = require(script.Parent.Parent.World.ItemEntityService)
+local WeatherService = require(script.Parent.Parent.World.WeatherService)
 local ExplosionService = require(script.Parent.Parent.World.ExplosionService)
 local InventoryService = require(script.Parent.Parent.Player.InventoryService)
 local SurvivalService = require(script.Parent.Parent.Survival.SurvivalService)
@@ -91,9 +92,10 @@ export type Mob = {
 	damage: number?,
 	stuck: number?,
 	eggTime: number?, -- chickens: ticks until the next egg (Java 6000..11999)
+	charged: boolean?, -- a Sneaker struck by lightning: its blast is twice as strong
 }
 
-local FLAG = { BURNING = 1, FUSING = 2, ANGRY = 4, PANIC = 8, STUCK = 32 }
+local FLAG = { BURNING = 1, FUSING = 2, ANGRY = 4, PANIC = 8, CHARGED = 16, STUCK = 32 }
 
 local MobService = {}
 MobService.FLAG = FLAG
@@ -286,7 +288,7 @@ local function die(m: Mob)
 end
 
 -- Damage kinds that armor reduces (Java: everything except fall, fire, drowning, starving...).
-local ARMORED = { attack = true, projectile = true, explosion = true, lava = true }
+local ARMORED = { attack = true, projectile = true, explosion = true, lava = true, lightning = true }
 
 export type DamageOpts = {
 	attacker: Player?, -- a player hit (anger, player-kill drops)
@@ -460,9 +462,11 @@ local function stepPhysics(m: Mob, dt: number)
 		m.burning = math.max(m.burning, 8)
 		MobService.damage(m, 1, { kind = "fire" })
 	end
+	-- wet: in water or in the rain (Java isInWaterRainOrBubble)
+	local wet = m.inLiquid or WeatherService.rainOn(m.x, m.y, m.z, h)
 	-- undead catch fire in daylight (Java: brightness > 0.5, chance (b - 0.4) * 2 / 30 per tick,
 	-- open sky above the eyes, not wet) and burn for 8 s
-	if def.undead and not m.inLiquid and MobService.isDay() then
+	if def.undead and not wet and MobService.isDay() then
 		local ey = m.y + (def.eyeHeight or h * 0.85)
 		if MobService.skyExposed(math.floor(m.x), math.floor(ey), math.floor(m.z)) then
 			local b = MobService.brightness(m.x, ey, m.z)
@@ -472,9 +476,9 @@ local function stepPhysics(m: Mob, dt: number)
 			end
 		end
 	end
-	if m.inLiquid then
+	if wet then
 		m.burning = 0
-		-- voidlings are hurt by water and try to teleport out of it
+		-- voidlings are hurt by water and rain and try to teleport out of it
 		if def.behavior == "teleporter" then
 			MobService.damage(m, 1, { kind = "drown" })
 			if m.alive and ai then
@@ -686,6 +690,39 @@ local function onAttack(p: Player, id: any, critClaim: any)
 	end
 end
 
+-- Lightning (Java LightningBolt / Entity.thunderHit): every mob in the box takes 5 damage and
+-- burns for 8 s (a tick longer if already burning); a Sneaker becomes charged.
+function MobService.lightningIn(lo: Vector3, hi: Vector3)
+	for _, m in mobs do
+		if m.alive and m.def.category ~= "projectile" and m.x >= lo.X and m.x <= hi.X and m.y >= lo.Y and m.y <= hi.Y
+			and m.z >= lo.Z and m.z <= hi.Z
+		then
+			if m.def.behavior == "exploder" then
+				m.charged = true
+			end
+			m.burning = if m.burning > 0 then m.burning + 0.05 else 8
+			MobService.damage(m, 5, { kind = "lightning" })
+		end
+	end
+end
+
+-- Living mobs whose feet are within 3 blocks (sideways) of a column, at or above y0 - 3, under
+-- the open sky (lightning picks one of them; WeatherService).
+function MobService.lightningTargets(x: number, z: number, y0: number, topAt: (number, number) -> number?): { Vector3 }
+	local out = {}
+	for _, m in mobs do
+		if m.alive and m.def.category ~= "projectile" and math.abs(m.x - (x + 0.5)) <= 3.5 and math.abs(m.z - (z + 0.5)) <= 3.5
+			and m.y >= y0 - 3
+		then
+			local top = topAt(math.floor(m.x), math.floor(m.z))
+			if top and top < m.y + 0.01 then
+				table.insert(out, Vector3.new(m.x, m.y, m.z))
+			end
+		end
+	end
+	return out
+end
+
 -- Right-click on a mob (Java Mob.mobInteract). A bucket on a cow fills with milk: a lone bucket
 -- turns into the milk bucket, one from a stack goes to the inventory (dropped if it's full).
 local function onUseMob(p: Player, id: any)
@@ -759,7 +796,7 @@ local function sendSnapshots()
 				table.insert(records, {
 					id = m.id,
 					code = m.def.code,
-					flags = bit32.bor(m.flags, if m.burning > 0 then FLAG.BURNING else 0),
+					flags = bit32.bor(m.flags, if m.burning > 0 then FLAG.BURNING else 0, if m.charged then FLAG.CHARGED else 0),
 					x = m.x * BS,
 					y = m.y * BS,
 					z = m.z * BS,

@@ -22,6 +22,7 @@ local Farming = require(Shared.Gameplay.Farming)
 local WorldService = require(script.Parent.Parent.World.WorldService)
 local BlockUpdates = require(script.Parent.Parent.World.BlockUpdates)
 local RandomTicks = require(script.Parent.Parent.World.RandomTicks)
+local WeatherService = require(script.Parent.Parent.World.WeatherService)
 local ItemEntityService = require(script.Parent.Parent.World.ItemEntityService)
 local InventoryService = require(script.Parent.Parent.Player.InventoryService)
 local Trees = require(Shared.World.Features.Trees)
@@ -113,7 +114,8 @@ end
 
 local function farmlandTick(x: number, y: number, z: number, id: number)
 	local m = Farming.moisture(id)
-	if Farming.waterNear(x, y, z, get) then
+	-- Java FarmBlock.randomTick: water within 4 blocks, or rain falling on the block above
+	if Farming.waterNear(x, y, z, get) or WeatherService.rainingAt(x, y + 1, z) then
 		if m < 7 then
 			BlockUpdates.set(x, y, z, Farming.farmland(7))
 		end

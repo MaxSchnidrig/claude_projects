@@ -679,6 +679,11 @@ CLASSES.Workspace = {
 		GetServerTimeNow = function()
 			return Fake.now
 		end,
+		BulkMoveTo = function(_self, parts, cframes)
+			for i, p in parts do
+				p.CFrame = cframes[i]
+			end
+		end,
 	},
 }
 CLASSES.Players = {
@@ -834,6 +839,7 @@ CLASSES.MemoryStoreService = {
 		end,
 	},
 }
+CLASSES.Lighting = { parent = "Instance", props = { ExposureCompensation = 0, Brightness = 2, ClockTime = 14 } }
 CLASSES.SoundService = { parent = "Instance", props = { AmbientReverb = Enum.ReverbType.NoReverb } }
 
 -- Tweens finish at once when played (tests only need the end state).

@@ -83,6 +83,21 @@ function ItemEntityService.spawn(stack: Stack, pos: Vector3, pickupDelay: number
 	})
 end
 
+-- Lightning burns up dropped items in its box (block units).
+function ItemEntityService.removeIn(lo: Vector3, hi: Vector3): number
+	local n = 0
+	for i = #entities, 1, -1 do
+		local e = entities[i]
+		local p = e.part.Position / BS
+		if p.X >= lo.X and p.X <= hi.X and p.Y >= lo.Y and p.Y <= hi.Y and p.Z >= lo.Z and p.Z <= hi.Z then
+			e.part:Destroy()
+			table.remove(entities, i)
+			n += 1
+		end
+	end
+	return n
+end
+
 -- Drop several stacks around a block (e.g. a broken chest), scattered a little.
 function ItemEntityService.spawnAround(stacks: { Stack }, center: Vector3)
 	for _, s in stacks do

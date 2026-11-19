@@ -56,6 +56,7 @@ export type Meta = {
 	hardcore: boolean?, -- set when the world is created, never changes
 	friendsAt: number?, -- os.time() of the last friends change (lobby and world both write it)
 	played: number?, -- os.time() this world was last running (the world list is sorted by it)
+	weather: { number }?, -- World/Weather.encode (Phase 9d)
 }
 
 local queue: DataStoreQueue.Queue
@@ -139,6 +140,7 @@ local function decodeMeta(v: any): Meta?
 		hardcore = v.hardcore == true,
 		friendsAt = if typeof(v.friendsAt) == "number" then v.friendsAt else nil,
 		played = if typeof(v.played) == "number" then v.played else nil,
+		weather = if typeof(v.weather) == "table" then v.weather else nil,
 	}
 end
 Persistence.decodeMeta = decodeMeta
@@ -159,6 +161,7 @@ function Persistence.encodeMeta(m: Meta): any
 		hardcore = if m.hardcore then true else nil,
 		friendsAt = m.friendsAt,
 		played = m.played,
+		weather = m.weather,
 	}
 end
 
@@ -356,6 +359,7 @@ local function markMeta()
 			difficulty = WorldSettings.difficulty(),
 			hardcore = meta.hardcore or (prev ~= nil and prev.hardcore),
 			played = os.time(),
+			weather = require(script.Parent.Parent.World.WeatherService).encode(),
 		})
 	end)
 	metaDirty = false

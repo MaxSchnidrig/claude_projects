@@ -46,6 +46,8 @@ Entries marked *built in* already work (Roblox's own default character sounds). 
 | `lava.pop` | lava bubble pop | — |
 | `lava.ambient` | lava ambient bubbling loop | — |
 | `fire.crackle` | fire crackle | — |
+| `weather.rain` | rain ambience loop light | — |
+| `weather.thunder` | thunder clap distant | — |
 | `fire.extinguish` | fire hiss extinguish | — |
 | `chest.open` | wooden chest open creak | — |
 | `chest.close` | wooden chest close | — |

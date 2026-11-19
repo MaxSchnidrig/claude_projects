@@ -22,6 +22,8 @@ local Shapes = require(Shared.Blocks.Shapes)
 local WorldService = require(script.Parent.Parent.World.WorldService)
 local SpawnService = require(script.Parent.SpawnService)
 local DayNightService = require(script.Parent.Parent.Survival.DayNightService)
+local WeatherService = require(script.Parent.Parent.World.WeatherService)
+local SkyLight = require(Shared.World.SkyLight)
 
 local BS = Config.BLOCK_SIZE
 local BedService = {}
@@ -150,8 +152,9 @@ local function tryUse(p: Player, x: number, y: number, z: number)
 		spawns[p] = head
 		message(p, "Respawn point set")
 	end
-	local t = DayNightService.timeOfDay()
-	if t < 12542 or t > 23459 then
+	-- Java: no sleeping while it's "day" (sky darkness below 4) - a thunderstorm darkens the sky
+	-- enough to sleep at any time
+	if SkyLight.isDay(DayNightService.timeOfDay()) then
 		return message(p, "You can only sleep at night and during thunderstorms")
 	end
 	for other, s in sleeping do
@@ -258,13 +261,13 @@ function BedService.init()
 			-- Java: the time jumps to the next morning (tick 0 of the next day)
 			local t = DayNightService.ticks()
 			DayNightService.addTicks(24000 - t % 24000)
+			WeatherService.onSlept() -- (Java: sleeping ends the rain)
 			for p in sleeping do
 				rest[p] = 0
 				wake(p)
 			end
 		elseif not all then
-			local t = DayNightService.timeOfDay()
-			if t < 12542 or t > 23459 then
+			if SkyLight.isDay(DayNightService.timeOfDay()) then
 				for p in sleeping do
 					wake(p)
 				end

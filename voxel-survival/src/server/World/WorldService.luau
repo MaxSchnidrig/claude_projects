@@ -309,6 +309,16 @@ end
 
 -- Authoritative block write. Records the edit as a diff so it survives chunk unloads (and, in
 -- phase 6, saving). Returns the chunk key so callers can notify subscribers.
+-- Biome id of a loaded column, or nil (World/Biomes).
+function WorldService.biomeAt(wx: number, wz: number): number?
+	local cx, cz, lx, lz = ChunkData.worldToChunk(wx, wz)
+	local chunk = chunks[ChunkData.key(cx, cz)]
+	if not chunk then
+		return nil
+	end
+	return buffer.readu8(chunk.biomes, lx + lz * Config.CHUNK_SIZE)
+end
+
 function WorldService.setBlock(wx: number, wy: number, wz: number, id: number): number
 	local cx, cz, lx, lz = ChunkData.worldToChunk(wx, wz)
 	local chunk = WorldService.getChunkSync(cx, cz)

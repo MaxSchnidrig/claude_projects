@@ -25,7 +25,7 @@ local MovementController = require(script.Parent.Parent.Player.MovementControlle
 
 local BS = Config.BLOCK_SIZE
 local INTERP_DELAY = 0.15
-local FLAG = { BURNING = 1, FUSING = 2, ANGRY = 4, PANIC = 8, STUCK = 32 }
+local FLAG = { BURNING = 1, FUSING = 2, ANGRY = 4, PANIC = 8, CHARGED = 16, STUCK = 32 }
 
 type Sample = { t: number, pos: Vector3, yaw: number, pitch: number, flags: number }
 type Mob = {
@@ -305,6 +305,22 @@ local function pose(m: Mob, now: number)
 		if m.dying then
 			info.part.Transparency = math.clamp((now - m.dying - 0.4) / 0.6, b.transparency or 0, 1)
 		end
+	end
+	-- charged (struck by lightning): a pale blue glow around it (our own look)
+	local charged = bit32.band(m.flags, FLAG.CHARGED) ~= 0 and not m.dying
+	local model = m.built and (m.built :: any).model
+	if charged and not (m :: any).aura and model then
+		local hl = Instance.new("Highlight")
+		hl.FillColor = Color3.fromRGB(120, 200, 255)
+		hl.FillTransparency = 0.75
+		hl.OutlineColor = Color3.fromRGB(170, 230, 255)
+		hl.OutlineTransparency = 0.2
+		hl.DepthMode = Enum.HighlightDepthMode.Occluded
+		hl.Parent = model;
+		(m :: any).aura = hl
+	elseif not charged and (m :: any).aura then
+		((m :: any).aura :: Instance):Destroy();
+		(m :: any).aura = nil
 	end
 	-- burning
 	local burning = bit32.band(m.flags, FLAG.BURNING) ~= 0 and not m.dying

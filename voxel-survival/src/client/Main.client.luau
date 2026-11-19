@@ -131,6 +131,7 @@ Startup.run("client", {
 			end)
 			require(client.Player.ViewModel).init(BlockInteraction.swing)
 			require(client.World.EntityClient).init(ClientWorld.getBlock)
+			require(client.World.WeatherClient).init(ClientWorld.getBlock, ClientWorld.biomeAt)
 			require(client.World.Clouds).init()
 			local BlockRegistry = require(Shared.Blocks.BlockRegistry) :: any
 			require(client.Survival.DayNightClient).setBlockSource(ClientWorld.getBlock, BlockRegistry.isOpaque)

@@ -9,6 +9,7 @@ local RunService = game:GetService("RunService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Hash = require(Shared.Util.Hash)
+local Weather = require(Shared.World.Weather)
 
 local BS = Config.BLOCK_SIZE
 local CELL = 12 -- blocks
@@ -44,6 +45,7 @@ function Clouds.init()
 	end
 
 	local builtAt: Vector2? = nil
+	local lastColor = Color3.fromRGB(250, 250, 252)
 	local parts: { Part } = {}
 	local function rebuild(ccx: number, ccz: number)
 		for _, p in parts do
@@ -70,7 +72,7 @@ function Clouds.init()
 					p.CanTouch = false
 					p.CastShadow = false
 					p.Material = Enum.Material.SmoothPlastic
-					p.Color = Color3.fromRGB(250, 250, 252)
+					p.Color = lastColor
 					p.Transparency = 0.18
 					p.Size = Vector3.new(run * CELL * BS, THICK * BS, CELL * BS)
 					p.CFrame = CFrame.new((startX + run / 2) * CELL * BS, (Config.CLOUD_Y + THICK / 2) * BS, (cz + 0.5) * CELL * BS)
@@ -99,6 +101,16 @@ function Clouds.init()
 			rebuild(ccx, ccz)
 		end
 		layer:PivotTo(CFrame.new(-drift * BS, 0, 0))
+		-- the weather greys and darkens the clouds (Java getCloudColor)
+		local W = require(script.Parent.WeatherClient) :: any
+		local r, g, b = Weather.cloudColor(250 / 255, 250 / 255, 252 / 255, W.rain, W.thunder)
+		local color = Color3.new(r, g, b)
+		if color ~= lastColor then
+			lastColor = color
+			for _, p in parts do
+				p.Color = color
+			end
+		end
 	end)
 end
 

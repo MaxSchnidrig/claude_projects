@@ -32,7 +32,7 @@ function RandomTicks.register(ids: { number }, fn: (x: number, y: number, z: num
 	end
 end
 
--- Chunk keys within the radius of any player (each once).
+-- Chunk keys within the radius of any player (each once). (Also lightning: WeatherService.)
 local function nearChunks(): { number }
 	local seen: { [number]: boolean } = {}
 	local list = {}
@@ -55,6 +55,8 @@ local function nearChunks(): { number }
 	end
 	return list
 end
+
+RandomTicks.nearChunks = nearChunks
 
 function RandomTicks.step()
 	local picks = RandomTicks.speed

@@ -25,6 +25,8 @@ local RunService = game:GetService("RunService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
+local Weather = require(Shared.World.Weather)
+local WeatherClient = require(script.Parent.Parent.World.WeatherClient)
 
 local DayNightClient = {}
 DayNightClient.timeOfDay = 0
@@ -182,12 +184,28 @@ function DayNightClient.init()
 		Lighting.ClockTime = (6 + t / 1000) % 24
 		local d = daylight(t)
 		local glow = sunsetGlow(t)
-		Lighting.Brightness = NIGHT.brightness + (DAY.brightness - NIGHT.brightness) * d
-		Lighting.OutdoorAmbient = NIGHT.outdoor:Lerp(DAY.outdoor, d)
-		Lighting.Ambient = NIGHT.ambient:Lerp(DAY.ambient, d)
-		local fog = NIGHT.fog:Lerp(DAY.fog, d):Lerp(SUNSET_FOG, glow * 0.75)
+		-- weather (Java): rain and thunder darken the light (sky light 15 -> 12 in rain, 10 in a
+		-- thunderstorm), grey the sky and fog, and hide the sun, moon and stars
+		local rain, thunder = WeatherClient.rain, WeatherClient.thunder
+		local dim = 1 - rain * 0.2 - thunder * rain * 0.13
+		local flash = WeatherClient.flash
+		local function scale(c: Color3, f: number): Color3
+			return Color3.new(math.min(1, c.R * f), math.min(1, c.G * f), math.min(1, c.B * f))
+		end
+		Lighting.Brightness = (NIGHT.brightness + (DAY.brightness - NIGHT.brightness) * d) * dim
+		Lighting.OutdoorAmbient = scale(NIGHT.outdoor:Lerp(DAY.outdoor, d), dim)
+		Lighting.Ambient = scale(NIGHT.ambient:Lerp(DAY.ambient, d), dim)
+		local fog = NIGHT.fog:Lerp(DAY.fog, d):Lerp(SUNSET_FOG, glow * 0.75 * (1 - rain))
+		do
+			local r, g, b = Weather.fogColor(fog.R, fog.G, fog.B, rain, thunder)
+			fog = Color3.new(r, g, b):Lerp(Color3.new(1, 1, 1), flash * 0.5)
+		end
 		Lighting.FogColor = fog
 		local skyColor = NIGHT.sky:Lerp(DAY.sky, d)
+		do
+			local r, g, b = Weather.skyColor(skyColor.R, skyColor.G, skyColor.B, rain, thunder)
+			skyColor = Color3.new(r, g, b):Lerp(Color3.new(1, 1, 1), flash * 0.6)
+		end
 
 		local cam = workspace.CurrentCamera
 		if not cam then
@@ -252,10 +270,11 @@ function DayNightClient.init()
 			sunHidden = sunDir.Y < -0.1 or occluded(camPos, sunDir, reach)
 			moonHidden = sunDir.Y > 0.1 or occluded(camPos, -sunDir, reach)
 		end
-		sun.Transparency = if sunHidden then 1 else 0
-		moon.Transparency = if moonHidden then 1 else 0.05
+		-- (Java: the sun and moon fade out with the rain)
+		sun.Transparency = if sunHidden then 1 else rain
+		moon.Transparency = if moonHidden then 1 else 0.05 + 0.95 * rain
 
-		local starAlpha = math.clamp(1 - d * 1.4, 0, 1)
+		local starAlpha = math.clamp(1 - d * 1.4, 0, 1) * (1 - rain)
 		for _, st in stars do
 			st.part.Transparency = 1 - starAlpha * 0.85
 			st.part.CFrame = CFrame.lookAt(camPos + st.dir * orbit * 1.2, camPos)

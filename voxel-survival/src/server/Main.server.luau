@@ -123,6 +123,52 @@ Startup.run("server", {
 	{ name = "FireService", run = function()
 		require(server.Simulation.FireService).init()
 	end },
+	{ name = "WeatherService", run = function()
+		local WeatherService = require(server.World.WeatherService)
+		local SurvivalService = require(server.Survival.SurvivalService)
+		local MobService = require(server.Mobs.MobService)
+		local FireService = require(server.Simulation.FireService)
+		local ItemEntityService = require(server.World.ItemEntityService)
+		local WorldSettingsService = require(server.World.WorldSettingsService)
+		local BS = (require(game:GetService("ReplicatedStorage").Shared.Config) :: any).BLOCK_SIZE
+		local function playerFeet(p: Player): Vector3?
+			local root = p.Character and p.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
+			return if root then (root.Position - Vector3.new(0, 3, 0)) / BS else nil
+		end
+		WeatherService.load(meta.weather)
+		WeatherService.init({
+			nearChunks = require(server.World.RandomTicks).nearChunks,
+			ignite = FireService.ignite,
+			difficulty = WorldSettingsService.difficulty,
+			hurtPlayers = function(lo: Vector3, hi: Vector3)
+				for _, p in game:GetService("Players"):GetPlayers() do
+					local f = playerFeet(p)
+					if f and f.X >= lo.X and f.X <= hi.X and f.Y >= lo.Y and f.Y <= hi.Y and f.Z >= lo.Z and f.Z <= hi.Z then
+						SurvivalService.lightning(p)
+					end
+				end
+			end,
+			hurtMobs = function(lo: Vector3, hi: Vector3)
+				MobService.lightningIn(lo, hi)
+				ItemEntityService.removeIn(lo, hi)
+			end,
+			targets = function(x: number, z: number, y0: number): { Vector3 }
+				local list = MobService.lightningTargets(x, z, y0, WeatherService.topAt)
+				for _, p in game:GetService("Players"):GetPlayers() do
+					local f = playerFeet(p)
+					if f and p:GetAttribute("Spectator") ~= true and math.abs(f.X - (x + 0.5)) <= 3.5
+						and math.abs(f.Z - (z + 0.5)) <= 3.5 and f.Y >= y0 - 3
+					then
+						local top = WeatherService.topAt(math.floor(f.X), math.floor(f.Z))
+						if top and top < f.Y + 0.01 then
+							table.insert(list, f)
+						end
+					end
+				end
+				return list
+			end,
+		})
+	end },
 	{ name = "CampfireService", run = function()
 		require(server.Simulation.CampfireService).init()
 	end },

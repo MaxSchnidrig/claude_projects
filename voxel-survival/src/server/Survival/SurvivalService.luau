@@ -26,6 +26,7 @@ local WorldSettingsService = require(script.Parent.Parent.World.WorldSettingsSer
 local Difficulty = require(Shared.Gameplay.Difficulty)
 local Farming = require(Shared.Gameplay.Farming)
 local Effects = require(Shared.Gameplay.Effects)
+local WeatherService = require(script.Parent.Parent.World.WeatherService)
 
 local BS = Config.BLOCK_SIZE
 local FEET_BELOW_ROOT = 3 -- R6: HumanoidRootPart centre is 3 studs above the feet
@@ -275,6 +276,17 @@ function SurvivalService.snapshot(p: Player): (Restore, boolean)
 	}, false
 end
 
+-- Struck by lightning (Java Entity.thunderHit): 5 damage (armour counts) and on fire for 8 s
+-- (just a tick longer if already burning).
+function SurvivalService.lightning(p: Player)
+	local s = state(p)
+	if s.dead or spectators[p] then
+		return
+	end
+	s.burning = if s.burning > 0 then s.burning + 0.05 else 8
+	SurvivalService.damage(p, 5, "was struck by lightning", nil, { armor = true })
+end
+
 function SurvivalService.isSneaking(p: Player): boolean
 	return state(p).sneaking
 end
@@ -401,8 +413,8 @@ local function stepPlayer(p: Player, s: State, dt: number)
 	if isLava(feetBlock) or isLava(bodyBlock) then
 		s.burning = 15
 		SurvivalService.damage(p, SurvivalRules.LAVA_DAMAGE, "tried to swim in lava", nil, { armor = true, fire = true })
-	elseif s.inLiquid then
-		s.burning = 0
+	elseif s.inLiquid or WeatherService.rainOn(pos.X / BS, feetY / BS, pos.Z / BS, 1.8) then
+		s.burning = 0 -- water and rain put you out (Java isInWaterRainOrBubble)
 	elseif feetBlock == FIRE or bodyBlock == FIRE then
 		-- Java: standing in fire hurts 1 per hit and sets you on fire for 8 s
 		s.burning = math.max(s.burning, 8)

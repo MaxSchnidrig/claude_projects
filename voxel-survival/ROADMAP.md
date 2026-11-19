@@ -186,6 +186,20 @@ are fine.
   hunger, saturation, exhaustion (3 decimals) and the food tick timer. Footsteps: a single
   step instead of Roblox's running loop (the echo); more distinct temporary sounds.
 
+- 9d (0.9.6, weather): Java's rain / thunder cycle (World/Weather: rain on 12000-24000 ticks,
+  off 12000-180000; thunder on 3600-15600, off 12000-180000; levels fade 0.01 a tick), saved
+  with the world. Rain, snow (cold biomes and high mountains) or nothing (deserts) per biome;
+  never under a roof. Sky light 15 -> 12 in rain, 10 in thunderstorms (Java formula): undead
+  don't burn, monsters spawn in daytime storms, beds work in thunderstorms; sleeping ends the
+  rain. Grey sky, fog and clouds, hidden sun / moon / stars. Rain wets farmland, puts out
+  fires (0.2 + age x 0.03 a tick) and burning players and mobs, hurts voidlings. Lightning
+  (1 in 100000 per chunk per tick in thunderstorms, only where it rains): 5 damage, 8 s of
+  fire, fires on Normal / Hard, burns dropped items, charges Sneakers (double blast, a blue
+  glow). Studio key Y cycles the weather; F3 shows it.
+  Left for later: snow layers piling up and water freezing during snowfall (no snow layer
+  block yet), rain / thunder sounds (placeholders until licensed sounds are chosen), rain
+  splashes on the ground, skeleton-horse traps (no horses), cauldrons.
+
 ## Phase 8 – Survival foundations (XL)
 
 **Liquids and gravity blocks**

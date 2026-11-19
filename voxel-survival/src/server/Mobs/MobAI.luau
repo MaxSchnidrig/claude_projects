@@ -467,7 +467,9 @@ local function exploder(m: any, now: number, dt: number, targets: { any })
 		local center = Vector3.new(m.x, m.y, m.z)
 		S.broadcastEvent({ type = "explode", id = m.id, pos = (center + Vector3.new(0, def.height / 2, 0)) * 3 }, center)
 		S.remove(m)
-		ExplosionService.explode(center, def.explosionPower or 3, `was blown up by {def.name}`, { byMob = true })
+		-- Java: a charged creeper's blast is twice the power
+		local power = (def.explosionPower or 3) * (if m.charged then 2 else 1)
+		ExplosionService.explode(center, power, `was blown up by {def.name}`, { byMob = true })
 	end
 end
 

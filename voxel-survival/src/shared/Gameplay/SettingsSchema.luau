@@ -121,8 +121,8 @@ function SettingsSchema.soundCategory(name: string): string
 		or head == "armor" or name == "water.swim" or name == "water.splash"
 	then
 		return "players"
-	elseif name == "lava.ambient" then
-		return "ambient"
+	elseif name == "lava.ambient" or head == "weather" then
+		return "ambient" -- (Java has a separate Weather slider; ours is Ambient)
 	end
 	return "blocks"
 end

@@ -2290,6 +2290,7 @@ require("./FarmingTests")(test, eq)
 require("./EffectsTests")(test, eq)
 require("./GraphicsTests")(test, eq)
 require("./HungerTests")(test, eq)
+require("./WeatherTests")(test, eq)
 
 print(`\n{passed} passed, {failed} failed`)
 if failed > 0 then

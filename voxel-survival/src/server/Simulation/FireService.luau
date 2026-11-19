@@ -7,6 +7,7 @@
 --     turn into fire or vanish; TNT lights instead
 --   * it spreads to air blocks up to 1 sideways, 1 below and 4 above that touch flammable blocks,
 --     with Java's odds ((encouragement + 40 + difficulty x 7) / (age + 30))
+--   * rain on it or beside it puts it out with chance 0.2 + age x 0.03 per tick (Phase 9d)
 -- Fire ages live in a table (they don't need saving: a reload just restarts fires at age 0).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -18,6 +19,7 @@ local BlockRegistry = require(Shared.Blocks.BlockRegistry)
 local WorldService = require(script.Parent.Parent.World.WorldService)
 local BlockUpdates = require(script.Parent.Parent.World.BlockUpdates)
 local EntityService = require(script.Parent.EntityService)
+local WeatherService = require(script.Parent.Parent.World.WeatherService)
 
 local FIRE = BlockRegistry.id("fire")
 local TNT = BlockRegistry.id("tnt")
@@ -115,6 +117,15 @@ local function tick(x: number, y: number, z: number)
 	end
 	local k = key(x, y, z)
 	local age = ages[k] or 0
+	-- Java: rain on the fire or next to it puts it out, more likely the older it is
+	if WeatherService.rainingAt(x, y, z) or WeatherService.rainingAt(x - 1, y, z) or WeatherService.rainingAt(x + 1, y, z)
+		or WeatherService.rainingAt(x, y, z - 1) or WeatherService.rainingAt(x, y, z + 1)
+	then
+		if math.random() < 0.2 + age * 0.03 then
+			removeFire(x, y, z)
+			return
+		end
+	end
 	age = math.min(15, age + math.random(0, 2) // 2)
 	ages[k] = age
 	if not hasFlammableNeighbour(x, y, z) then

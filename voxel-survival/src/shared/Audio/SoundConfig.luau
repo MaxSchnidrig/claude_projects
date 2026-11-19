@@ -84,6 +84,10 @@ SoundConfig.sounds = {
 	["sand.land"] = E("", 0.5, 0.9, 1.1, "sand thud"),
 	["campfire.crackle"] = E("", 0.3, 0.9, 1.1, "campfire crackle loop"),
 
+	-- weather (Phase 9d): placeholders until licensed sounds are chosen
+	["weather.rain"] = E("", 0.35, 0.95, 1.05, "rain ambience loop light"),
+	["weather.thunder"] = E("", 0.9, 0.8, 1.0, "thunder clap distant"),
+
 	-- containers, doors
 	["chest.open"] = E("", 0.5, 0.9, 1.0, "wooden chest open creak"),
 	["chest.close"] = E("", 0.5, 0.9, 1.0, "wooden chest close"),
