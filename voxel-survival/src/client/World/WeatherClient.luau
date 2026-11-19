@@ -15,6 +15,8 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Lighting = game:GetService("Lighting")
+local StarterGui = game:GetService("StarterGui")
+local TextChatService = game:GetService("TextChatService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
@@ -129,6 +131,71 @@ local function bolt(x: number, y: number, z: number, folder: Instance)
 	audio.play("weather.thunder", nil)
 end
 
+local function attrOf(name: string): any
+	return ReplicatedStorage:GetAttribute(name)
+end
+
+-- "clear" | "rain" | "thunderstorm" as the server says.
+function WeatherClient.describe(): string
+	local rain, thunder = attrOf("WeatherRain") == true, attrOf("WeatherThunder") == true
+	return if rain and thunder then "thunderstorm" elseif rain then "rain" else "clear"
+end
+
+function WeatherClient.forcedSnow(): boolean
+	return attrOf("WeatherForceSnow") == true
+end
+
+local function clock(ticks: any): string
+	if typeof(ticks) ~= "number" then
+		return "?"
+	end
+	local s = math.floor(ticks / 20)
+	return if s >= 3600 then string.format("%d:%02d:%02d", s // 3600, (s // 60) % 60, s % 60) else string.format("%d:%02d", s // 60, s % 60)
+end
+
+-- The server's timers in words (Java: each flag flips when its timer runs out).
+function WeatherClient.timersText(): string
+	local clearT = attrOf("WeatherClearTime")
+	if typeof(clearT) == "number" and clearT > 0 then
+		return `held clear for {clock(clearT)} (command)`
+	end
+	local rain, thunder = attrOf("WeatherRain") == true, attrOf("WeatherThunder") == true
+	return `rain {if rain then "ends" else "starts"} in {clock(attrOf("WeatherRainTime"))}, thunder {if thunder then "ends" else "starts"} in {clock(attrOf("WeatherThunderTime"))}`
+end
+
+-- A command's answer: in Output and as a notification.
+local function notify(text: string)
+	print(`[Weather] {text}`)
+	pcall(function()
+		StarterGui:SetCore("SendNotification", { Title = "Weather", Text = text, Duration = 5 })
+	end)
+end
+
+-- "/weather ..." in the chat box (the new chat): handled here so the line isn't posted to chat;
+-- the server checks you may change the weather (Studio, or the world's owner).
+local function chatCommand()
+	pcall(function()
+		if TextChatService.ChatVersion ~= Enum.ChatVersion.TextChatService then
+			return -- the old chat: the server listens to Player.Chatted instead
+		end
+		local cmd = Instance.new("TextChatCommand")
+		cmd.Name = "RocraftWeather"
+		cmd.PrimaryAlias = "/weather"
+		cmd.Triggered:Connect(function(_source: TextSource, text: string)
+			local words = string.split(string.lower(text), " ")
+			table.remove(words, 1)
+			local args = {}
+			for _, w in words do
+				if w ~= "" then
+					table.insert(args, w)
+				end
+			end
+			Remotes.get("WeatherCommand"):FireServer(args)
+		end)
+		cmd.Parent = TextChatService:FindFirstChild("TextChatCommands") or TextChatService
+	end)
+end
+
 function WeatherClient.init(blockSource: (number, number, number) -> number?, biomeSource: (number, number) -> number?)
 	getBlock = blockSource
 	biomeAt = biomeSource
@@ -175,8 +242,11 @@ function WeatherClient.init(blockSource: (number, number, number) -> number?, bi
 			and typeof(e.z) == "number"
 		then
 			bolt(e.x, e.y, e.z, folder)
+		elseif typeof(e) == "table" and e.type == "message" and typeof(e.text) == "string" then
+			notify(e.text)
 		end
 	end)
+	chatCommand()
 
 	local rng = Random.new()
 	local moveParts: { BasePart } = {}
@@ -190,6 +260,7 @@ function WeatherClient.init(blockSource: (number, number, number) -> number?, bi
 		WeatherClient.rain = math.clamp(WeatherClient.rain + (if rainOn then step else -step), 0, 1)
 		WeatherClient.thunder = math.clamp(WeatherClient.thunder + (if thunderOn then step else -step), 0, 1)
 		SkyLight.rainLevel, SkyLight.thunderLevel = WeatherClient.rain, WeatherClient.thunder
+		Weather.forceSnow = attr("WeatherForceSnow") == true
 		WeatherClient.flash = math.max(0, WeatherClient.flash - dt * 6)
 		Lighting.ExposureCompensation = baseBrightness + WeatherClient.flash * 1.2
 

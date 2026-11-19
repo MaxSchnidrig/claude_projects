@@ -199,6 +199,10 @@ are fine.
   Left for later: snow layers piling up and water freezing during snowfall (no snow layer
   block yet), rain / thunder sounds (placeholders until licensed sounds are chosen), rain
   splashes on the ground, skeleton-horse traps (no horses), cauldrons.
+- 0.9.7: weather controls for testing. Studio keys Y (clear -> rain -> thunderstorm), T (forced
+  snow everywhere), B (lightning 4-6 blocks away); chat "/weather clear|rain|thunder [seconds]",
+  "/weather query", "/weather snow on|off", "/weather strike" (the world owner, or anyone in
+  Studio). Every command answers on screen and in Output; F3 shows the server's weather timers.
 
 - Ported from a friend's Studio copy (ROCRAFT-Grips-v9, version "0.9.6-grips.9"), kept as he
   wrote it: brewing (brewing stand with its own model, glass / water bottles, potion base,

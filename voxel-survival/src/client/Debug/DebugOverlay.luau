@@ -204,7 +204,12 @@ function DebugOverlay.init()
 		elseif input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_GIVE_KIT] and RunService:IsStudio() then
 			Remotes.get("DebugAction"):FireServer({ type = "giveKit" })
 		elseif input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_WEATHER] and RunService:IsStudio() then
+			print("[Weather] key Y: asking the server to change the weather")
 			Remotes.get("DebugAction"):FireServer({ type = "weather" })
+		elseif input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_FORCE_SNOW] and RunService:IsStudio() then
+			Remotes.get("DebugAction"):FireServer({ type = "weatherSnow" })
+		elseif input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_LIGHTNING] and RunService:IsStudio() then
+			Remotes.get("DebugAction"):FireServer({ type = "lightning" })
 		elseif input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_DROP_PILE] and RunService:IsStudio() then
 			Remotes.get("DebugAction"):FireServer({ type = "dropPile" })
 		elseif input.KeyCode == (Enum.KeyCode :: any)[Config.DEBUG_KEY_SPAWN_MOB] and RunService:IsStudio() then
@@ -272,10 +277,10 @@ function DebugOverlay.init()
 			string.format("survival: health %s  air %.1f s  sprint %s   time %s (tick %d)",
 				healthText(), SurvivalClient.air,
 				if SurvivalClient.canSprint then "ok" else "too hungry", DayNightClient.clockText(), DayNightClient.timeOfDay),
-			string.format("weather: %s   rain %.2f  thunder %.2f   drops %d   strikes %d   (Studio key Y: clear / rain / thunder)",
-				if game:GetService("ReplicatedStorage"):GetAttribute("WeatherThunder") == true and game:GetService("ReplicatedStorage"):GetAttribute("WeatherRain") == true then "thunderstorm"
-					elseif game:GetService("ReplicatedStorage"):GetAttribute("WeatherRain") == true then "rain" else "clear",
-				WeatherClient.rain, WeatherClient.thunder * WeatherClient.rain, WeatherClient.stats.drops, WeatherClient.stats.strikes),
+			string.format("weather: %s   rain %.2f  thunder %.2f   drops %d   strikes %d%s",
+				WeatherClient.describe(), WeatherClient.rain, WeatherClient.thunder * WeatherClient.rain,
+				WeatherClient.stats.drops, WeatherClient.stats.strikes, if WeatherClient.forcedSnow() then "   FORCED SNOW" else ""),
+			"weather timers: " .. WeatherClient.timersText() .. "   (Studio keys: Y weather, T snow, B lightning; chat: /weather)",
 			string.format("food (Java FoodData): hunger %d  saturation %.3f  exhaustion %.3f  food tick timer %d",
 				SurvivalClient.food, SurvivalClient.saturation, SurvivalClient.exhaustion, SurvivalClient.foodTimer),
 			hotbarLines(),
