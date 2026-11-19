@@ -200,6 +200,19 @@ are fine.
   block yet), rain / thunder sounds (placeholders until licensed sounds are chosen), rain
   splashes on the ground, skeleton-horse traps (no horses), cauldrons.
 
+- Ported from a friend's Studio copy (ROCRAFT-Grips-v9, version "0.9.6-grips.9"), kept as he
+  wrote it: brewing (brewing stand with its own model, glass / water bottles, potion base,
+  Speed / Strength / Regeneration potions and the Speed and Strength effects), fishing (rod,
+  16 fish species, his loot table incl. armour pieces, a fishing HUD, cooked fish), thrown items
+  with physics, new hit / mine / eat / drink animations shared by the first-person arms and the
+  avatar, new grip positions per item type, a new Sneaker design, redrawn sword / shovel /
+  bread icons, and Left Ctrl + W to sprint.
+  TEMPORARY brewing stand-ins until the Nether exists (marked in Items/Brewing and
+  Items/Recipes): charcoal for blaze powder (fuel), wheat for nether wart (potion base), iron
+  ingot for blaze powder (Strength) and for the blaze rod (stand recipe), poppy for ghast tear
+  (Regeneration).
+  Not Java (decided to keep): his fish species, loot table and fish food values.
+
 ## Phase 8 – Survival foundations (XL)
 
 **Liquids and gravity blocks**

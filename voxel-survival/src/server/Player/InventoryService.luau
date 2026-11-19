@@ -44,6 +44,8 @@ local ARMOR_SLOTS = { Config.ARMOR_SLOT.head, Config.ARMOR_SLOT.chest, Config.AR
 local ARMOR_INDEX = { [Config.ARMOR_SLOT.head] = "head", [Config.ARMOR_SLOT.chest] = "chest", [Config.ARMOR_SLOT.legs] = "legs", [Config.ARMOR_SLOT.feet] = "feet" }
 local HOTBAR = Config.HOTBAR_SLOTS
 local BS = Config.BLOCK_SIZE
+local ItemMotion = require(Shared.Gameplay.ItemMotion)
+local Brewing = require(Shared.Items.Brewing)
 local CRAFTING_TABLE = BlockRegistry.id("crafting_table")
 
 local InventoryService = {}
@@ -386,10 +388,15 @@ end
 -- The block entity behind the current window, if it's a furnace/chest window.
 local function windowEntity(i: Inv): BlockEntityService.Entity?
 	local w = i.window
-	if (w.kind == "furnace" or w.kind == "chest") and w.x then
+	if (w.kind == "brewing_stand" or w.kind == "furnace" or w.kind == "chest") and w.x then
 		return BlockEntityService.get(w.x :: number, w.y :: number, w.z :: number)
 	end
 	return nil
+end
+
+local function blockSlots(e: BlockEntityService.Entity): number
+	if e.kind == "brewing_stand" then return 5 end
+	return if e.kind == "chest" then BlockEntityService.CHEST_SLOTS else 3
 end
 
 -- Mark everyone who has this container open as needing a sync.
@@ -439,6 +446,13 @@ local function inventoryTargets(i: Inv, from: number): { { slots: SlotLogic.Slot
 	local e = windowEntity(i)
 	if e and e.kind == "chest" then
 		return { { slots = e.slots, lo = 1, hi = BlockEntityService.CHEST_SLOTS } }
+	end
+	if e and e.kind == "brewing_stand" then
+		local stack = i.slots[from]
+		if stack then
+			local lo, hi = Brewing.range(stack.item)
+			if lo and hi then return { { slots = e.slots, lo = lo, hi = hi } } end
+		end
 	end
 	if e and e.kind == "furnace" then
 		local s = i.slots[from]
@@ -582,12 +596,14 @@ local function click(player: Player, i: Inv, container: string, index: number, b
 		if not e then
 			return
 		end
-		local size = if e.kind == "chest" then BlockEntityService.CHEST_SLOTS else 3
+		local size = blockSlots(e)
 		if index < 1 or index > size then
 			return
 		end
 		if shift then
 			SlotLogic.quickMove(e.slots, index, toInventory(i))
+		elseif e.kind == "brewing_stand" and i.cursor and not Brewing.accepts(index, i.cursor.item) then
+			return
 		elseif e.kind == "furnace" and index == 3 then
 			-- output slot: take only
 			local out = e.slots[3]
@@ -619,7 +635,7 @@ local function collect(i: Inv, container: string, index: number)
 	local refs: { SlotLogic.SlotRef } = {}
 	local e = windowEntity(i)
 	if e then
-		local size = if e.kind == "chest" then BlockEntityService.CHEST_SLOTS else 3
+		local size = blockSlots(e)
 		for k = 1, size do
 			table.insert(refs, { slots = e.slots, index = k })
 		end
@@ -643,7 +659,7 @@ local function collect(i: Inv, container: string, index: number)
 			and index >= 1 and index <= craftWidth(i) ^ 2
 		then
 			clicked = i.craft
-		elseif container == "block" and e and index >= 1 and index <= (if e.kind == "chest" then BlockEntityService.CHEST_SLOTS else 3) then
+		elseif container == "block" and e and index >= 1 and index <= (blockSlots(e)) then
 			clicked = e.slots
 		end
 		if not clicked or not clicked[index] then
@@ -660,15 +676,17 @@ local function collect(i: Inv, container: string, index: number)
 end
 
 -- Throw items in front of the player.
-local function throw(player: Player, s: Stack)
+local function throw(player: Player, s: Stack, aim: any)
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not root then
 		return
 	end
-	local look = root.CFrame.LookVector
-	local pos = root.Position + Vector3.new(look.X, 0, look.Z).Unit * (1.6 * BS) + Vector3.new(0, 1, 0)
-	ItemEntityService.spawn(s, pos, Config.ITEM_DROP_PICKUP_DELAY)
+	local look = if typeof(aim) == "Vector3" and aim.Magnitude >= 0.99 and aim.Magnitude <= 1.01
+		then aim.Unit else root.CFrame.LookVector
+	local eyeHeight = if character and character:GetAttribute("Sneaking") then Config.EYE_HEIGHT_SNEAK else Config.EYE_HEIGHT
+	local origin = root.Position + Vector3.new(0, eyeHeight - 0.25 * BS, 0)
+	ItemEntityService.spawn(s, origin, Config.ITEM_DROP_PICKUP_DELAY, ItemMotion.launch(look))
 end
 
 ---------------------------------------------------------------------------------------------
@@ -699,8 +717,12 @@ local function sync(player: Player)
 	end
 	local e = windowEntity(i)
 	if e then
-		local size = if e.kind == "chest" then BlockEntityService.CHEST_SLOTS else 3
+		local size = blockSlots(e)
 		window.block = pack(e.slots, size)
+		if e.kind == "brewing_stand" and e.data then
+			window.progress = e.data.progress or 0
+			window.charges = e.data.charges or 0
+		end
 		local f = e.furnace
 		if f then
 			window.burn = f.burn
@@ -771,7 +793,7 @@ local function onAction(player: Player, a: any)
 		local s = i.slots[i.selected]
 		if s then
 			local n = if a.all == true then s.count else 1
-			throw(player, SlotLogic.copy(s, n))
+			throw(player, SlotLogic.copy(s, n), a.look)
 			s.count -= n
 			if s.count <= 0 then
 				i.slots[i.selected] = nil
@@ -795,8 +817,8 @@ local function onAction(player: Player, a: any)
 				then
 					table.insert(targets, { slots = i.craft, index = index })
 				elseif container == "block" and e then
-					local size = if e.kind == "chest" then BlockEntityService.CHEST_SLOTS else 2 -- furnace output excluded
-					if index >= 1 and index <= size then
+					local size = if e.kind == "furnace" then 2 else blockSlots(e)
+					if index >= 1 and index <= size and (e.kind ~= "brewing_stand" or Brewing.accepts(index, i.cursor.item)) then
 						table.insert(targets, { slots = e.slots, index = index })
 					end
 				end
@@ -822,7 +844,7 @@ local function onAction(player: Player, a: any)
 		elseif a.container == "block" then
 			local e = windowEntity(i)
 			if e then
-				slots, size = e.slots, if e.kind == "chest" then BlockEntityService.CHEST_SLOTS else 3
+				slots, size = e.slots, blockSlots(e)
 				touchViewers(e)
 			end
 		end
@@ -830,7 +852,7 @@ local function onAction(player: Player, a: any)
 			local s = slots[a.index]
 			if s then
 				local n = if a.all == true then s.count else 1
-				throw(player, SlotLogic.copy(s, n))
+				throw(player, SlotLogic.copy(s, n), a.look)
 				s.count -= n
 				if s.count <= 0 then
 					slots[a.index] = nil
@@ -843,7 +865,7 @@ local function onAction(player: Player, a: any)
 		local c = i.cursor
 		if c then
 			local n = if a.all == true then c.count else 1
-			throw(player, SlotLogic.copy(c, n))
+			throw(player, SlotLogic.copy(c, n), a.look)
 			c.count -= n
 			if c.count <= 0 then
 				i.cursor = nil

@@ -77,6 +77,12 @@ Startup.run("client", {
 	system("Hotbar", function()
 		return client.UI.Hotbar
 	end),
+	system("ActionAnimator", function()
+		return client.Player.ActionAnimator
+	end),
+	system("FishingHUD", function()
+		return client.UI.FishingHUD
+	end),
 	system("Crosshair", function()
 		return client.UI.Crosshair
 	end),

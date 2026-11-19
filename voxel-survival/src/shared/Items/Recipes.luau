@@ -20,8 +20,12 @@ Recipes.TAGS = {
 }
 
 local shaped: { Shaped } = {
+	{ pattern = { "  S", " ST", "S T" }, key = { S = "stick", T = "string" }, result = { item = "fishing_rod", count = 1 } },
 	{ pattern = { "P", "P" }, key = { P = "#planks" }, result = { item = "stick", count = 4 } },
 	{ pattern = { "PP", "PP" }, key = { P = "#planks" }, result = { item = "crafting_table", count = 1 } },
+	-- TEMPORARY stand-in: the iron ingot replaces Java's blaze rod until the Nether exists
+	{ pattern = { " I ", "CCC" }, key = { I = "iron_ingot", C = "cobblestone" }, result = { item = "brewing_stand", count = 1 } },
+	{ pattern = { "G G", " G " }, key = { G = "glass" }, result = { item = "glass_bottle", count = 3 } },
 	{ pattern = { "PPP", "P P", "PPP" }, key = { P = "#planks" }, result = { item = "chest", count = 1 } },
 	{ pattern = { "CCC", "C C", "CCC" }, key = { C = "cobblestone" }, result = { item = "furnace", count = 1 } },
 	{ pattern = { "SS", "SS" }, key = { S = "sand" }, result = { item = "sandstone", count = 1 } },
@@ -195,4 +199,7 @@ Recipes.fuel = {
 	bow = 15, crossbow = 15, shield = 15,
 } :: { [string]: number }
 
+for _, fish in require(script.Parent.Fishing).SPECIES do
+	if fish.key ~= "pufferfish" then Recipes.smelting[fish.key] = "cooked_fish" end
+end
 return Recipes

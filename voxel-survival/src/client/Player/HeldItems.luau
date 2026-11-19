@@ -17,26 +17,13 @@ local CameraController = require(script.Parent.CameraController)
 local HeldItems = {}
 HeldItems.stats = { shown = 0 }
 
-local PIXEL = 2 / 16 -- 16 pixels = 2 studs (about an R6 arm's length)
-local BLOCK = 1.1
+local Grip = require(script.Parent.ItemGrip)
 
 type Slot = { key: string, part: BasePart?, final: boolean }
 type Rig = { character: Model, right: Slot, left: Slot }
 
 local rigs: { [Model]: Rig } = {}
 local holder: Folder
-
--- The item's offset from the bottom of the arm (arm space: -Y down the arm, -Z forward).
-local function grip(key: string, mirrored: boolean): CFrame
-	local hand = CFrame.new(0, -1, 0)
-	if ItemMeshes.kind(key) == "block" then
-		return hand * CFrame.new(0, -0.2, -0.45) * CFrame.Angles(0, math.rad(45), 0)
-	end
-	-- the icon turned side-on (its right edge pointing forward), tipped so its diagonal points
-	-- forward; then shifted so the pixel near the bottom-left corner (the handle) is in the fist
-	local turn = CFrame.Angles(0, math.rad(if mirrored then -90 else 90), 0) * CFrame.Angles(0, 0, math.rad(45))
-	return hand * CFrame.Angles(math.rad(-90), 0, 0) * turn * CFrame.new(6 * PIXEL, 6 * PIXEL, 0)
-end
 
 local function setSlot(rig: Rig, slot: Slot, key: string, armName: string)
 	if slot.part then
@@ -52,11 +39,8 @@ local function setSlot(rig: Rig, slot: Slot, key: string, armName: string)
 	if not arm then
 		return
 	end
-	local p = ItemMeshes.make(key, PIXEL, BLOCK)
-	if not p then
-		return -- not built yet: tried again next frame
-	end
-	local part = p :: MeshPart
+	local scale = arm.Size.Y / 2
+	local part, final = Grip.make(key, scale)
 	part.Anchored = false
 	part.Massless = true
 	part.CanCollide = false
@@ -65,11 +49,11 @@ local function setSlot(rig: Rig, slot: Slot, key: string, armName: string)
 	local weld = Instance.new("Weld")
 	weld.Part0 = arm
 	weld.Part1 = part
-	weld.C0 = grip(key, armName == "Left Arm")
+	weld.C0 = CFrame.new(0,-0.39 * arm.Size.Y,-0.46 * arm.Size.Z) * Grip.offset(key, scale, armName == "Left Arm")
 	weld.Parent = part
 	part.Parent = holder
 	slot.part = part
-	slot.final = true
+	slot.final = final
 end
 
 local function track(character: Model)
@@ -119,10 +103,10 @@ function HeldItems.init()
 			local off = character:GetAttribute("HeldOff")
 			main = if typeof(main) == "string" then main else ""
 			off = if typeof(off) == "string" then off else ""
-			if main ~= rig.right.key or not rig.right.final then
+			if main ~= rig.right.key or (not rig.right.final and ItemMeshes.get(main :: string)) then
 				setSlot(rig, rig.right, main :: string, "Right Arm")
 			end
-			if off ~= rig.left.key or not rig.left.final then
+			if off ~= rig.left.key or (not rig.left.final and ItemMeshes.get(off :: string)) then
 				setSlot(rig, rig.left, off :: string, "Left Arm")
 			end
 			-- your own items: hidden in first person; everyone's hidden with an invisible body

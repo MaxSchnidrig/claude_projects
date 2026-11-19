@@ -18,6 +18,7 @@ SurvivalClient.exhaustion = 0 -- (F3: Java's foodExhaustionLevel and foodTickTim
 SurvivalClient.foodTimer = 0
 SurvivalClient.dead = false
 SurvivalClient.deathCause = ""
+SurvivalClient.speedLevel = 0
 SurvivalClient.absorption = 0 -- extra (gold) health from the absorption effect
 -- status effects from the server: { id, level (0 = I), seconds left } in display order
 SurvivalClient.effects = {} :: { { any } }
@@ -70,6 +71,12 @@ function SurvivalClient.init()
 				end
 			end
 			SurvivalClient.effects = list
+			SurvivalClient.speedLevel = 0
+			for _, effect in list do
+				if effect[1] == "speed" then
+					SurvivalClient.speedLevel = effect[2] + 1
+				end
+			end
 		end
 		if d.event == "died" then
 			SurvivalClient.dead = true

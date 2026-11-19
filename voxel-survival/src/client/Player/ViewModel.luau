@@ -4,7 +4,7 @@
 --   hand       a blocky arm in the avatar's right-arm colour, lower right of the view
 --   held item  its 3D mesh (Render/ItemMeshes): blocks as a small textured block, everything
 --              else as the 16x16 icon extruded one pixel deep (Java's item models)
---   swing      Java's 6-tick arm swing on attacks, placements and while mining
+--   action     original tool strokes and hand-to-mouth motions shared with the R6 avatar
 --   equip      the hand dips and comes back up when the held item changes
 --   bobbing    Java view bobbing: walking moves the view in a figure-eight (sin/cos of the
 --              distance walked), scaled by how fast you move; off in the air
@@ -21,6 +21,8 @@ local ItemMeshes = require(script.Parent.Parent.Render.ItemMeshes)
 local CameraController = require(script.Parent.CameraController)
 local InventoryClient = require(script.Parent.InventoryClient)
 
+local Motion = require(Shared.Gameplay.HandMotion)
+local ActionAnimator = require(script.Parent.ActionAnimator)
 local BS = Config.BLOCK_SIZE
 
 local ViewModel = {}
@@ -31,11 +33,10 @@ local held: Model? = nil
 local heldKey: string? = nil
 local heldFinal = true
 local offFinal = true
-local offHeld: Model? = nil -- the off-hand item, lower left (Java shows it without an arm)
+local offHeld: Model? = nil -- the off-hand item, lower left
 local offKey: string? = nil
 local offEquipT = 1
-local swingStart = -math.huge
-local SWING = 6 / 20
+local leftArm: Part
 local equipT = 1
 local walkDist = 0
 local bobAmount = 0
@@ -56,8 +57,8 @@ end
 
 -- The held item as a model with a "Main" part: its 3D mesh (Render/ItemMeshes: extruded icon or
 -- a small block) or, until that's built, a plain stand-in. Second result: is it the final mesh?
-local VIEW_PIXEL = 0.8 / 16 -- flat items are 0.8 studs wide in the hand
-local VIEW_BLOCK = 0.62
+local Grip = require(script.Parent.ItemGrip)
+local VIEW_SCALE = 0.48
 local function buildHeld(key: string?): (Model?, boolean)
 	if not key then
 		return nil, true
@@ -68,12 +69,11 @@ local function buildHeld(key: string?): (Model?, boolean)
 	end
 	local m = Instance.new("Model")
 	m.Name = "Held"
-	local mesh = ItemMeshes.make(key, VIEW_PIXEL, VIEW_BLOCK)
-	local main: BasePart = mesh or ItemMeshes.standIn(key, VIEW_PIXEL, VIEW_BLOCK)
+	local main, final = Grip.make(key, VIEW_SCALE)
 	main.Name = "Main"
 	main.CastShadow = false
 	main.Parent = m
-	return m, mesh ~= nil
+	return m, final
 end
 
 local function armColor(): Color3
@@ -85,8 +85,9 @@ local function armColor(): Color3
 	return Color3.fromRGB(230, 190, 150)
 end
 
-function ViewModel.swing()
-	swingStart = os.clock()
+function ViewModel.swing(action: string?, left: boolean?)
+	local def = ItemRegistry.get(InventoryClient.heldItem())
+	ActionAnimator.start(action or Motion.stroke(if def and def.tool then def.tool.kind else nil), left)
 end
 
 function ViewModel.init(swingEvent: BindableEvent)
@@ -100,6 +101,9 @@ function ViewModel.init(swingEvent: BindableEvent)
 	arm = part(Vector3.new(0.42, 0.42, 1.25), armColor())
 	arm.Name = "Arm"
 	arm.Parent = model
+	leftArm = arm:Clone()
+	leftArm.Name = "OffArm"
+	leftArm.Parent = model
 	model.Parent = workspace.CurrentCamera
 	swingEvent.Event:Connect(ViewModel.swing)
 
@@ -112,7 +116,7 @@ function ViewModel.init(swingEvent: BindableEvent)
 		local MovementController = require(script.Parent.MovementController) :: any
 		-- (Java hides the hand while you sleep)
 		local first = CameraController.mode == "first" and humanoid ~= nil and humanoid.Health > 0
-			and not MovementController.sleeping
+			and not MovementController.sleeping and not MovementController.spectating
 		if model.Parent ~= cam then
 			model.Parent = cam
 		end
@@ -159,14 +163,8 @@ function ViewModel.init(swingEvent: BindableEvent)
 		equipT = math.min(1, equipT + dt * 4)
 		arm.Color = armColor()
 
-		-- swing: Java's 6-tick arc
-		local s = math.clamp((os.clock() - swingStart) / SWING, 0, 1)
-		local swingP = if s < 1 then s else 0
-		local sq = math.sin(math.sqrt(swingP) * math.pi)
-		local sw = math.sin(swingP * math.pi)
-		local base = cam.CFrame
-			* CFrame.new(1.1 - sq * 0.25, -1.05 - (1 - equipT) * 0.9 + sw * 0.15, -1.6 - sw * 0.35)
-			* CFrame.Angles(math.rad(-sw * 70), math.rad(-sq * 20 + 8), math.rad(-sq * 15))
+		local base = cam.CFrame * CFrame.new(1.05, -1.02 - (1 - equipT) * 0.9, -1.62)
+			* ActionAnimator.view(false) * CFrame.Angles(0, math.rad(8), 0)
 		arm.CFrame = base * CFrame.new(0, 0, 0.35)
 		-- off hand: the item mirrored at the lower left; a raised shield comes up toward the middle
 		local ok = InventoryClient.offhand()
@@ -192,31 +190,23 @@ function ViewModel.init(swingEvent: BindableEvent)
 			local main = oh:FindFirstChild("Main") :: BasePart?
 			if main then
 				local raised = okKey == "shield" and MovementController.usingItem and heldKey ~= "shield"
-				local isCard = main.Size.Z < 0.1
-				local at = cam.CFrame * CFrame.new(if raised then -0.55 else -1.05, (if raised then -0.55 else -0.75) - (1 - offEquipT) * 0.9, -1.9)
-				main.CFrame = at * (if isCard then CFrame.Angles(0, math.rad(-80), math.rad(20)) else CFrame.Angles(0, math.rad(-45), 0))
-				local tip = oh:FindFirstChild("Tip") :: BasePart?
-				if tip then
-					tip.CFrame = main.CFrame * CFrame.new(0, 0.38, 0)
-				end
+				local at = cam.CFrame * CFrame.new(if raised then -0.55 else -1.05, (if raised then -0.55 else -0.75) - (1 - offEquipT) * 0.9, -1.9) * ActionAnimator.view(true)
+				leftArm.CFrame = at * CFrame.new(-0.1, -0.28, 0.69)
+				local avatarArm = character and character:FindFirstChild("Left Arm")
+				leftArm.Color = if avatarArm and avatarArm:IsA("BasePart") then avatarArm.Color else arm.Color
+				main.CFrame = at * CFrame.new(-0.1,-0.20,0.03) * Grip.offset(okKey :: string, VIEW_SCALE, true)
 			end
 		end
 		local h = held
 		if h then
 			local main = h:FindFirstChild("Main") :: BasePart?
 			if main then
-				local isCard = main.Size.Z < 0.1
-				main.CFrame = base * CFrame.new(-0.05, 0.35, -0.45)
-					* (if isCard then CFrame.Angles(0, math.rad(80), math.rad(-20)) else CFrame.Angles(0, math.rad(45), 0))
-				local tip = h:FindFirstChild("Tip") :: BasePart?
-				if tip then
-					tip.CFrame = main.CFrame * CFrame.new(0, 0.38, 0)
-				end
+				main.CFrame = base * CFrame.new(0,0.08,-0.25) * Grip.offset(key :: string, VIEW_SCALE, false)
 			end
 		end
 		for _, d in model:GetDescendants() do
 			if d:IsA("BasePart") then
-				d.LocalTransparencyModifier = 0
+				d.LocalTransparencyModifier = if d == leftArm and not oh then 1 else 0
 			end
 		end
 	end)

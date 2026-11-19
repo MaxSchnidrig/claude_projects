@@ -60,6 +60,12 @@ local defs: { ItemDefInput } = {
 	{ key = "clay_ball", name = "Clay Ball", color = { 164, 170, 186 } },
 	-- Buckets (Java: empty buckets stack to 16, filled ones don't)
 	{ key = "bucket", name = "Bucket", stack = 16, color = { 190, 192, 198 } },
+	{ key = "glass_bottle", name = "Glass Bottle", stack = 64, color = { 195, 222, 225 } },
+	{ key = "water_bottle", name = "Water Bottle", stack = 1, color = { 63, 145, 226 }, food = { hunger = 0, saturation = 0, alwaysEat = true, remainder = "glass_bottle" } },
+	{ key = "potion_base", name = "Potion Base", stack = 1, color = { 153, 147, 182 }, food = { hunger = 0, saturation = 0, alwaysEat = true, remainder = "glass_bottle" } },
+	{ key = "potion_speed", name = "Speed Potion", stack = 1, color = { 61, 207, 230 }, food = { hunger = 0, saturation = 0, alwaysEat = true, remainder = "glass_bottle" } },
+	{ key = "potion_strength", name = "Strength Potion", stack = 1, color = { 218, 102, 61 }, food = { hunger = 0, saturation = 0, alwaysEat = true, remainder = "glass_bottle" } },
+	{ key = "potion_regeneration", name = "Regeneration Potion", stack = 1, color = { 230, 100, 171 }, food = { hunger = 0, saturation = 0, alwaysEat = true, remainder = "glass_bottle" } },
 	{ key = "water_bucket", name = "Water Bucket", stack = 1, color = { 60, 110, 220 } },
 	{ key = "lava_bucket", name = "Lava Bucket", stack = 1, color = { 236, 110, 30 } },
 	-- Decoration
@@ -219,4 +225,13 @@ table.insert(defs, { key = "bow", name = "Bow", stack = 1, tool = { kind = "bow"
 table.insert(defs, { key = "crossbow", name = "Crossbow", stack = 1, tool = { kind = "crossbow", tier = 0, speed = 1, durability = 465 }, color = { 110, 80, 50 } })
 table.insert(defs, { key = "crossbow_loaded", name = "Crossbow", stack = 1, hidden = true, tool = { kind = "crossbow", tier = 0, speed = 1, durability = 465 }, color = { 110, 80, 50 } })
 
+table.insert(defs, { key = "fishing_rod", name = "Fishing Rod", stack = 1,
+	tool = { kind = "fishing_rod", tier = 0, speed = 1, durability = 64 }, color = { 151, 111, 62 } })
+for _, fish in require(script.Parent.Fishing).SPECIES do
+	local small = fish.key == "pufferfish" or fish.key == "clownfish"
+	table.insert(defs, { key = fish.key, name = fish.name, color = fish.color,
+		food = { hunger = if small then 1 else 2, saturation = if small then 0.2 else 0.4 } })
+end
+table.insert(defs, { key = "cooked_fish", name = "Grilled Fish Fillet", color = { 212, 143, 89 },
+	food = { hunger = 5, saturation = 6 } })
 return defs

@@ -24,6 +24,8 @@ export type List = { [string]: Inst }
 
 export type Def = { name: string, harmful: boolean, color: { number } }
 Effects.DEFS = {
+	speed = { name = "Speed", harmful = false, color = { 61, 207, 230 } },
+	strength = { name = "Strength", harmful = false, color = { 218, 102, 61 } },
 	poison = { name = "Poison", harmful = true, color = { 120, 160, 40 } },
 	regeneration = { name = "Regeneration", harmful = false, color = { 220, 110, 170 } },
 	hunger = { name = "Hunger", harmful = true, color = { 110, 130, 70 } },
@@ -32,7 +34,7 @@ Effects.DEFS = {
 	fire_resistance = { name = "Fire Resistance", harmful = false, color = { 230, 120, 40 } },
 } :: { [string]: Def }
 -- the order they're listed in on screen (Java sorts by kind; we keep it fixed and simple)
-Effects.ORDER = { "regeneration", "absorption", "resistance", "fire_resistance", "poison", "hunger" }
+Effects.ORDER = { "speed", "strength", "regeneration", "absorption", "resistance", "fire_resistance", "poison", "hunger" }
 
 local ROMAN = { "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X" }
 function Effects.label(id: string, amp: number): string
@@ -233,6 +235,11 @@ end
 -- Effects foods give (Java Foods / Consumables). chance 1 = always.
 export type FoodEffect = { id: string, amp: number, ticks: number, chance: number }
 Effects.FOOD = {
+	pufferfish = { { id = "poison", amp = 1, ticks = 300, chance = 1 } },
+	potion_speed = { { id = "speed", amp = 0, ticks = 3600, chance = 1 } },
+	potion_strength = { { id = "strength", amp = 0, ticks = 3600, chance = 1 } },
+	potion_regeneration = { { id = "regeneration", amp = 0, ticks = 900, chance = 1 } },
+
 	golden_apple = {
 		{ id = "regeneration", amp = 1, ticks = 100, chance = 1 },
 		{ id = "absorption", amp = 0, ticks = 2400, chance = 1 },

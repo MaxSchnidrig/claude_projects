@@ -653,6 +653,10 @@ local function onAttack(p: Player, id: any, critClaim: any)
 	local now = os.clock()
 	local charge = Combat.charge(now - (lastSwing[p] or 0), attackSpeed)
 	lastSwing[p] = now
+	local strength = SurvivalService.effects(p).strength
+	if strength then
+		base += 3 * (strength.amp + 1)
+	end
 	local amount = Combat.scaledDamage(base, charge)
 
 	local sprinting, _grounded, inLiquid = SurvivalService.movement(p)

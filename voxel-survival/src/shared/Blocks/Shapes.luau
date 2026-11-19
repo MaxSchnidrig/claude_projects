@@ -48,6 +48,41 @@ local function px(a: number, b: number, c: number, d: number, e: number, f: numb
 	return { a / 16, b / 16, c / 16, d / 16, e / 16, f / 16 }
 end
 
+-- A compact industrial still: enamel cabinet, hot plate, blue sample vessel and finned condenser.
+local BREWING_STAND: { Box } = {}
+local function standPart(x: number, y: number, z: number, X: number, Y: number, Z: number, texture: string)
+	local box = px(x, y, z, X, Y, Z)
+	box[7] = BlockRegistry.textureIndex[texture]
+	table.insert(BREWING_STAND, box)
+end
+-- Enamel housing, brushed-metal worktop and inset instrument panel.
+standPart(0.5, 0, 2, 15.5, 3, 14, "gray_bed")
+standPart(0, 3, 1.5, 16, 4, 14.5, "clay")
+standPart(8, 0.6, 1.75, 15, 2.6, 2, "black_bed")
+standPart(8.6, 1.1, 1.55, 11.8, 2.15, 1.75, "lime_bed")
+standPart(13, 1, 1.4, 14.3, 2.3, 1.75, "orange_bed")
+-- The amber heater shows around the base of the faceted blue boiling flask.
+standPart(1, 4, 3, 8.5, 5, 10.5, "black_bed")
+standPart(1.5, 5, 3.5, 8, 5.6, 10, "orange_bed")
+standPart(2.25, 5.6, 4.25, 7.25, 6.5, 9.25, "cyan_bed")
+standPart(1.6, 6.5, 3.6, 7.9, 9.5, 9.9, "light_blue_bed")
+standPart(2.35, 9.5, 4.35, 7.15, 10.6, 9.15, "light_blue_bed")
+standPart(3.25, 10.6, 5.25, 6.25, 11.5, 8.25, "white_wool")
+standPart(3.95, 11.5, 5.95, 5.55, 14, 7.55, "clay")
+standPart(2.3, 7.3, 3.45, 3, 9.2, 3.6, "white_wool")
+-- An overhead elbow feeds a ribbed copper column at the back of the bench.
+standPart(3.95, 14, 5.95, 5.55, 15, 11.75, "clay")
+standPart(5.55, 14, 10.25, 12.75, 15, 11.75, "clay")
+standPart(11.25, 4, 10.25, 12.75, 14, 11.75, "gray_bed")
+for level = 0, 3 do
+	local y = 6 + level * 2
+	standPart(9.75, y, 8.75, 14.25, y + 0.8, 13.25, "orange_bed")
+end
+-- Small stoppered sample vial beside the control panel.
+standPart(10, 4, 3.5, 13, 6.5, 6.5, "cyan_bed")
+standPart(10.75, 6.5, 4.25, 12.25, 8, 5.75, "white_wool")
+standPart(10.5, 8, 4, 12.5, 8.75, 6, "black_bed")
+
 -- Rotate a box designed for "north" to another facing (a quarter turn per step, seen from above:
 -- what reaches toward -z for north reaches toward +x for east, +z for south, -x for west).
 local function rot(b: Box, facing: string): Box
@@ -491,6 +526,8 @@ function Shapes.boxes(id: number, get: Getter, collision: boolean): { Box }
 		return paneBoxes(st, get, collision)
 	elseif shape == "vine" then
 		return if collision then NONE else vineBoxes(st.faces)
+	elseif shape == "brewing_stand" then
+		return BREWING_STAND
 	elseif shape == "farmland" then
 		return FARMLAND
 	elseif shape == "cactus" then

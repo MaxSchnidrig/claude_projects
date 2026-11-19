@@ -291,11 +291,21 @@ function SaveFormat.encodeRegion(region: Region): { [string]: any }
 	return { v = SaveFormat.VERSION, chunks = chunks, entities = entities }
 end
 
+local function num(v: any, default: number, lo: number, hi: number): number
+	if typeof(v) ~= "number" or v ~= v then
+		return default
+	end
+	return math.clamp(v, lo, hi)
+end
+
 -- Sign lines / item frame placement, checked (saves are data, not trusted structure).
 local FACES = { up = true, down = true, north = true, south = true, east = true, west = true }
 function SaveFormat.decodeData(kind: string, d: any): { [string]: any }?
 	if typeof(d) ~= "table" then
 		return nil
+	end
+	if kind == "brewing_stand" then
+		return { charges = math.floor(num(d.charges, 0, 0, 20)), progress = num(d.progress, 0, 0, 20), ingredient = if typeof(d.ingredient) == "string" then d.ingredient else nil }
 	end
 	if kind == "sign" then
 		local function lines(t: any): { string }
@@ -339,7 +349,7 @@ function SaveFormat.decodeRegion(record: any): Region
 	end
 	if typeof(record.entities) == "table" then
 		for _, e in record.entities do
-			if typeof(e) == "table" and (e.k == "chest" or e.k == "furnace" or e.k == "campfire" or e.k == "sign" or e.k == "item_frame")
+			if typeof(e) == "table" and (e.k == "brewing_stand" or e.k == "chest" or e.k == "furnace" or e.k == "campfire" or e.k == "sign" or e.k == "item_frame")
 				and typeof(e.x) == "number" and typeof(e.y) == "number" and typeof(e.z) == "number"
 			then
 				table.insert(out.entities, {
@@ -347,7 +357,7 @@ function SaveFormat.decodeRegion(record: any): Region
 					x = e.x,
 					y = e.y + dy,
 					z = e.z,
-					slots = SaveFormat.decodeStacks(e.s, if e.k == "chest" then 27 elseif e.k == "campfire" then 4
+					slots = SaveFormat.decodeStacks(e.s, if e.k == "brewing_stand" then 5 elseif e.k == "chest" then 27 elseif e.k == "campfire" then 4
 						elseif e.k == "item_frame" then 1 elseif e.k == "sign" then 0 else 3),
 					data = SaveFormat.decodeData(e.k, e.d),
 					burn = if typeof(e.b) == "number" then e.b else 0,
@@ -397,13 +407,6 @@ function SaveFormat.encodePlayer(p: PlayerState): { [string]: any }
 		fx = if p.effects and next(p.effects) then p.effects else nil,
 		abs = if p.absorption and p.absorption > 0 then p.absorption else nil,
 	}
-end
-
-local function num(v: any, default: number, lo: number, hi: number): number
-	if typeof(v) ~= "number" or v ~= v then
-		return default
-	end
-	return math.clamp(v, lo, hi)
 end
 
 function SaveFormat.decodePlayer(record: any, inventorySlots: number): PlayerState?

@@ -8,6 +8,7 @@ local RunService = game:GetService("RunService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local BlockRegistry = require(Shared.Blocks.BlockRegistry)
+local Brewing = require(Shared.Items.Brewing)
 local FurnaceLogic = require(Shared.Items.FurnaceLogic)
 
 export type Stack = { item: string, count: number, durability: number? }
@@ -23,6 +24,7 @@ export type Entity = {
 }
 
 local KINDS = {
+	[BlockRegistry.id("brewing_stand")] = "brewing_stand",
 	[BlockRegistry.id("furnace")] = "furnace",
 	[BlockRegistry.id("chest")] = "chest",
 	[BlockRegistry.id("campfire")] = "campfire",
@@ -163,6 +165,7 @@ function BlockEntityService.ensure(x: number, y: number, z: number, kind: string
 			y = y,
 			z = z,
 			slots = if furnace then furnace.slots else {},
+			data = if kind == "brewing_stand" then {} else nil,
 			furnace = furnace,
 		}
 		entities[k] = e
@@ -200,6 +203,10 @@ function BlockEntityService.init()
 		local step = acc
 		acc = 0
 		for _, e in entities do
+			if e.kind == "brewing_stand" and e.data and Brewing.step(e.slots, e.data, step) then
+				BlockEntityService.markDirty(e.x, e.z)
+				if onChanged then onChanged(e) end
+			end
 			local f = e.furnace
 			if f then
 				local before = f.burn > 0 or f.progress > 0

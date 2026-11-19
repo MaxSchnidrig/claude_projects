@@ -212,7 +212,7 @@ SoundConfig.footsteps = {
 	}),
 	stone = {
 		"stone", "stone_slab", "stone_stairs", "cobblestone", "cobblestone_slab", "cobblestone_stairs", "cobblestone_wall",
-		"sandstone", "sandstone_slab", "sandstone_stairs", "sandstone_wall", "bedrock", "obsidian", "furnace",
+		"sandstone", "sandstone_slab", "sandstone_stairs", "sandstone_wall", "bedrock", "obsidian", "furnace", "brewing_stand",
 		"coal_ore", "iron_ore", "gold_ore", "copper_ore", "diamond_ore", "emerald_ore", "lapis_ore", "volt_ore",
 		"glass", "glass_pane", "ice", "iron_bars", "iron_door", "iron_trapdoor",
 	},

@@ -75,6 +75,7 @@ export type Input = {
 	lookZ: number,
 	jump: boolean,
 	sneak: boolean,
+	speedMultiplier: number?,
 	sprint: boolean,
 	usingItem: boolean,
 }
@@ -393,7 +394,7 @@ function PlayerMotor.tick(st: State, input: Input, w: World): Result
 		local friction = if st.onGround then slip * 0.91 else 0.91
 		local accel
 		if st.onGround then
-			accel = (if input.sprint then PlayerPhysics.SPRINT else PlayerPhysics.WALK) * (0.21600002 / (slip * slip * slip))
+			accel = (if input.sprint then PlayerPhysics.SPRINT else PlayerPhysics.WALK) * (input.speedMultiplier or 1) * (0.21600002 / (slip * slip * slip))
 		else
 			accel = if input.sprint then PlayerPhysics.AIR_SPRINT else PlayerPhysics.AIR
 		end

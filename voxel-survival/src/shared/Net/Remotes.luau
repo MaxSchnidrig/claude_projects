@@ -69,6 +69,8 @@ local NAMES = {
 	"CampfireState",
 	"Decor",
 	"Gear",
+	"Fishing",
+	"HandAction",
 	"Bed",
 	"WorldSettings",
 	"Menu",

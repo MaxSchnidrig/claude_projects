@@ -35,6 +35,7 @@ type Entry = {
 	offsets: { CFrame },
 	phase: number,
 	block: boolean,
+	display: Vector3?,
 	lift: number, -- studs from the resting point to the item's centre
 }
 
@@ -150,7 +151,7 @@ function ItemEntityVisuals.init()
 	folder.ChildAdded:Connect(add)
 	folder.ChildRemoved:Connect(remove)
 
-	RunService.RenderStepped:Connect(function()
+	RunService.RenderStepped:Connect(function(dt)
 		local t = os.clock()
 		local cam = workspace.CurrentCamera
 		local camPos = if cam then cam.CFrame.Position else Vector3.zero
@@ -168,10 +169,14 @@ function ItemEntityVisuals.init()
 				-- Java: bob = sin(age / 10 + offset) * 0.1 + 0.1 blocks (never below the ground), the
 				-- item's lowest point just above the resting point the server gives
 				local bob = (math.sin(t * 2 + e.phase) * 0.1 + 0.1) * BS
-				local cf = CFrame.new(base + Vector3.new(0, bob + e.lift, 0)) * CFrame.Angles(0, t + e.phase, 0)
+				local airborne = part:GetAttribute("Airborne") == true
+				if airborne then bob = 0 end
+				local display = if e.display then e.display:Lerp(base, 1 - math.exp(-30 * dt)) else base
+				e.display = display
+				local cf = CFrame.new(display + Vector3.new(0, bob + e.lift, 0)) * CFrame.Angles(0, t + e.phase, 0)
 				if #e.parts == 0 then
 					part.CFrame = cf -- the stand-in (server part) still animates
-				elseif (base - camPos).Magnitude < ANIMATE_DISTANCE or e.parts[1].CFrame.Position == Vector3.zero then
+				elseif airborne or (base - camPos).Magnitude < ANIMATE_DISTANCE or e.parts[1].CFrame.Position == Vector3.zero then
 					for i, p in e.parts do
 						table.insert(moveParts, p)
 						table.insert(moveCFrames, cf * e.offsets[i])

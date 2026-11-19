@@ -253,9 +253,15 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 			eq(def.food.hunger, v[1], `{key} hunger`)
 			near(def.food.saturation, v[2], 1e-9, `{key} saturation`)
 		end
-		-- every food we have is in the table (milk restores nothing)
+		-- every food we have is in the table (milk restores nothing). Exceptions by decision:
+		-- the friend's fishing (16 species + cooked fish, kept as he made them) and the
+		-- drinkable bottles / potions from brewing (no nutrition).
+		local NOT_JAVA: { [string]: boolean } = { milk_bucket = true, cooked_fish = true, water_bottle = true }
+		for _, fish in Loader.require("src/shared/Items/Fishing").SPECIES do
+			NOT_JAVA[fish.key] = true
+		end
 		for _, def in ItemRegistry.list() do
-			if def.food and def.key ~= "milk_bucket" then
+			if def.food and not NOT_JAVA[def.key] and string.sub(def.key, 1, 7) ~= "potion_" then
 				assert(WIKI[def.key], `{def.key} isn't checked against the wiki`)
 			end
 		end

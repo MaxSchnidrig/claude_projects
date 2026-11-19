@@ -42,6 +42,7 @@ local AIR = 0
 -- Right-clicking these opens their window instead of placing (hold Shift to place against them).
 local INTERACTABLE = {
 	[BlockRegistry.id("crafting_table")] = true,
+	[BlockRegistry.id("brewing_stand")] = true,
 	[BlockRegistry.id("furnace")] = true,
 	[BlockRegistry.id("chest")] = true,
 }
@@ -72,7 +73,8 @@ type MiningState = { x: number, y: number, z: number, item: string?, progress: n
 local breakHeld = false
 local placeHeld = false
 local useHeld = false -- right button held with food: eating
-local eating: { progress: number, slot: number }? = nil
+type Eating = { progress: number, slot: number, item: string }
+local eating: Eating? = nil
 local mining: MiningState? = nil
 local cooldownUntil = 0
 local nextPlaceAt = 0
@@ -82,6 +84,8 @@ local selection: SelectionBox
 local crackPart: Part
 local crackLabels: { ImageLabel } = {}
 local lastDigSound = 0
+local nextStroke = 0
+local Motion = require(Shared.Gameplay.HandMotion)
 local TextureAtlas = require(script.Parent.Parent.Render.TextureAtlas)
 
 -- Show crack stage 0..9 on the mining overlay (nil hides it).
@@ -241,7 +245,13 @@ local function tryUse(): boolean
 	local held = InventoryClient.heldItem()
 	local def = ItemRegistry.get(held)
 	local hit = BlockInteraction.target
-	if held == "bucket" then
+	if held == "fishing_rod" then
+		local _, look = CameraController.getEyeAndLook()
+		Remotes.get("Fishing"):FireServer(look)
+		BlockInteraction.swing:Fire()
+		return true
+	end
+	if held == "bucket" or held == "glass_bottle" then
 		-- an empty bucket looks for the first water or lava SOURCE along the view
 		local eye, look = CameraController.getEyeAndLook()
 		if not eye then
@@ -251,7 +261,7 @@ local function tryUse(): boolean
 		local fh = VoxelRaycast.cast(blockAt, o.X, o.Y, o.Z, look.X, look.Y, look.Z, Config.REACH, function(id)
 			return id ~= AIR and (not isLiquid[id + 1] or Fluids.isSource(id))
 		end)
-		if fh and Fluids.isSource(fh.id) then
+		if fh and Fluids.isSource(fh.id) and (held == "bucket" or Fluids.info(fh.id) == "water") then
 			Remotes.get("UseItem"):FireServer({ x = fh.x, y = fh.y, z = fh.z, nx = fh.nx, ny = fh.ny, nz = fh.nz })
 			BlockInteraction.used:Fire("bucket_fill", fh.id)
 			BlockInteraction.swing:Fire()
@@ -385,6 +395,7 @@ end
 
 local function stopEating()
 	if eating then
+		BlockInteraction.swing:Fire("stop")
 		SurvivalClient.eatCancel()
 		eating = nil
 	end
@@ -436,15 +447,20 @@ local function updateEating(dt: number)
 	local slot = foodSlot(if eating then false else BlockInteraction.target ~= nil)
 	local canEat = useHeld and slot ~= nil and (SurvivalClient.food < SurvivalRules.MAX_FOOD or alwaysEat(slot :: number))
 		and not SurvivalClient.dead
-	if not canEat or (eating and eating.slot ~= slot) then
+	local stack = if slot == Config.OFFHAND_SLOT then InventoryClient.offhand() elseif slot then InventoryClient.slots[slot] else nil
+	if not canEat or not stack or (eating and (eating.slot ~= slot or eating.item ~= stack.item)) then
 		stopEating()
 		return
 	end
 	if not eating then
-		eating = { progress = 0, slot = slot :: number }
-		SurvivalClient.eatStart(slot == Config.OFFHAND_SLOT)
+		eating = { progress = 0, slot = slot :: number, item = stack.item }
+		local left = slot == Config.OFFHAND_SLOT
+		local def = ItemRegistry.get(stack.item)
+		local remainder = def and def.food and def.food.remainder
+		BlockInteraction.swing:Fire(if remainder == "glass_bottle" or remainder == "bucket" then "drink" else "eat", left)
+		SurvivalClient.eatStart(left)
 	end
-	local e = eating :: { progress: number, slot: number }
+	local e = eating :: Eating
 	e.progress += dt / EAT_SECONDS
 	SurvivalHUD.setEatProgress(e.progress)
 	if e.progress >= 1 then
@@ -581,6 +597,7 @@ local function update(dt: number)
 	local now = os.clock()
 	if Players.LocalPlayer:GetAttribute("Spectating") then
 		-- spectators can't break, place, eat or attack
+		stopEating()
 		breakHeld, placeHeld, useHeld = false, false, false
 		if mining then
 			cancelMining()
@@ -668,6 +685,12 @@ local function update(dt: number)
 		end
 		local cur = mining
 		if cur then
+			if now >= nextStroke then
+				local def = ItemRegistry.get(item)
+				local kind = Motion.stroke(if def and def.tool then def.tool.kind else nil)
+				BlockInteraction.swing:Fire(kind)
+				nextStroke = now + (Motion.duration :: {[string]: number})[kind]
+			end
 			local total = Mining.breakSeconds(hit.id, item, modifiers())
 			cur.progress = if total <= 0 then 1 else cur.progress + dt / total
 			if cur.progress >= 1 then
@@ -692,7 +715,6 @@ local function update(dt: number)
 					lastDigSound = now
 					BlockInteraction.digging:Fire(cur.x, cur.y, cur.z, hit.id)
 				end
-				BlockInteraction.swing:Fire()
 			end
 		end
 	elseif mining and (not breakHeld or not hit) then
@@ -739,7 +761,7 @@ local function update(dt: number)
 					ClientWorld.setBlock(c.x, c.y, c.z, c.id, true) -- instant prediction
 				end
 				BlockInteraction.placed:Fire(changes[1].x, changes[1].y, changes[1].z, changes[1].id)
-				BlockInteraction.swing:Fire()
+				BlockInteraction.swing:Fire("jab", fromOffhand)
 			end
 			nextPlaceAt = now + Config.PLACE_REPEAT
 		end
@@ -855,6 +877,7 @@ function BlockInteraction.init()
 			BlockInteraction.swing:Fire()
 		elseif t == Enum.UserInputType.MouseButton1 or input.KeyCode == Enum.KeyCode.ButtonR2 then
 			breakHeld = true
+			if not BlockInteraction.target then BlockInteraction.swing:Fire() end
 		elseif (t == Enum.UserInputType.MouseButton2 or input.KeyCode == Enum.KeyCode.ButtonL2) and useMob() then
 			-- a bucket on a cow (milk)
 		elseif t == Enum.UserInputType.MouseButton2 or input.KeyCode == Enum.KeyCode.ButtonL2 then

@@ -260,6 +260,7 @@ local function tick(b: Body, forward: number, strafe: number, jumpHeld: boolean,
 	b.px, b.py, b.pz = st.x, st.y, st.z
 	local r = PlayerMotor.tick(st, {
 		forward = forward, strafe = strafe, lookX = fx, lookZ = fz, jump = jumpHeld,
+		speedMultiplier = 1 + 0.2 * (SurvivalClient.speedLevel or 0),
 		sneak = MovementController.sneaking, sprint = MovementController.sprinting,
 		usingItem = MovementController.usingItem,
 	}, world)
@@ -494,7 +495,7 @@ local function step(dt: number)
 	if sprintLatch ~= MovementController.sprinting then
 		MovementController.sprinting = sprintLatch
 		if not MovementController.spectating then
-			SurvivalClient.setSprinting(sprintLatch) -- the server charges sprint exhaustion
+			SurvivalClient.setSprinting(sprintLatch)
 		end
 	end
 
@@ -685,6 +686,11 @@ function MovementController.init()
 				elseif MovementController.onGround or MovementController.spectating then
 					sprintTriggerUntil = now + Config.SPRINT_DOUBLE_TAP
 				end
+			end
+		elseif input.KeyCode == Enum.KeyCode.LeftControl then
+			if UserInputService:IsKeyDown(Enum.KeyCode.W) and canStartSprint()
+				and not InventoryClient.uiOpen and not GuiService.MenuIsOpen and UserInputService:GetFocusedTextBox() == nil then
+				sprintLatch = true
 			end
 		elseif input.KeyCode == Enum.KeyCode.ButtonL3 then
 			if canStartSprint() then

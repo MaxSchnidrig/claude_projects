@@ -26,6 +26,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local ItemRegistry = require(Shared.Items.ItemRegistry)
 local SlotLogic = require(Shared.Items.SlotLogic)
+local Brewing = require(Shared.Items.Brewing)
 local Recipes = require(Shared.Items.Recipes)
 local InventoryClient = require(script.Parent.Parent.Player.InventoryClient)
 local CameraController = require(script.Parent.Parent.Player.CameraController)
@@ -76,12 +77,14 @@ local function ctrlDown(): boolean
 	-- Ctrl only: Cmd+Q would quit Studio on a Mac
 	return ctrlHeld or UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
 end
+local brewStatus: TextLabel? = nil
 local furnaceArrow: Frame? = nil
 local furnaceFlame: Frame? = nil
 
 local TITLES = {
 	inventory = "Inventory",
 	crafting_table = "Crafting Table",
+	brewing_stand = "Brewing Stand",
 	furnace = "Furnace",
 	chest = "Chest",
 }
@@ -90,6 +93,10 @@ local TITLES = {
 local function dragTarget(w: any): boolean
 	if w.container == "result" then
 		return false
+	end
+	local cursor = InventoryClient.cursor
+	if w.container == "block" and InventoryClient.window.kind == "brewing_stand" and cursor then
+		return Brewing.accepts(w.index, cursor.item)
 	end
 	if w.container == "block" and InventoryClient.window.kind == "furnace" and w.index == 3 then
 		return false
@@ -293,6 +300,7 @@ local function build(kind: string)
 	end
 	table.clear(widgets)
 	hovered = nil
+	brewStatus = nil
 	furnaceArrow, furnaceFlame = nil, nil
 	layoutKind = kind
 
@@ -336,6 +344,18 @@ local function build(kind: string)
 		fill.Size = UDim2.fromScale(1, 1)
 		slot(gx + gridW + 90, midY - (SLOT + 8) / 2, "result", 1, true)
 		y += rowsHeight(cw)
+	elseif kind == "brewing_stand" then
+		for i, title in { "Bottles", "Ingredient", "Fuel" } do
+			local x = PAD + ({ 0, 170, 295 })[i]
+			label(panel, title, UDim2.fromOffset(x, y), UDim2.fromOffset(110, 18), 13)
+			if i == 1 then
+				grid(x, y + 20, 3, 1, "block", 1)
+			else
+				slot(x, y + 20, "block", i + 2)
+			end
+		end
+		brewStatus = label(panel, "", UDim2.fromOffset(PAD, y + SLOT + 24), UDim2.fromOffset(400, 18), 13)
+		y += SLOT + 48
 	elseif kind == "furnace" then
 		local x = PAD + 120
 		slot(x, y, "block", 1) -- input
@@ -451,6 +471,11 @@ function refresh()
 		end
 	end
 	local win = InventoryClient.window
+	if brewStatus then
+		local progress = win.progress or 0
+		local status = if progress > 0 then `Brewing: {math.ceil(Brewing.SECONDS - progress)}s` else "Ready"
+		brewStatus.Text = `{status}   |   Fuel charges: {win.charges or 0}`
+	end
 	if furnaceArrow and furnaceFlame then
 		furnaceArrow.Size = UDim2.fromScale(math.clamp((win.progress or 0) / Recipes.SMELT_SECONDS, 0, 1), 1)
 		local burnMax = win.burnMax or 0

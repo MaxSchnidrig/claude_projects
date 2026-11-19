@@ -119,6 +119,12 @@ local function onUse(p: Player, a: any)
 		return
 	end
 
+	if item == "glass_bottle" then
+		if clicked == WATER then
+			swapHeld(p, "water_bottle")
+		end
+		return
+	end
 	if item == "bucket" then
 		if clicked == WATER then
 			BlockUpdates.set(x, y, z, 0)

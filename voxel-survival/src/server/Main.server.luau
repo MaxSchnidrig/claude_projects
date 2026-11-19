@@ -89,6 +89,12 @@ Startup.run("server", {
 	{ name = "InventoryService", run = function()
 		require(server.Player.InventoryService).init()
 	end },
+	{ name = "HandActionService", run = function()
+		require(server.Player.HandActionService).init()
+	end },
+	{ name = "FishingService", run = function()
+		require(server.Simulation.FishingService).init()
+	end },
 	{ name = "BlockActionService", run = function()
 		require(server.Interaction.BlockActionService).init()
 	end },

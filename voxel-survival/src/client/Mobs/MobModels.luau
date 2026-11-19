@@ -8,8 +8,7 @@
 --   Skeleton    chunky skull with a jaw and glowing pale-blue eye squares, slatted ribcage,
 --               crude bow in one hand
 --   Spider      dark-brown two-part body with orange stripes, cluster of amber eyes, 8 thin legs
---   Sneaker  squat ash-grey barrel on two stumpy legs, short arms, glowing ember crack lines
---               and a single horizontal ember slit for an eye (glows hotter while fusing)
+--   Sneaker     plated seedpod with three amber vents, a low sensor and four walking feet
 --   Voidling   legless floating violet crystal figure: glassy core, diamond-shaped glowing head,
 --               shard "arms" orbiting it, a tapering crystal trail below, a block hovering in front
 --   Cow         tawny with a dark back stripe, cream belly patch, small curved horns
@@ -120,22 +119,31 @@ end
 
 -- Sneaker -----------------------------------------------------------------------------------
 do
-	local ash, char, ember = rgb(96, 92, 88), rgb(46, 42, 40), rgb(255, 120, 30)
-	designs.sneaker = {
-		{ size = v(0.3, 0.45, 0.32), pos = v(-0.18, 0.225, 0), color = char, limb = "legL", hinge = v(-0.18, 0.45, 0), phase = 0 },
-		{ size = v(0.3, 0.45, 0.32), pos = v(0.18, 0.225, 0), color = char, limb = "legR", hinge = v(0.18, 0.45, 0), phase = 1 },
-		{ size = v(0.7, 0.75, 0.56), pos = v(0, 0.82, 0.04), color = ash, limb = "fuse" }, -- barrel body
-		{ size = v(0.6, 0.1, 0.5), pos = v(0, 1.22, 0.06), color = char }, -- hunched shoulders
-		-- glowing crack lines across the body
-		{ size = v(0.04, 0.5, 0.02), pos = v(-0.15, 0.85, -0.245), color = ember, material = Enum.Material.Neon, rotation = v(0, 0, 18), glow = true, limb = "fuse" },
-		{ size = v(0.04, 0.35, 0.02), pos = v(0.12, 0.75, -0.245), color = ember, material = Enum.Material.Neon, rotation = v(0, 0, -30), glow = true, limb = "fuse" },
-		{ size = v(0.3, 0.04, 0.02), pos = v(0.02, 1.0, -0.245), color = ember, material = Enum.Material.Neon, glow = true, limb = "fuse" },
-		{ size = v(0.02, 0.45, 0.04), pos = v(0.355, 0.8, 0.0), color = ember, material = Enum.Material.Neon, rotation = v(25, 0, 0), glow = true, limb = "fuse" },
-		{ size = v(0.18, 0.45, 0.18), pos = v(-0.45, 0.85, -0.02), color = ash, limb = "armL", hinge = v(-0.45, 1.06, 0), phase = 1 },
-		{ size = v(0.18, 0.45, 0.18), pos = v(0.45, 0.85, -0.02), color = ash, limb = "armR", hinge = v(0.45, 1.06, 0), phase = 0 },
-		{ size = v(0.42, 0.34, 0.4), pos = v(0, 1.28, -0.2), color = char }, -- low head, pushed forward
-		{ size = v(0.3, 0.05, 0.02), pos = v(0, 1.3, -0.405), color = ember, material = Enum.Material.Neon, glow = true, limb = "fuse" }, -- slit eye
-	}
+	local shale, bark, amber = rgb(49, 74, 76), rgb(104, 117, 85), rgb(250, 157, 66)
+	local d: { Box } = {}
+	local function plate(size: Vector3, pos: Vector3, color: Color3, angle: number?, lit: boolean?)
+		table.insert(d, { size = size, pos = pos, color = color, rotation = v(0, 0, angle or 0),
+			limb = "fuse", glow = lit, material = if lit then Enum.Material.Neon else nil })
+	end
+	plate(v(0.5, 0.30, 0.42), v(0, 0.48, 0), shale)
+	plate(v(0.56, 0.65, 0.43), v(0, 0.86, 0.02), bark)
+	for _, side in { -1, 1 } do
+		plate(v(0.16, 0.63, 0.47), v(side*0.24, 1.02, 0.03), shale, side*-13)
+		for _, z in { -0.16, 0.16 } do
+			local x = side * 0.22
+			table.insert(d, { size = v(0.16, 0.38, 0.20), pos = v(x, 0.19, z), color = bark,
+				limb = "legL", hinge = v(x, 0.38, z), phase = if side*z > 0 then 1 else 0 })
+		end
+	end
+	plate(v(0.40, 0.23, 0.29), v(0, 1.14, -0.19), shale, -6)
+	plate(v(0.25, 0.045, 0.024), v(0, 1.16, -0.342), amber, -6, true)
+	for i = 0, 2 do
+		local h = 0.27 + i * 0.09
+		local x = -0.16 + i * 0.15
+		plate(v(0.10, h, 0.14), v(x, 1.21+h/2, 0.10), bark, -10)
+		plate(v(0.12, 0.055, 0.16), v(x+0.03, 1.21+h, 0.10), amber, -10, true)
+	end
+	designs.sneaker = d
 end
 
 -- Voidling ------------------------------------------------------------------------------------

@@ -21,6 +21,7 @@ export type Window = {
 	block: { [number]: Stack? }?,
 	burn: number?,
 	burnMax: number?,
+	charges: number?,
 	progress: number?,
 }
 
@@ -136,8 +137,13 @@ function InventoryClient.close()
 	send({ type = "close" })
 end
 
+local function dropLook(): Vector3?
+	local camera = workspace.CurrentCamera
+	return if camera then camera.CFrame.LookVector else nil
+end
+
 function InventoryClient.drop(all: boolean)
-	send({ type = "drop", all = all })
+	send({ type = "drop", look = dropLook(), all = all })
 end
 
 -- Drag with the carried stack across slots: refs are { {container, index}, ... } in visit order.
@@ -147,7 +153,7 @@ end
 
 -- Q while hovering a slot in an open window.
 function InventoryClient.dropSlot(container: string, index: number, all: boolean)
-	send({ type = "dropSlot", container = container, index = index, all = all })
+	send({ type = "dropSlot", look = dropLook(), container = container, index = index, all = all })
 end
 
 -- F: swap the held item with the off hand.
@@ -179,7 +185,7 @@ function InventoryClient.armorPoints(): number
 end
 
 function InventoryClient.dropCursor(all: boolean)
-	send({ type = "dropCursor", all = all })
+	send({ type = "dropCursor", look = dropLook(), all = all })
 end
 
 return InventoryClient

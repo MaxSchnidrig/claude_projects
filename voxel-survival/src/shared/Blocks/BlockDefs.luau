@@ -138,6 +138,7 @@ local defs: { BlockDefInput } = {
 	{ id = 59, key = "lava_falling", name = "Lava", hardness = 100, drop = false, textures = { all = "lava_falling" }, solid = false, transparent = true, liquid = true, opacity = 0, light = 15, sound = "lava", fluid = "lava", fluidLevel = 8 },
 	-- Fire and campfires --------------------------------------------------------------------
 	{ id = 60, key = "fire", name = "Fire", hardness = 0, drop = false, textures = { all = "fire" }, solid = false, transparent = true, light = 15, opacity = 0, sound = "wool", shape = "fire" },
+	{ id = 63, key = "brewing_stand", name = "Brewing Stand", hardness = 0.5, tool = "pickaxe", minTier = 1, shape = "brewing_stand", transparent = true, opacity = 0, textures = { all = "cobblestone" } },
 	{ id = 61, key = "campfire", name = "Campfire", hardness = 2, tool = "axe", drop = "charcoal", dropMin = 2, dropMax = 2, textures = { top = "campfire_top", side = "campfire_log", bottom = "campfire_log" }, transparent = true, light = 15, opacity = 0, sound = "wood", shape = "campfire" },
 	{ id = 62, key = "campfire_unlit", name = "Campfire", hardness = 2, tool = "axe", drop = "charcoal", dropMin = 2, dropMax = 2, textures = { top = "campfire_top", side = "campfire_log", bottom = "campfire_log" }, transparent = true, opacity = 0, sound = "wood", shape = "campfire" },
 	{ id = 37, key = "white_wool", name = "White Wool", hardness = 0.8, tool = "shears", textures = { all = "white_wool" }, sound = "wool", flammable = { 30, 60 } },
