@@ -211,6 +211,8 @@ Config.TERRAIN_MATERIAL = "Plastic" -- rougher than SmoothPlastic: less shine on
 Config.DEBUG_KEY_ITEM_MENU = "C" -- Studio only: menu with every block and item (click = full stack)
 Config.DEBUG_KEY_GIVE_KIT = "G" -- Studio only: test kit (torches, coal, buckets, flint and steel, TNT, sand, gravel, campfires, beef, planks)
 Config.DEBUG_KEY_WEATHER = "Y" -- Studio only: weather clear -> rain -> thunderstorm -> clear
+Config.DEBUG_KEY_FORCE_SNOW = "T" -- Studio only: forced snow on / off (it snows everywhere when it rains)
+Config.DEBUG_KEY_LIGHTNING = "B" -- Studio only: a lightning strike 4-6 blocks from you
 Config.DEBUG_KEY_DROP_PILE = "U" -- Studio only: drop 200 stacks of random items around you (dropped-item performance)
 
 return Config

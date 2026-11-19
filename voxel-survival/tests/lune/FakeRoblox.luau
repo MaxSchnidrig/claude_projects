@@ -662,7 +662,7 @@ CLASSES.Camera = {
 CLASSES.Player = {
 	parent = "Instance",
 	props = { Character = NIL, DisplayName = "Tester", UserId = 1 },
-	signals = { "CharacterAdded", "CharacterRemoving" },
+	signals = { "CharacterAdded", "CharacterRemoving", "Chatted" },
 }
 CLASSES.PlayerGui = { parent = "Instance" }
 CLASSES.PlayerScripts = { parent = "Instance" }
@@ -840,6 +840,9 @@ CLASSES.MemoryStoreService = {
 	},
 }
 CLASSES.Lighting = { parent = "Instance", props = { ExposureCompensation = 0, Brightness = 2, ClockTime = 14 } }
+-- SetCore notifications go nowhere in tests; the chat is the old one (no command objects).
+CLASSES.StarterGui = { parent = "Instance", methods = { SetCore = function() end, SetCoreGuiEnabled = function() end } }
+CLASSES.TextChatService = { parent = "Instance", props = { ChatVersion = Enum.ChatVersion.LegacyChatService } }
 CLASSES.SoundService = { parent = "Instance", props = { AmbientReverb = Enum.ReverbType.NoReverb } }
 
 -- Tweens finish at once when played (tests only need the end state).

@@ -219,6 +219,62 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		WS.onSlept()
 		eq(WS.state().raining, false)
 
+		-- the Studio keys and "/weather" (through the real remotes), each with a reply
+		local player = G.player
+		local rs = G.game:GetService("ReplicatedStorage")
+		local replies = setmetatable({}, {
+			-- the "message" answers the server sent to clients so far (the fake remote logs them)
+			__index = function(_, k)
+				local out = {}
+				for _, e in rawget(remotes.Weather, "__toClient") or {} do
+					if typeof(e[2]) == "table" and e[2].type == "message" then
+						table.insert(out, e[2].text)
+					end
+				end
+				if k == "list" then
+					return out
+				end
+				return out[k]
+			end,
+			__len = function(t)
+				return #t.list
+			end,
+		})
+		WS.set("clear", 100)
+		WS.tick()
+		remotes.DebugAction.OnServerEvent:Fire(player, { type = "weather" }) -- key Y
+		eq(WS.current(), "rain", "Y: clear -> rain")
+		eq(rs:GetAttribute("WeatherRain"), true)
+		remotes.DebugAction.OnServerEvent:Fire(player, { type = "weather" })
+		eq(WS.current(), "thunder", "Y: rain -> thunderstorm")
+		remotes.DebugAction.OnServerEvent:Fire(player, { type = "weather" })
+		eq(WS.current(), "clear", "Y: thunderstorm -> clear")
+		assert(#replies.list == 3 and string.find(replies[1], "rain"), "each key press answers")
+		remotes.WeatherCommand.OnServerEvent:Fire(player, { "thunder", "90" })
+		eq(WS.current(), "thunder")
+		eq(WS.state().rainTime, 1800, "/weather thunder 90 = 1800 ticks")
+		eq(rs:GetAttribute("WeatherRainTime"), 1800, "timers for F3")
+		remotes.WeatherCommand.OnServerEvent:Fire(player, { "clear", "60" })
+		eq(WS.current(), "clear")
+		eq(rs:GetAttribute("WeatherClearTime"), 1200)
+		-- forced snow (key T / "/weather snow on"): it snows even in deserts
+		remotes.DebugAction.OnServerEvent:Fire(player, { type = "weatherSnow" })
+		eq(rs:GetAttribute("WeatherForceSnow"), true)
+		eq(WS.precipitationAt(5, FLOOR, 0), "snow", "forced snow in the desert")
+		remotes.WeatherCommand.OnServerEvent:Fire(player, { "snow", "off" })
+		eq(WS.precipitationAt(5, FLOOR, 0), "none")
+		eq(WS.precipitationAt(0, FLOOR, 0), "rain")
+		-- old-chat fallback and bad input
+		player.Chatted:Fire("/weather rain 30")
+		eq(WS.current(), "rain")
+		remotes.WeatherCommand.OnServerEvent:Fire(player, { "banana" })
+		assert(string.find(replies[#replies.list], "Usage"), "unknown words get the usage line")
+		remotes.WeatherCommand.OnServerEvent:Fire(player, "not a table")
+		-- lightning near me (key B): no character here, so no ground to strike next to
+		remotes.DebugAction.OnServerEvent:Fire(player, { type = "lightning" })
+		local last = replies[#replies.list]
+		assert(string.find(last, "No ground") or string.find(last, "Lightning"), "B answers")
+
 		for _, path in { "src/shared/Net/Remotes.luau", "src/server/World/WorldService.luau" } do
 			Loader.stubs[path] = nil
 		end

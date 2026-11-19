@@ -15,6 +15,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
@@ -108,6 +109,10 @@ function WeatherService.rainOn(x: number, feetY: number, z: number, height: numb
 end
 
 local function publish()
+	-- the timers (ticks) for F3 / "/weather query": how long until each flag flips
+	ReplicatedStorage:SetAttribute("WeatherRainTime", state.rainTime)
+	ReplicatedStorage:SetAttribute("WeatherThunderTime", state.thunderTime)
+	ReplicatedStorage:SetAttribute("WeatherClearTime", state.clearTime)
 	ReplicatedStorage:SetAttribute("WeatherRain", state.raining)
 	ReplicatedStorage:SetAttribute("WeatherThunder", state.thundering)
 	ReplicatedStorage:SetAttribute("WeatherRainLevel", math.floor(state.rainLevel * 100 + 0.5) / 100)
@@ -165,7 +170,7 @@ local function tryLightning(chunkKey: number)
 	end
 end
 
--- Weather commands (Studio key / future commands): "clear" | "rain" | "thunder".
+-- Weather commands (Studio keys, "/weather"): "clear" | "rain" | "thunder".
 function WeatherService.set(kind: string, ticks: number?)
 	local d = ticks
 	if not d then
@@ -174,6 +179,77 @@ function WeatherService.set(kind: string, ticks: number?)
 	end
 	Weather.set(state, kind, d :: number)
 	publish()
+end
+
+-- What the weather is now: "clear" | "rain" | "thunder".
+function WeatherService.current(): string
+	return if state.raining and state.thundering then "thunder" elseif state.raining then "rain" else "clear"
+end
+
+local function timeText(ticks: number): string
+	local s = math.floor(ticks / 20)
+	return if s >= 3600 then string.format("%d:%02d:%02d", s // 3600, (s // 60) % 60, s % 60) else string.format("%d:%02d", s // 60, s % 60)
+end
+
+-- Lightning at a random spot 4-6 blocks from a player (testing; like /summon lightning_bolt, it
+-- strikes whatever the weather). Returns false if there's no ground there.
+function WeatherService.strikeNear(p: Player): boolean
+	local root = p.Character and p.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not root then
+		return false
+	end
+	local a = rng:NextNumber(0, math.pi * 2)
+	local d = rng:NextNumber(4, 6)
+	local x = math.floor(root.Position.X / Config.BLOCK_SIZE + math.cos(a) * d)
+	local z = math.floor(root.Position.Z / Config.BLOCK_SIZE + math.sin(a) * d)
+	local top = WeatherService.topAt(x, z)
+	if not top then
+		return false
+	end
+	WeatherService.strike(x, top + 1, z)
+	return true
+end
+
+-- Who may change the weather: anyone in Studio, else the world's owner.
+local function allowed(p: Player): boolean
+	return RunService:IsStudio() or ReplicatedStorage:GetAttribute("WorldOwner") == p.UserId
+end
+
+local function reply(p: Player, text: string)
+	print(`[Weather] {p.Name}: {text}`)
+	Remotes.get("Weather"):FireClient(p, { type = "message", text = text })
+end
+
+-- "/weather clear|rain|thunder [seconds]" (Java's /weather; without seconds Java's random
+-- length), "/weather query", "/weather snow on|off", "/weather strike", and "cycle" (key Y).
+function WeatherService.command(p: Player, args: { string })
+	if not allowed(p) then
+		reply(p, "Only the world's owner can change the weather")
+		return
+	end
+	local verb = args[1] or "query"
+	if verb == "cycle" then
+		local nowKind = WeatherService.current()
+		verb = if nowKind == "clear" then "rain" elseif nowKind == "rain" then "thunder" else "clear"
+	end
+	if verb == "clear" or verb == "rain" or verb == "thunder" then
+		local secs = tonumber(args[2] or "")
+		local ticks = if secs and secs > 0 then math.floor(math.min(secs, 1000000) * 20) else nil
+		WeatherService.set(verb, ticks)
+		local d = if verb == "clear" then state.clearTime else state.rainTime
+		reply(p, `Weather set to {if verb == "thunder" then "thunderstorm" else verb} for {timeText(d)}`)
+	elseif verb == "query" then
+		reply(p, `Weather: {WeatherService.current()}`)
+	elseif verb == "snow" then
+		local on = if args[2] == "on" then true elseif args[2] == "off" then false else not Weather.forceSnow
+		Weather.forceSnow = on
+		ReplicatedStorage:SetAttribute("WeatherForceSnow", on)
+		reply(p, if on then "Forced snow ON: it snows everywhere when it rains (testing)" else "Forced snow OFF: snow only in cold biomes")
+	elseif verb == "strike" then
+		reply(p, if WeatherService.strikeNear(p) then "Lightning strike near you" else "No ground there for lightning")
+	else
+		reply(p, "Usage: /weather clear|rain|thunder [seconds], /weather query, /weather snow on|off, /weather strike")
+	end
 end
 
 -- Sleeping through the night: rain stops (Java 1.18+: only when it is raining).
@@ -194,6 +270,8 @@ function WeatherService.load(saved: any)
 	publish()
 end
 
+local timerTicks = 0
+
 -- One game tick (exposed for tests).
 function WeatherService.tick()
 	local wasRain, wasThunder = state.raining, state.thundering
@@ -205,6 +283,11 @@ function WeatherService.tick()
 		or (state.rainLevel ~= r0 and (state.rainLevel == 0 or state.rainLevel == 1))
 	then
 		publish()
+	end
+	timerTicks += 1
+	if timerTicks >= 20 then
+		timerTicks = 0
+		publish() -- (the timers on F3 count down once a second)
 	end
 	local h = hooks
 	if h and Weather.isThundering(state) then
@@ -231,15 +314,46 @@ function WeatherService.init(h: Hooks)
 	end)
 	publish()
 
-	-- Studio: the weather key cycles clear -> rain -> thunderstorm
-	Remotes.get("DebugAction").OnServerEvent:Connect(function(_p: Player, a: any)
-		if RunService:IsStudio() and typeof(a) == "table" and a.type == "weather" then
-			local now = if Weather.isThundering(state) or state.thundering then "thunder" elseif state.raining then "rain" else "clear"
-			local nextKind = if now == "clear" then "rain" elseif now == "rain" then "thunder" else "clear"
-			WeatherService.set(nextKind)
-			print(`[Weather] {nextKind}`)
+	-- Commands: Studio keys (DebugAction) and "/weather ..." from the world owner (or anyone in
+	-- Studio) via the WeatherCommand remote or the old chat. Every command answers with a message.
+	Remotes.get("DebugAction").OnServerEvent:Connect(function(p: Player, a: any)
+		if not RunService:IsStudio() or typeof(a) ~= "table" then
+			return
+		end
+		if a.type == "weather" then
+			WeatherService.command(p, { "cycle" })
+		elseif a.type == "weatherSnow" then
+			WeatherService.command(p, { "snow", if Weather.forceSnow then "off" else "on" })
+		elseif a.type == "lightning" then
+			WeatherService.command(p, { "strike" })
 		end
 	end)
+	Remotes.get("WeatherCommand").OnServerEvent:Connect(function(p: Player, args: any)
+		if typeof(args) ~= "table" or #args > 4 then
+			return
+		end
+		local clean = {}
+		for _, a in args do
+			if typeof(a) ~= "string" or #a > 16 then
+				return
+			end
+			table.insert(clean, string.lower(a))
+		end
+		WeatherService.command(p, clean)
+	end)
+	local function chatted(p: Player)
+		p.Chatted:Connect(function(msg: string)
+			local words = string.split(string.lower(msg), " ")
+			if words[1] == "/weather" then
+				table.remove(words, 1)
+				WeatherService.command(p, words)
+			end
+		end)
+	end
+	for _, p in Players:GetPlayers() do
+		chatted(p)
+	end
+	Players.PlayerAdded:Connect(chatted)
 
 	local acc = 0
 	RunService.Heartbeat:Connect(function(dt)
