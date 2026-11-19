@@ -154,7 +154,7 @@ local function spawnPacks(category: string, x0: number, y: number, z0: number, t
 			if not rulesOk then
 				continue
 			end
-			S.spawn(kind.key, x + 0.5, y, z + 0.5)
+			S.spawn(kind.key, x + 0.5, y, z + 0.5, nil, { natural = true, first = count == 0 })
 			count += 1
 			if count >= kind.groupMax then
 				break
@@ -205,7 +205,7 @@ local function populateChunk(key: number)
 			for _ = 1, 4 do
 				local top = surfaceY(x, z)
 				if top and placementOk(def, x, top, z) and animalRulesOk(x, top, z) then
-					S.spawn(def.key, x + 0.5, top, z + 0.5)
+					S.spawn(def.key, x + 0.5, top, z + 0.5, nil, { natural = true, first = count == 0 })
 					count += 1
 					break
 				end
@@ -217,7 +217,8 @@ local function populateChunk(key: number)
 end
 
 -- Animals in unloaded chunks are parked here and restored when the chunk loads again.
-type Parked = { key: string, x: number, y: number, z: number, yaw: number, health: number }
+type Parked = { key: string, x: number, y: number, z: number, yaw: number, health: number,
+	age: number?, color: string?, sheared: boolean? }
 local parked: { [number]: { Parked } } = {}
 
 local function chunkKeyOf(m: any): number
@@ -230,7 +231,8 @@ local function onUnloaded(key: number)
 			if m.persistent then
 				local list = parked[key] or {}
 				parked[key] = list
-				table.insert(list, { key = m.def.key, x = m.x, y = m.y, z = m.z, yaw = m.yaw, health = m.health })
+				table.insert(list, { key = m.def.key, x = m.x, y = m.y, z = m.z, yaw = m.yaw, health = m.health,
+					age = m.age, color = m.color, sheared = m.sheared })
 			else
 				S.stats.despawned += 1
 			end
@@ -244,7 +246,7 @@ local function onLoaded(key: number, firstTime: boolean)
 	if list then
 		parked[key] = nil
 		for _, p in list do
-			local m = S.spawn(p.key, p.x, p.y, p.z, p.yaw)
+			local m = S.spawn(p.key, p.x, p.y, p.z, p.yaw, { age = p.age, color = p.color, sheared = p.sheared })
 			if m then
 				m.health = p.health
 			end

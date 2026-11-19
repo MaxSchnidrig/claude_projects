@@ -1131,6 +1131,26 @@ T.torch = {
 	"................",
 }
 
+-- Dye (Phase 9e, our own design): a round drop of colour with a highlight.
+T.dye = {
+	"................",
+	"................",
+	"................",
+	".......m........",
+	"......mmm.......",
+	".....mmmmm......",
+	"....m*mmmmm.....",
+	"...mm*mmmmmm....",
+	"...mmmmmmmmm....",
+	"...mmmmmmmmMm...",
+	"...mmmmmmmMMm...",
+	"....mmmmmMMm....",
+	".....mmmmmm.....",
+	"................",
+	"................",
+	"................",
+}
+
 T.enchanted_sparkle = { -- (overlay for the enchanted apple)
 	"................",
 	"...........*....",
@@ -1475,6 +1495,17 @@ add("paper", T.paper, { m = P.paper })
 add("flint", T.flint, { m = P.flint })
 add("void_shard", T.shard, { m = P.void })
 add("torch", T.torch, { s = P.wood, f = { 255, 214, 90 }, F = { 255, 160, 40 } })
+do
+	local DYE = {
+		white = { 236, 238, 238 }, orange = { 240, 118, 20 }, magenta = { 190, 68, 180 }, light_blue = { 58, 176, 218 },
+		yellow = { 248, 198, 40 }, lime = { 112, 186, 26 }, pink = { 238, 142, 172 }, gray = { 70, 76, 80 },
+		light_gray = { 150, 150, 142 }, cyan = { 22, 138, 146 }, purple = { 122, 42, 172 }, blue = { 54, 58, 158 },
+		brown = { 114, 72, 40 }, green = { 84, 108, 28 }, red = { 170, 40, 36 }, black = { 40, 40, 46 },
+	}
+	for c, rgb in DYE do
+		add(`{c}_dye`, T.dye, { m = rgb })
+	end
+end
 
 -- Rendering ------------------------------------------------------------------------------------
 

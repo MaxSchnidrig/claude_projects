@@ -133,6 +133,17 @@ local palette: { [string]: { number } } = {
 	black_bed = { 22, 22, 26 },
 }
 
+-- Phase 9e: wool and stained glass in the 16 colours (the beds' palette; glass a little paler)
+for _, c in { "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray", "light_gray", "cyan",
+	"purple", "blue", "brown", "green", "red", "black" } do
+	palette[`{c}_wool`] = palette[`{c}_bed`]
+end
+for _, c in { "white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray", "light_gray",
+	"cyan", "purple", "blue", "brown", "green", "red", "black" } do
+	local b = palette[`{c}_bed`]
+	palette[`{c}_stained_glass`] = { b[1] * 0.8 + 50, b[2] * 0.8 + 50, b[3] * 0.8 + 50 }
+end
+
 -- Flowing water and lava levels reuse the source colour (their own keys let the renderer give
 -- each level its own surface height).
 for _, f in { "water", "lava" } do

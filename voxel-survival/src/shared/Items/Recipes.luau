@@ -18,6 +18,18 @@ Recipes.TAGS = {
 	["#logs"] = { "oak_log", "birch_log", "spruce_log" },
 	["#coals"] = { "coal", "charcoal" },
 }
+-- Phase 9e: any wool / carpet / bed (dyeing recipes accept every colour)
+local COLORS = { "white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray", "light_gray", "cyan",
+	"purple", "blue", "brown", "green", "red", "black" }
+Recipes.COLORS = COLORS
+Recipes.TAGS["#wool"] = {}
+Recipes.TAGS["#carpets"] = {}
+Recipes.TAGS["#beds"] = {}
+for _, c in COLORS do
+	table.insert(Recipes.TAGS["#wool"], `{c}_wool`)
+	table.insert(Recipes.TAGS["#carpets"], `{c}_carpet`)
+	table.insert(Recipes.TAGS["#beds"], `{c}_bed`)
+end
 
 local shaped: { Shaped } = {
 	{ pattern = { "  S", " ST", "S T" }, key = { S = "stick", T = "string" }, result = { item = "fishing_rod", count = 1 } },
@@ -94,8 +106,10 @@ do
 		end
 	end
 	-- chainmail has no recipe in Java (trades and mob drops)
-	-- beds: 3 wool of the bed's colour + 3 planks; only white wool exists so far
-	table.insert(shaped, { pattern = { "WWW", "PPP" }, key = { W = "white_wool", P = "#planks" }, result = { item = "white_bed", count = 1 } })
+	-- beds: 3 wool of the bed's colour + 3 planks (Java)
+	for _, c in COLORS do
+		table.insert(shaped, { pattern = { "WWW", "PPP" }, key = { W = `{c}_wool`, P = "#planks" }, result = { item = `{c}_bed`, count = 1 } })
+	end
 	table.insert(shaped, { pattern = { "WIW", "WWW", " W " }, key = { W = "#planks", I = "iron_ingot" }, result = { item = "shield", count = 1 } })
 	table.insert(shaped, { pattern = { " SX", "S X", " SX" }, key = { S = "stick", X = "string" }, result = { item = "bow", count = 1 } })
 	table.insert(shaped, { pattern = { "SIS", "XTX", " S " }, key = { S = "stick", I = "iron_ingot", X = "string", T = "tripwire_hook" }, result = { item = "crossbow", count = 1 } })
@@ -146,7 +160,46 @@ local shapeless: { Shapeless } = {
 -- Fuel that leaves an item behind in the fuel slot.
 Recipes.fuelRemainder = { lava_bucket = "bucket" } :: { [string]: string }
 
+-- Phase 9e: carpets, stained glass and panes in every colour (Java)
+for _, c in COLORS do
+	-- 2 wool side by side -> 3 carpets; 8 carpets around a dye -> 8 carpets of its colour
+	table.insert(shaped, { pattern = { "WW" }, key = { W = `{c}_wool` }, result = { item = `{c}_carpet`, count = 3 } })
+	table.insert(shaped, { pattern = { "CCC", "CDC", "CCC" }, key = { C = "#carpets", D = `{c}_dye` }, result = { item = `{c}_carpet`, count = 8 } })
+	-- 8 glass around a dye -> 8 stained glass; 6 stained glass -> 16 panes; 8 panes around a dye
+	table.insert(shaped, { pattern = { "GGG", "GDG", "GGG" }, key = { G = "glass", D = `{c}_dye` }, result = { item = `{c}_stained_glass`, count = 8 } })
+	table.insert(shaped, { pattern = { "GGG", "GGG" }, key = { G = `{c}_stained_glass` }, result = { item = `{c}_stained_glass_pane`, count = 16 } })
+	table.insert(shaped, { pattern = { "PPP", "PDP", "PPP" }, key = { P = "glass_pane", D = `{c}_dye` }, result = { item = `{c}_stained_glass_pane`, count = 8 } })
+end
+
 Recipes.shaped = shaped
+-- Phase 9e: dyes (Java). From plants and materials, and mixed from other dyes.
+for _, r in {
+	{ { "bone_meal" }, "white_dye", 1 },
+	{ { "azure_bluet" }, "light_gray_dye", 1 }, { { "oxeye_daisy" }, "light_gray_dye", 1 },
+	{ { "poppy" }, "red_dye", 1 }, { { "red_tulip" }, "red_dye", 1 }, { { "beetroot" }, "red_dye", 1 },
+	{ { "dandelion" }, "yellow_dye", 1 },
+	{ { "lapis_lazuli" }, "blue_dye", 1 }, { { "cornflower" }, "blue_dye", 1 },
+	{ { "red_dye", "yellow_dye" }, "orange_dye", 2 },
+	{ { "green_dye", "white_dye" }, "lime_dye", 2 },
+	{ { "red_dye", "white_dye" }, "pink_dye", 2 },
+	{ { "black_dye", "white_dye" }, "gray_dye", 2 },
+	{ { "gray_dye", "white_dye" }, "light_gray_dye", 2 },
+	{ { "black_dye", "white_dye", "white_dye" }, "light_gray_dye", 3 },
+	{ { "blue_dye", "green_dye" }, "cyan_dye", 2 },
+	{ { "blue_dye", "white_dye" }, "light_blue_dye", 2 },
+	{ { "blue_dye", "red_dye" }, "purple_dye", 2 },
+	{ { "purple_dye", "pink_dye" }, "magenta_dye", 2 },
+	{ { "blue_dye", "red_dye", "red_dye", "white_dye" }, "magenta_dye", 4 },
+	{ { "pink_dye", "red_dye", "blue_dye" }, "magenta_dye", 3 },
+} do
+	table.insert(shapeless, { ingredients = r[1], result = { item = r[2], count = r[3] } })
+end
+-- dyeing: any wool + a dye -> wool of that colour; any bed + a dye -> a bed of that colour
+for _, c in COLORS do
+	table.insert(shapeless, { ingredients = { "#wool", `{c}_dye` }, result = { item = `{c}_wool`, count = 1 } })
+	table.insert(shapeless, { ingredients = { "#beds", `{c}_dye` }, result = { item = `{c}_bed`, count = 1 } })
+end
+
 Recipes.shapeless = shapeless
 
 -- Furnace: input item -> output item (one per SMELT_SECONDS).
@@ -165,6 +218,7 @@ Recipes.smelting = {
 	raw_beef = "steak",
 	raw_chicken = "cooked_chicken",
 	raw_mutton = "cooked_mutton",
+	cactus = "green_dye", -- Phase 9e (Java)
 } :: { [string]: string }
 
 -- Fuel burn time in seconds (one coal smelts 8 items).

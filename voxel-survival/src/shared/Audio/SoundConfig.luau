@@ -197,14 +197,22 @@ local function fluid(name: string): { string }
 	return out
 end
 
+local function colored(suffix: string): { string }
+	local out = {}
+	for _, c in COLORS do
+		table.insert(out, `{c}_{suffix}`)
+	end
+	return out
+end
+
 SoundConfig.footsteps = {
 	soft = with(with({
 		"grass_block", "snowy_grass_block", "dirt", "farmland", "sand", "gravel", "clay", "snow_block",
-		"white_wool", "cactus", "tnt",
+		"cactus", "tnt",
 		-- plants (you can't stand on them; listed so every block has a group)
 		"short_grass", "dandelion", "poppy", "azure_bluet", "oxeye_daisy", "cornflower", "red_tulip",
 		"wheat", "carrots", "potatoes", "beetroots", "sugar_cane", "vine",
-	}, woods({ "leaves", "sapling" })), beds()),
+	}, woods({ "leaves", "sapling" })), with(with(beds(), colored("wool")), colored("carpet"))),
 	wood = with(woods({ "planks", "log", "slab", "stairs", "fence", "fence_gate", "door", "trapdoor", "sign", "hanging_sign" }), {
 		"crafting_table", "chest", "ladder", "campfire", "campfire_unlit", "torch",
 		"wall_torch_north", "wall_torch_east", "wall_torch_south", "wall_torch_west",
@@ -215,6 +223,7 @@ SoundConfig.footsteps = {
 		"sandstone", "sandstone_slab", "sandstone_stairs", "sandstone_wall", "bedrock", "obsidian", "furnace", "brewing_stand",
 		"coal_ore", "iron_ore", "gold_ore", "copper_ore", "diamond_ore", "emerald_ore", "lapis_ore", "volt_ore",
 		"glass", "glass_pane", "ice", "iron_bars", "iron_door", "iron_trapdoor",
+		table.unpack(with(colored("stained_glass"), colored("stained_glass_pane"))),
 	},
 	none = with(with(fluid("water"), fluid("lava")), { "fire" }),
 } :: { [string]: { string } }

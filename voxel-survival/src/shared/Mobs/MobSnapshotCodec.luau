@@ -3,18 +3,19 @@
 --
 -- Unreliable remote events are dropped by Roblox when their payload is larger than ~900 bytes
 -- (Phase 5 test: "Unreliable Event dropped as its payload is too large", so most mobs never
--- reached the client). Each mob is packed into 20 bytes in a buffer, and a snapshot is split
+-- reached the client). Each mob is packed into 21 bytes in a buffer, and a snapshot is split
 -- into packets of at most MOBS_PER_PACKET mobs (~600 bytes).
 --
 -- Record (little endian): u16 id | u8 type code | u8 flags | f32 x | f32 y | f32 z (studs)
 --                         | i16 yaw | i16 pitch   (angles scaled: value / 32767 * pi)
+--                         | u8 variant (sheep: wool colour 1..16; 0 = none)  (Phase 9e)
 
 local MobSnapshotCodec = {}
 
-MobSnapshotCodec.RECORD_BYTES = 20
-MobSnapshotCodec.MOBS_PER_PACKET = 30
+MobSnapshotCodec.RECORD_BYTES = 21
+MobSnapshotCodec.MOBS_PER_PACKET = 28 -- 28 x 21 = 588 bytes
 
-export type Record = { id: number, code: number, flags: number, x: number, y: number, z: number, yaw: number, pitch: number }
+export type Record = { id: number, code: number, flags: number, x: number, y: number, z: number, yaw: number, pitch: number, variant: number? }
 
 local function angleToI16(a: number): number
 	a = (a + math.pi) % (2 * math.pi) - math.pi -- wrap to [-pi, pi)
@@ -40,6 +41,7 @@ function MobSnapshotCodec.encode(records: { Record }): { buffer }
 			buffer.writef32(b, o + 12, r.z)
 			buffer.writei16(b, o + 16, angleToI16(r.yaw))
 			buffer.writei16(b, o + 18, angleToI16(r.pitch))
+			buffer.writeu8(b, o + 20, (r.variant or 0) % 256)
 		end
 		table.insert(packets, b)
 	end
@@ -59,6 +61,7 @@ function MobSnapshotCodec.decode(b: buffer): { Record }
 			z = buffer.readf32(b, o + 12),
 			yaw = buffer.readi16(b, o + 16) / 32767 * math.pi,
 			pitch = buffer.readi16(b, o + 18) / 32767 * math.pi,
+			variant = buffer.readu8(b, o + 20),
 		})
 	end
 	return out

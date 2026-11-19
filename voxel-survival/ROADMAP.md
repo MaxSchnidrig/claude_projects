@@ -217,6 +217,20 @@ are fine.
   (Regeneration).
   Not Java (decided to keep): his fish species, loot table and fish food values.
 
+- 9e (0.9.8, animals and colours): breeding with Java's foods (cows / sheep wheat; pigs carrot,
+  potato, beetroot; chickens seeds), love mode 600 ticks, partners within 8 blocks, a baby after
+  60 ticks together, parents rest 6000 ticks; animals follow a player holding their food
+  (10 blocks); babies (half size, no drops) grow up in 20 minutes, follow an adult, grow 10 %
+  faster per feeding; 5 % of natural spawns are babies. Sheep: Java's natural colours, shears
+  (1-3 wool, then sheared), grazing (grass block -> dirt, short grass eaten) regrows wool and
+  grows lambs a minute, dyeing, lambs mix their parents' dyes. Animals keep age / colour /
+  sheared state when their chunk unloads. 16 dyes (Java recipes from flowers, bone meal, lapis,
+  beetroot, cactus smelting, and mixing), wool, carpets, stained glass and panes in 16 colours,
+  beds from coloured wool, dyeing wool / carpets / beds.
+  Left for later: black and brown dye have no source yet (ink sacs, cocoa beans), thrown eggs and
+  chicks from eggs, leads, name tags, saddles, XP orbs from breeding, animal sounds when bred,
+  sheep colours by biome (we use the temperate table everywhere).
+
 ## Phase 8 – Survival foundations (XL)
 
 **Liquids and gravity blocks**

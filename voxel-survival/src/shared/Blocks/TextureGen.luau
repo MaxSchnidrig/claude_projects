@@ -845,6 +845,39 @@ for colour, c in BED_COLORS do
 	end
 end
 
+-- Phase 9e: wool in every colour (the white wool weave, tinted) and stained glass (the glass
+-- pattern in the colour; the world draws glass as tinted see-through parts, icons use this).
+local function woolIn(c: RGB): (number) -> Img
+	return function(seed)
+		local img = new()
+		for y = 0, N - 1 do
+			for x = 0, N - 1 do
+				local weave = ((x + y) % 4 == 0) or ((x - y) % 4 == 0)
+				put(img, x, y, shade(c, (if weave then 0.9 else 1) + (rnd(seed, x, y) - 0.5) * 0.07))
+			end
+		end
+		return img
+	end
+end
+for colour, c in BED_COLORS do
+	if colour ~= "white" then
+		recipes[`{colour}_wool`] = woolIn(c)
+	end
+	local g: RGB = { c[1] * 0.8 + 50, c[2] * 0.8 + 50, c[3] * 0.8 + 50 }
+	recipes[`{colour}_stained_glass`] = function(_seed)
+		local img = new()
+		for y = 0, N - 1 do
+			for x = 0, N - 1 do
+				local edge = x == 0 or y == 0 or x == N - 1 or y == N - 1
+				local glint = (x - y == 3 or x - y == 4) and x > 3 and x < 10
+				put(img, x, y, if edge then shade(g, 0.85) elseif glint then shade(g, 1.25) else g,
+					if edge then 255 elseif glint then 210 else 110)
+			end
+		end
+		return img
+	end
+end
+
 -- Ladder: the rails and rungs are real geometry; this is their wood, with a lengthwise grain.
 recipes.ladder = function(seed)
 	local img = new()

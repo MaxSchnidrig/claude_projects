@@ -458,6 +458,8 @@ end
 -- skips the empty edges); no collision. Short grass and flowers: two sheets crossing in the
 -- middle. Crops: four sheets in a # like Java's crop model. Farmland: 15/16 high.
 local FARMLAND: { Box } = { { 0, 0, 0, 1, 15 / 16, 1 } }
+-- Carpet (Java): a 1/16 sheet; you walk on it (Phase 9e)
+local CARPET: { Box } = { { 0, 0, 0, 1, 1 / 16, 1 } }
 -- Cactus (Java): 1/16 in from every side; you can walk 1/16 into it (and get pricked)
 local CACTUS_BOX: { Box } = { { 1 / 16, 0, 1 / 16, 15 / 16, 1, 15 / 16 } }
 local CACTUS_COLLISION: { Box } = { { 1 / 16, 0, 1 / 16, 15 / 16, 15 / 16, 15 / 16 } }
@@ -530,6 +532,8 @@ function Shapes.boxes(id: number, get: Getter, collision: boolean): { Box }
 		return BREWING_STAND
 	elseif shape == "farmland" then
 		return FARMLAND
+	elseif shape == "carpet" then
+		return CARPET
 	elseif shape == "cactus" then
 		return if collision then CACTUS_COLLISION else CACTUS_BOX
 	elseif shape == "plant" then

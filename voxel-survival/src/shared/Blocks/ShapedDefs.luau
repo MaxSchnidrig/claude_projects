@@ -31,6 +31,10 @@
 --   811, 812  pumpkin, melon
 --   813..820  pumpkin stem  age 0..7;  821..824 attached pumpkin stem facing N, E, S, W
 --   825..832  melon stem    age 0..7;  833..836 attached melon stem facing N, E, S, W
+--   841..855  coloured wool (Phase 9e), Java colour order without white (white_wool is 37)
+--   856..871  carpets       16 colours
+--   872..887  stained glass 16 colours
+--   888..903  stained glass panes 16 colours
 
 local ShapedDefs = {}
 
@@ -388,7 +392,43 @@ function ShapedDefs.list(): { Def }
 			})
 		end
 	end
+	-- Phase 9e: the 16 colours (Java dye order, ShapedDefs.BED_COLORS)
+	for c, colour in ShapedDefs.BED_COLORS do
+		local name = ShapedDefs.colorName(colour)
+		local woolTex = `{colour}_wool`
+		if c > 1 then
+			table.insert(out, {
+				id = 839 + c, key = woolTex, name = `{name} Wool`, hardness = 0.8, tool = "shears",
+				textures = { all = woolTex }, sound = "wool", flammable = { 30, 60 },
+			})
+		end
+		-- carpet: a 1/16 sheet of wool that needs a block under it (Java CarpetBlock)
+		table.insert(out, {
+			id = 855 + c, key = `{colour}_carpet`, name = `{name} Carpet`, hardness = 0.1,
+			textures = { all = woolTex }, transparent = true, opacity = 0, shape = "carpet",
+			sound = "wool", flammable = { 60, 20 },
+		})
+		-- stained glass drops nothing without Silk Touch, like glass (Java)
+		table.insert(out, {
+			id = 871 + c, key = `{colour}_stained_glass`, name = `{name} Stained Glass`, hardness = 0.3,
+			drop = false, textures = { all = `{colour}_stained_glass` }, transparent = true, sound = "glass",
+		})
+		table.insert(out, {
+			id = 887 + c, key = `{colour}_stained_glass_pane`, name = `{name} Stained Glass Pane`, hardness = 0.3,
+			drop = false, textures = { all = `{colour}_stained_glass` }, transparent = true, opacity = 0,
+			shape = "pane", state = { bars = false }, sound = "glass", icon = "pane",
+		})
+	end
 	return out
+end
+
+-- "light_blue" -> "Light Blue"
+function ShapedDefs.colorName(colour: string): string
+	local words = {}
+	for w in string.gmatch(colour, "[^_]+") do
+		table.insert(words, string.upper(string.sub(w, 1, 1)) .. string.sub(w, 2))
+	end
+	return table.concat(words, " ")
 end
 
 return ShapedDefs

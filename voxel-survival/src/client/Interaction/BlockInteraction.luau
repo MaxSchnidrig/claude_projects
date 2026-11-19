@@ -30,6 +30,7 @@ local SurvivalHUD = require(script.Parent.Parent.Survival.SurvivalHUD)
 local SurvivalRules = require(Shared.Gameplay.SurvivalRules)
 local Combat = require(Shared.Gameplay.Combat)
 local MobClient = require(script.Parent.Parent.Mobs.MobClient)
+local Animals = require(Shared.Mobs.Animals)
 local MovementController = require(script.Parent.Parent.Player.MovementController)
 local Shapes = require(Shared.Blocks.Shapes)
 local Placement = require(Shared.Blocks.Placement)
@@ -119,10 +120,16 @@ local lastSwing = 0
 local lastHeld: string? = nil
 
 -- Right-click on the mob under the crosshair with an item it reacts to (Java mobInteract):
--- a bucket on a cow. The server checks the mob and gives the milk. True if the click was used.
+-- a bucket on a cow, an animal's food (love / growing babies), shears or a dye on a sheep
+-- (Mobs/Animals.wants). The server checks it and acts. True if the click was used.
 local function useMob(): boolean
 	local id = BlockInteraction.mobTarget
-	if not id or InventoryClient.heldItem() ~= "bucket" or MobClient.keyOf(id) ~= "cow" then
+	local key = id and MobClient.keyOf(id)
+	if not id or not key then
+		return false
+	end
+	local baby, sheared = MobClient.stateOf(id)
+	if not Animals.wants(key, InventoryClient.heldItem(), baby, sheared) then
 		return false
 	end
 	Remotes.get("UseMob"):FireServer(id)

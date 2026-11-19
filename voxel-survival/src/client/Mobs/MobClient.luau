@@ -25,7 +25,7 @@ local MovementController = require(script.Parent.Parent.Player.MovementControlle
 
 local BS = Config.BLOCK_SIZE
 local INTERP_DELAY = 0.15
-local FLAG = { BURNING = 1, FUSING = 2, ANGRY = 4, PANIC = 8, CHARGED = 16, STUCK = 32 }
+local FLAG = { BURNING = 1, FUSING = 2, ANGRY = 4, PANIC = 8, CHARGED = 16, STUCK = 32, BABY = 64, SHEARED = 128 }
 
 type Sample = { t: number, pos: Vector3, yaw: number, pitch: number, flags: number }
 type Mob = {
@@ -188,6 +188,7 @@ local function onSnapshot(packet: any)
 			if m and not m.dying then
 				m.lastSeen = now
 				table.insert(m.samples, { t = now, pos = pos, yaw = r.yaw, pitch = r.pitch, flags = r.flags })
+				m.variant = r.variant or 0
 				while #m.samples > 6 do
 					table.remove(m.samples, 1)
 				end
@@ -195,6 +196,56 @@ local function onSnapshot(packet: any)
 		end
 	end
 end
+
+-- Sheep wool colours (Phase 9e): our wool colours; non-white sheep are a quarter darker than the
+-- dye (as in Java), white keeps the sheep's own cream wool. Sheared: the body shows its skin.
+local WOOL = {
+	{ 236, 228, 210 }, { 240, 118, 20 }, { 190, 68, 180 }, { 58, 176, 218 }, { 248, 198, 40 }, { 112, 186, 26 },
+	{ 238, 142, 172 }, { 62, 68, 72 }, { 142, 142, 134 }, { 22, 138, 146 }, { 122, 42, 172 }, { 54, 58, 158 },
+	{ 114, 72, 40 }, { 84, 108, 28 }, { 160, 38, 34 }, { 22, 22, 26 },
+}
+local SHEEP_SKIN = Color3.fromRGB(214, 176, 158)
+local function woolColor(variant: number): Color3?
+	local c = WOOL[variant]
+	if not c then
+		return nil
+	end
+	local f = if variant == 1 then 1 else 0.75
+	return Color3.fromRGB(c[1] * f + (if variant == 16 then 30 else 0), c[2] * f + (if variant == 16 then 30 else 0), c[3] * f + (if variant == 16 then 30 else 0))
+end
+
+-- Small particles over a mob: hearts (love, breeding), green sparkles (a fed baby), white tufts
+-- (shearing). Our own simple look: little squares drifting up and fading.
+local function puffs(center: Vector3, color: Color3, count: number, size: number)
+	for _ = 1, count do
+		local p = Instance.new("Part")
+		p.Anchored = true
+		p.CanCollide = false
+		p.CanQuery = false
+		p.CanTouch = false
+		p.CastShadow = false
+		p.Material = Enum.Material.Neon
+		p.Color = color
+		p.Size = Vector3.new(size, size, size * 0.3)
+		local start = center + Vector3.new((math.random() - 0.5) * 2, (math.random() - 0.5) * 1.2, (math.random() - 0.5) * 2)
+		p.CFrame = CFrame.new(start)
+		p.Parent = workspace
+		local t0 = os.clock()
+		task.spawn(function()
+			while p.Parent do
+				local t = os.clock() - t0
+				if t > 1.1 then
+					p:Destroy()
+					break
+				end
+				p.CFrame = CFrame.new(start + Vector3.new(0, t * 2.2, 0))
+				p.Transparency = math.clamp((t - 0.6) / 0.5, 0, 1)
+				RunService.RenderStepped:Wait()
+			end
+		end)
+	end
+end
+MobClient.puffs = puffs
 
 local function onEvent(e: any)
 	if typeof(e) ~= "table" then
@@ -210,6 +261,12 @@ local function onEvent(e: any)
 		-- our own hit, confirmed by the server (F3 line)
 		MobClient.stats.lastHit = string.format("%s%.1f damage (charge %d%%)",
 			if e.crit then "CRITICAL x1.5, " else "", tonumber(e.damage) or 0, math.floor((tonumber(e.charge) or 0) * 100))
+	elseif (e.type == "love" or e.type == "bred") and typeof(e.pos) == "Vector3" then
+		puffs(e.pos + Vector3.new(0, 1.5, 0), Color3.fromRGB(235, 60, 90), if e.type == "bred" then 7 else 4, 0.35)
+	elseif e.type == "fed" and typeof(e.pos) == "Vector3" then
+		puffs(e.pos, Color3.fromRGB(120, 230, 90), 6, 0.25)
+	elseif e.type == "shear" and typeof(e.pos) == "Vector3" then
+		puffs(e.pos, Color3.fromRGB(240, 236, 226), 5, 0.4)
 	elseif e.type == "died" and m then
 		m.dying = os.clock()
 	elseif e.type == "teleport" then
@@ -244,9 +301,13 @@ local function onEvent(e: any)
 	end
 end
 
+
 -- Animate one mob's parts for this frame.
 local function pose(m: Mob, now: number)
 	local def = m.def
+	-- babies (Phase 9e) are drawn at half size
+	local scale = if bit32.band(m.flags, FLAG.BABY) ~= 0 then 0.5 else 1
+	local sheared = bit32.band(m.flags, FLAG.SHEARED) ~= 0
 	local root = CFrame.new(m.pos) * CFrame.Angles(0, m.yaw, 0)
 	if def.key == "arrow" then
 		root = CFrame.new(m.pos) * CFrame.Angles(0, m.yaw, 0) * CFrame.Angles(m.pitch, 0, 0)
@@ -289,9 +350,28 @@ local function pose(m: Mob, now: number)
 		elseif limb == "carry" then
 			localCF = CFrame.new(0, math.sin(now * 3) * 0.05 * BS, 0) * localCF * CFrame.Angles(0, now, 0)
 		end
+		if scale ~= 1 then
+			localCF = CFrame.new(localCF.Position * scale) * localCF.Rotation
+		end
+		if (info :: any).scale ~= scale then
+			(info :: any).scale = scale
+			info.part.Size = b.size * BS * scale
+		end
 		info.part.CFrame = root * localCF
-		-- colour: hurt tint, fuse glow, angry voidling core
+		-- colour: hurt tint, fuse glow, angry voidling core, sheep wool
 		local color = info.baseColor
+		if b.wool then
+			local wc = woolColor((m :: any).variant or 0)
+			if wc then
+				color = wc
+			end
+			if sheared then
+				color = SHEEP_SKIN
+			end
+			if not m.dying then
+				info.part.Transparency = if sheared and b.wool == "tuft" then 1 else (b.transparency or 0)
+			end
+		end
 		if limb == "fuse" and fusing then
 			local pulse = (math.sin(now * 14) + 1) / 2
 			color = color:Lerp(Color3.fromRGB(255, 250, 220), 0.4 + pulse * 0.6)
@@ -417,9 +497,10 @@ function MobClient.raycast(origin: Vector3, dir: Vector3, maxDist: number): (num
 	local bestId, bestT = nil, maxDist
 	for id, m in mobs do
 		if not m.dying and m.def.category ~= "projectile" then
-			local hw = m.def.width / 2 * BS
+			local sc = if bit32.band(m.flags, FLAG.BABY) ~= 0 then 0.5 else 1
+			local hw = m.def.width / 2 * BS * sc
 			local lo = Vector3.new(m.pos.X - hw, m.pos.Y, m.pos.Z - hw)
-			local hi = Vector3.new(m.pos.X + hw, m.pos.Y + m.def.height * BS, m.pos.Z + hw)
+			local hi = Vector3.new(m.pos.X + hw, m.pos.Y + m.def.height * BS * sc, m.pos.Z + hw)
 			if m.def.key == "voidling" then
 				lo += Vector3.new(0, 0.6 * BS, 0)
 				hi += Vector3.new(0, 0.6 * BS, 0)
@@ -454,6 +535,15 @@ function MobClient.raycast(origin: Vector3, dir: Vector3, maxDist: number): (num
 		end
 	end
 	return bestId, bestT
+end
+
+-- (Phase 9e) Is this mob a baby / a sheared sheep, as the last snapshot said?
+function MobClient.stateOf(id: any): (boolean, boolean)
+	local m = if typeof(id) == "number" then mobs[id] else nil
+	if not m then
+		return false, false
+	end
+	return bit32.band(m.flags, FLAG.BABY) ~= 0, bit32.band(m.flags, FLAG.SHEARED) ~= 0
 end
 
 function MobClient.keyOf(id: any): string?

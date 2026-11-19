@@ -293,7 +293,158 @@ end
 
 -- Behaviours ---------------------------------------------------------------------------------
 
-local function passive(m: any, now: number, dt: number)
+-- Animals (Phase 9e, Mobs/Animals): Java's goals by priority - panic, breed, tempt (follow a
+-- player holding its food), follow parent (babies), eat grass (sheep), stroll.
+local Animals = require(Shared.Mobs.Animals)
+
+local function heldFood(m: any, t: any): boolean
+	local c = t.player and t.player.Character
+	if not c then
+		return false
+	end
+	return Animals.isFood(m.def.key, c:GetAttribute("HeldItem")) or Animals.isFood(m.def.key, c:GetAttribute("HeldOff"))
+end
+
+local function dist(m: any, o: any): number
+	return math.sqrt((m.x - o.x) ^ 2 + (m.y - o.y) ^ 2 + (m.z - o.z) ^ 2)
+end
+
+-- Java BreedGoal: walk to a partner in love within 8 blocks; after 60 ticks, if within 3
+-- blocks, a baby. Returns true while busy.
+local function breed(m: any, now: number, dt: number): boolean
+	local a = m.ai
+	if m.love <= 0 or m.age ~= 0 then
+		a.partner, a.breedTicks = nil, 0
+		return false
+	end
+	local p = a.partner
+	if not (p and p.alive and p.love > 0 and p.age == 0 and dist(m, p) <= Animals.BREED_RANGE + 2) then
+		p = nil
+		local best = Animals.BREED_RANGE
+		for _, o in S.mobs do
+			if o ~= m and o.alive and o.def.key == m.def.key and o.love > 0 and o.age == 0 then
+				local d = dist(m, o)
+				if d <= best then
+					best, p = d, o
+				end
+			end
+		end
+		a.partner, a.breedTicks = p, 0
+	end
+	if not p then
+		return false
+	end
+	goTo(m, math.floor(p.x), math.floor(p.y + 0.01), math.floor(p.z), speedOf(m, Animals.BREED_SPEED), now)
+	a.breedTicks = (a.breedTicks or 0) + dt * 20
+	if a.breedTicks >= Animals.BREED_TICKS then
+		a.breedTicks = 0
+		if dist(m, p) < Animals.BREED_DISTANCE and m.love > 0 and p.love > 0 then
+			S.breed(m, p)
+			a.partner = nil
+		end
+	end
+	return true
+end
+
+-- Java TemptGoal: follow the nearest player within 10 blocks holding its food, to 2.5 blocks.
+local function tempt(m: any, now: number, targets: { any }): boolean
+	local best, bt = Animals.TEMPT_RANGE, nil
+	for _, t in targets do
+		local d = (t.feet - Vector3.new(m.x, m.y, m.z)).Magnitude
+		if d <= best and heldFood(m, t) then
+			best, bt = d, t
+		end
+	end
+	if not bt then
+		return false
+	end
+	local dx, dz = bt.feet.X - m.x, bt.feet.Z - m.z
+	if best < Animals.TEMPT_STOP then
+		face(m, dx, dz) -- close enough: just look at the player
+		return true
+	end
+	goTo(m, math.floor(bt.feet.X), math.floor(bt.feet.Y + 0.01), math.floor(bt.feet.Z),
+		speedOf(m, Animals.TEMPT_SPEED[m.def.key] or 1), now)
+	return true
+end
+
+-- Java FollowParentGoal: a baby walks to the nearest adult of its kind within 8 blocks when it's
+-- 3 or more blocks away (checked every 10 ticks).
+local function followParent(m: any, now: number): boolean
+	if m.age >= 0 then
+		return false
+	end
+	local a = m.ai
+	if now >= (a.parentCheckAt or 0) then
+		a.parentCheckAt = now + 0.5
+		local best, parent = math.huge, nil
+		for _, o in S.mobs do
+			if o ~= m and o.alive and o.def.key == m.def.key and o.age >= 0
+				and math.abs(o.x - m.x) <= 8 and math.abs(o.y - m.y) <= 4 and math.abs(o.z - m.z) <= 8
+			then
+				local d = dist(m, o)
+				if d <= best then
+					best, parent = d, o
+				end
+			end
+		end
+		a.parent = parent
+	end
+	local p = a.parent
+	if not (p and p.alive) then
+		return false
+	end
+	local d = dist(m, p)
+	if d < Animals.FOLLOW_MIN or d > Animals.FOLLOW_MAX then
+		return false
+	end
+	goTo(m, math.floor(p.x), math.floor(p.y + 0.01), math.floor(p.z), speedOf(m, Animals.FOLLOW_SPEED[m.def.key] or 1), now)
+	return true
+end
+
+-- Java EatBlockGoal (sheep): now and then stop for 40 ticks and eat the short grass at its feet
+-- or the grass block under it (which turns to dirt).
+local SHORT_GRASS = BlockRegistry.id("short_grass")
+local GRASS_BLOCK = BlockRegistry.id("grass_block")
+local DIRT = BlockRegistry.id("dirt")
+local function graze(m: any, dt: number): boolean
+	if m.def.key ~= "sheep" then
+		return false
+	end
+	local a = m.ai
+	local bx, by, bz = math.floor(m.x), math.floor(m.y + 0.01), math.floor(m.z)
+	if not a.grazeTicks then
+		local chance = if m.age < 0 then Animals.GRAZE_CHANCE_BABY else Animals.GRAZE_CHANCE_ADULT
+		local ticks = math.max(1, math.floor(dt * 20 + 0.5))
+		if math.random() >= 1 - (1 - 1 / chance) ^ ticks then
+			return false
+		end
+		if S.blockAt(bx, by, bz) ~= SHORT_GRASS and S.blockAt(bx, by - 1, bz) ~= GRASS_BLOCK then
+			return false
+		end
+		a.grazeTicks = Animals.GRAZE_TICKS
+		S.broadcastEvent({ type = "grazeStart", id = m.id }, Vector3.new(m.x, m.y, m.z))
+	end
+	m.wantX, m.wantZ = 0, 0
+	local before = a.grazeTicks
+	a.grazeTicks -= dt * 20
+	if before > 4 and a.grazeTicks <= 4 then
+		-- the bite (Java: at tick 4 of 40)
+		if S.blockAt(bx, by, bz) == SHORT_GRASS then
+			S.setBlock(bx, by, bz, 0)
+			S.ateGrass(m)
+		elseif S.blockAt(bx, by - 1, bz) == GRASS_BLOCK then
+			S.setBlock(bx, by - 1, bz, DIRT)
+			S.ateGrass(m)
+		end
+	end
+	if a.grazeTicks <= 0 then
+		a.grazeTicks = nil
+	end
+	return true
+end
+
+local function passive(m: any, now: number, dt: number, targets: { any }?)
 	local a = m.ai
 	if (a.panicUntil or 0) > now or m.burning > 0 then
 		m.flags = S.FLAG.PANIC
@@ -311,6 +462,11 @@ local function passive(m: any, now: number, dt: number)
 	end
 	a.panicGoal = nil
 	m.flags = 0
+	if Animals.isAnimal(m.def.key) and targets then
+		if breed(m, now, dt) or tempt(m, now, targets) or followParent(m, now) or graze(m, dt) then
+			return
+		end
+	end
 	wander(m, now, dt)
 end
 
@@ -527,7 +683,7 @@ function MobAI.think(m: any, dt: number, targets: { any })
 	m.wantX, m.wantZ = 0, 0
 	local b = m.def.behavior
 	if b == "wander" then
-		passive(m, now, dt)
+		passive(m, now, dt, targets)
 	elseif b == "melee" then
 		melee(m, now, dt, targets)
 	elseif b == "ranged" then

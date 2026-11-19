@@ -234,4 +234,14 @@ for _, fish in require(script.Parent.Fishing).SPECIES do
 end
 table.insert(defs, { key = "cooked_fish", name = "Grilled Fish Fillet", color = { 212, 143, 89 },
 	food = { hunger = 5, saturation = 6 } })
+-- Phase 9e: the 16 dyes (Java order). Colours: the beds' palette (Blocks/TexturePalette).
+for _, c in { "white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray", "light_gray", "cyan",
+	"purple", "blue", "brown", "green", "red", "black" } do
+	local words = {}
+	for w in string.gmatch(c, "[^_]+") do
+		table.insert(words, string.upper(string.sub(w, 1, 1)) .. string.sub(w, 2))
+	end
+	table.insert(defs, { key = `{c}_dye`, name = `{table.concat(words, " ")} Dye`, color = { 200, 200, 200 } })
+end
+
 return defs

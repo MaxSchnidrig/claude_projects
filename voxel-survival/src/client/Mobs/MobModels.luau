@@ -36,6 +36,7 @@ export type Box = {
 	restPitch: number?, -- degrees: resting angle around X (zombie arms forward)
 	side: number?, -- spider legs / wings: -1 left, 1 right
 	glow: boolean?,
+	wool: string?, -- sheep (Phase 9e): "body" takes the wool colour (skin when sheared); "tuft" hides when sheared
 }
 
 local function rgb(r: number, g: number, b: number): Color3
@@ -210,10 +211,10 @@ end
 do
 	local wool, face = rgb(236, 228, 210), rgb(60, 55, 56)
 	local d: { Box } = {
-		{ size = v(0.75, 0.62, 1.0), pos = v(0, 0.86, 0.05), color = wool },
-		{ size = v(0.5, 0.2, 0.5), pos = v(0, 1.2, 0.1), color = wool }, -- wool puff
+		{ size = v(0.75, 0.62, 1.0), pos = v(0, 0.86, 0.05), color = wool, wool = "body" },
+		{ size = v(0.5, 0.2, 0.5), pos = v(0, 1.2, 0.1), color = wool, wool = "tuft" }, -- wool puff
 		{ size = v(0.36, 0.38, 0.36), pos = v(0, 1.1, -0.6), color = face },
-		{ size = v(0.42, 0.16, 0.2), pos = v(0, 1.31, -0.5), color = wool }, -- woolly cap
+		{ size = v(0.42, 0.16, 0.2), pos = v(0, 1.31, -0.5), color = wool, wool = "tuft" }, -- woolly cap
 	}
 	for i, p in { v(-0.22, 0, -0.32), v(0.22, 0, -0.32), v(-0.22, 0, 0.42), v(0.22, 0, 0.42) } do
 		table.insert(d, { size = v(0.16, 0.56, 0.16), pos = p + v(0, 0.28, 0), color = face, limb = "legL", hinge = p + v(0, 0.56, 0), phase = (i == 1 or i == 4) and 0 or 1 })

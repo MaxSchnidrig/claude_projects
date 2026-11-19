@@ -286,6 +286,18 @@ function Placement.resolve(itemBlock: number, ctx: Ctx, get: (number, number, nu
 		return { { x = x, y = y, z = z, id = itemBlock } }
 	end
 
+	if shape == "carpet" then
+		-- Java CarpetBlock: any block under it (not air)
+		if not replaceable(get(x, y, z)) or isLiquid[(get(x, y, z) or 0) + 1] then
+			return nil, "cell occupied"
+		end
+		local below = get(x, y - 1, z)
+		if below == 0 then
+			return nil, "nothing under the carpet"
+		end
+		return { { x = x, y = y, z = z, id = itemBlock } }
+	end
+
 	if shape == "slab" then
 		-- merge into the clicked slab
 		local clicked = get(hx, hy, hz)
@@ -482,6 +494,9 @@ function Placement.supported(id: number, x: number, y: number, z: number, get: (
 		local od = other and byId[other]
 		local ok = other == nil or (od ~= nil and od.family == d.family and od.state.part ~= d.state.part)
 		return ok, d.state.part == "head"
+	elseif shape == "carpet" then
+		local below = get(x, y - 1, z)
+		return below ~= 0, true
 	elseif shape == "plant" or shape == "crop" or shape == "cactus" then
 		-- (their drops come from Gameplay/Farming, the caller handles them)
 		return Farming.survivesAt(id, x, y, z, get), false

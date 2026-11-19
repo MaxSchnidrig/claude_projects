@@ -32,6 +32,7 @@ local SurvivalRules = require(Shared.Gameplay.SurvivalRules)
 local SkyLight = require(Shared.World.SkyLight)
 local MobSnapshotCodec = require(Shared.Mobs.MobSnapshotCodec)
 local SneakPose = require(Shared.Gameplay.SneakPose)
+local Animals = require(Shared.Mobs.Animals)
 local WorldService = require(script.Parent.Parent.World.WorldService)
 local ItemEntityService = require(script.Parent.Parent.World.ItemEntityService)
 local WeatherService = require(script.Parent.Parent.World.WeatherService)
@@ -93,9 +94,15 @@ export type Mob = {
 	stuck: number?,
 	eggTime: number?, -- chickens: ticks until the next egg (Java 6000..11999)
 	charged: boolean?, -- a Sneaker struck by lightning: its blast is twice as strong
+	-- animals (Phase 9e, Mobs/Animals): age < 0 baby (counts up to 0), > 0 can't breed yet
+	-- (counts down); love > 0 ticks of love mode; sheep wool colour and sheared state
+	age: number,
+	love: number,
+	color: string?,
+	sheared: boolean?,
 }
 
-local FLAG = { BURNING = 1, FUSING = 2, ANGRY = 4, PANIC = 8, CHARGED = 16, STUCK = 32 }
+local FLAG = { BURNING = 1, FUSING = 2, ANGRY = 4, PANIC = 8, CHARGED = 16, STUCK = 32, BABY = 64, SHEARED = 128 }
 
 local MobService = {}
 MobService.FLAG = FLAG
@@ -196,7 +203,15 @@ end
 -- Lifecycle
 ---------------------------------------------------------------------------------------------
 
-function MobService.spawn(key: string, x: number, y: number, z: number, yaw: number?): Mob?
+-- Size factor (babies are half size, Java AgeableMob).
+function MobService.scaleOf(m: Mob): number
+	return if m.age < 0 then 0.5 else 1
+end
+
+-- `opts.age` / `opts.color` set an animal's state (breeding, chunks coming back); `opts.natural`:
+-- a natural spawn (5 % babies unless it's the first of its group, sheep get Java's colours).
+export type SpawnOpts = { age: number?, color: string?, sheared: boolean?, natural: boolean?, first: boolean? }
+function MobService.spawn(key: string, x: number, y: number, z: number, yaw: number?, opts: SpawnOpts?): Mob?
 	local def = MobDefs.byKey[key]
 	if not def then
 		return nil
@@ -230,7 +245,17 @@ function MobService.spawn(key: string, x: number, y: number, z: number, yaw: num
 		lastAttackedAt = -math.huge,
 		persistent = def.category == "passive",
 		farSince = nil,
+		age = 0,
+		love = 0,
 	}
+	local o: SpawnOpts = opts or {}
+	if Animals.isAnimal(key) then
+		m.age = o.age or (if o.natural and not o.first and math.random() < Animals.BABY_CHANCE then Animals.BABY_AGE else 0)
+		if key == "sheep" then
+			m.color = o.color or Animals.naturalSheepColor(math.random(0, 99), math.random(0, 499))
+			m.sheared = o.sheared == true
+		end
+	end
 	nextId = (nextId % 60000) + 1
 	mobs[m.id] = m
 	MobService.stats.spawned += 1
@@ -265,16 +290,19 @@ local function die(m: Mob)
 	MobService.stats.killed += 1
 	local center = Vector3.new(m.x, m.y + m.def.height / 2, m.z)
 	broadcastEvent({ type = "died", id = m.id }, center)
-	-- drops (meat comes out cooked if the mob was burning)
+	-- drops (meat comes out cooked if the mob was burning); babies drop nothing (Java)
 	local byPlayer = playerKill(m)
 	local stacks = {}
-	for _, d in m.def.drops do
+	for _, d in (if m.age < 0 then {} else m.def.drops) do
 		if (d.playerKill and not byPlayer) or (d.chance and math.random() >= d.chance) then
 			continue
 		end
 		local n = math.random(d.min, d.max)
+		if d.item == "white_wool" and m.def.key == "sheep" then
+			n = if m.sheared then 0 else n -- a sheared sheep drops no wool; else its colour's
+		end
 		if n > 0 then
-			local item = d.item
+			local item = if d.item == "white_wool" and m.color then `{m.color}_wool` else d.item
 			if m.burning > 0 then
 				item = Crafting.smeltResult(item) or item
 				if not ItemRegistry.get(item) then
@@ -409,7 +437,7 @@ local function physicsTick(m: Mob)
 
 	local wasGround = m.onGround
 	local nx, ny, nz, rvx, rvy, rvz, onGround, hitWall =
-		MobPhysics.move(shapeSolid, m.x, m.y, m.z, vx * 20, vy * 20, vz * 20, def.width, def.height, TICK, 0.6)
+		MobPhysics.move(shapeSolid, m.x, m.y, m.z, vx * 20, vy * 20, vz * 20, def.width * MobService.scaleOf(m), def.height * MobService.scaleOf(m), TICK, 0.6)
 	m.x, m.y, m.z, m.onGround, m.hitWall = nx, ny, nz, onGround, hitWall
 	vx, vy, vz = rvx / 20, rvy / 20, rvz / 20
 
@@ -496,8 +524,23 @@ local function stepPhysics(m: Mob, dt: number)
 	else
 		m.burnTimer = 0
 	end
-	-- Java Chicken.aiStep: an egg every 6000..11999 ticks (5..10 minutes)
-	if def.key == "chicken" and m.alive then
+	-- animals (Java AgeableMob.aiStep / Animal.aiStep): babies grow up by 1 a tick, parents'
+	-- cooldown counts down; love mode runs out, and only adults ready to breed stay in love
+	if Animals.isAnimal(def.key) and m.alive then
+		local ticks = math.max(1, math.floor(dt / TICK + 0.5))
+		if m.age < 0 then
+			m.age = math.min(0, m.age + ticks)
+		elseif m.age > 0 then
+			m.age = math.max(0, m.age - ticks)
+		end
+		if m.age ~= 0 then
+			m.love = 0
+		elseif m.love > 0 then
+			m.love = math.max(0, m.love - ticks)
+		end
+	end
+	-- Java Chicken.aiStep: an egg every 6000..11999 ticks (5..10 minutes); not chicks
+	if def.key == "chicken" and m.alive and m.age >= 0 then
 		local t = (m.eggTime or (math.random(0, 5999) + 6000)) - math.max(1, math.floor(dt / TICK + 0.5))
 		if t <= 0 then
 			ItemEntityService.spawn({ item = "egg", count = 1 }, Vector3.new(m.x, m.y + 0.2, m.z) * BS)
@@ -727,8 +770,44 @@ function MobService.lightningTargets(x: number, z: number, y0: number, topAt: (n
 	return out
 end
 
+-- Two animals in love made a baby (Java Animal.spawnChildFromBreeding): it appears at the first
+-- parent, both parents rest 6000 ticks; a lamb mixes its parents' dye colours.
+local function mixDyes(a: string, b: string): string?
+	local r = Crafting.match({ { item = `{a}_dye`, count = 1 }, { item = `{b}_dye`, count = 1 }, nil, nil }, 2)
+	local c = r and string.match(r.item, "^(.+)_dye$")
+	return if c and r and r.count == 2 then c else nil
+end
+MobService.mixDyes = mixDyes
+function MobService.breed(a: Mob, b: Mob): Mob?
+	a.age, b.age = Animals.PARENT_COOLDOWN, Animals.PARENT_COOLDOWN
+	a.love, b.love = 0, 0
+	local color = nil
+	if a.def.key == "sheep" and a.color and b.color then
+		color = Animals.offspringColor(a.color, b.color, mixDyes, math.random(0, 1))
+	end
+	local baby = MobService.spawn(a.def.key, a.x, a.y, a.z, math.random() * math.pi * 2, { age = Animals.BABY_AGE, color = color })
+	broadcastEvent({ type = "bred", id = a.id, other = b.id, pos = Vector3.new(a.x, a.y + 0.5, a.z) * BS }, Vector3.new(a.x, a.y, a.z))
+	return baby
+end
+
+-- A mob changes a block (a sheep eating grass): through BlockUpdates, so every client sees it.
+function MobService.setBlock(x: number, y: number, z: number, id: number)
+	require(script.Parent.Parent.World.BlockUpdates).set(x, y, z, id)
+end
+
+-- A sheep finished eating grass (Java Sheep.ate): wool grows back; a lamb grows a minute.
+function MobService.ateGrass(m: Mob)
+	m.sheared = false
+	if m.age < 0 then
+		m.age = math.min(0, m.age + Animals.GRAZE_GROW_SECONDS * 20)
+	end
+	broadcastEvent({ type = "graze", id = m.id }, Vector3.new(m.x, m.y, m.z))
+end
+
 -- Right-click on a mob (Java Mob.mobInteract). A bucket on a cow fills with milk: a lone bucket
 -- turns into the milk bucket, one from a stack goes to the inventory (dropped if it's full).
+-- Animals (Phase 9e): their food puts an adult in love (or speeds a baby's growth by 10 % of the
+-- time left), shears shear a sheep (1-3 wool of its colour), a dye colours a sheep.
 local function onUseMob(p: Player, id: any)
 	if typeof(id) ~= "number" or p:GetAttribute("Spectator") == true then
 		return
@@ -741,10 +820,10 @@ local function onUseMob(p: Player, id: any)
 		return
 	end
 	local eye = (root.Position + Vector3.new(0, SneakPose.eyeHeight(c), 0)) / BS
-	local hw = m.def.width / 2
+	local hw = m.def.width / 2 * MobService.scaleOf(m)
 	local closest = Vector3.new(
 		math.clamp(eye.X, m.x - hw, m.x + hw),
-		math.clamp(eye.Y, m.y, m.y + m.def.height),
+		math.clamp(eye.Y, m.y, m.y + m.def.height * MobService.scaleOf(m)),
 		math.clamp(eye.Z, m.z - hw, m.z + hw)
 	)
 	if (closest - eye).Magnitude > Combat.MELEE_REACH + 1 then
@@ -752,7 +831,43 @@ local function onUseMob(p: Player, id: any)
 	end
 	local slot = InventoryService.selectedSlot(p)
 	local stack = InventoryService.getSlot(p, slot)
-	if m.def.key == "cow" and stack and stack.item == "bucket" then
+	local item = stack and stack.item
+	local center = Vector3.new(m.x, m.y + m.def.height * MobService.scaleOf(m) / 2, m.z)
+	if item and Animals.isFood(m.def.key, item) then
+		if m.age == 0 and m.love <= 0 then
+			InventoryService.consumeSelected(p, 1)
+			m.love = Animals.LOVE_TICKS
+			broadcastEvent({ type = "love", id = m.id, pos = center * BS }, center)
+		elseif m.age < 0 then
+			InventoryService.consumeSelected(p, 1)
+			m.age = math.min(0, m.age + Animals.feedSpeedUpTicks(m.age))
+			broadcastEvent({ type = "fed", id = m.id, pos = center * BS }, center)
+		end
+		return
+	end
+	if m.def.key == "sheep" and item == "shears" then
+		if m.age >= 0 and not m.sheared then
+			-- Java Sheep.shear: 1 + random(3) wool, each popping out with a little random velocity
+			m.sheared = true
+			local n = math.random(1, 3)
+			for _ = 1, n do
+				ItemEntityService.spawn({ item = `{m.color or "white"}_wool`, count = 1 }, (center + Vector3.new(0, 0.5, 0)) * BS)
+			end
+			InventoryService.damageSelectedTool(p, 1)
+			broadcastEvent({ type = "shear", id = m.id, pos = center * BS }, center)
+		end
+		return
+	end
+	local dye = item and string.match(item, "^(.+)_dye$")
+	if m.def.key == "sheep" and dye and Animals.colorIndex[dye] then
+		-- Java DyeItem: a sheep with wool that isn't already that colour
+		if not m.sheared and m.color ~= dye then
+			m.color = dye
+			InventoryService.consumeSelected(p, 1)
+		end
+		return
+	end
+	if m.def.key == "cow" and stack and stack.item == "bucket" and m.age >= 0 then
 		if stack.count <= 1 then
 			InventoryService.setSlot(p, slot, { item = "milk_bucket", count = 1 })
 		else
@@ -800,7 +915,9 @@ local function sendSnapshots()
 				table.insert(records, {
 					id = m.id,
 					code = m.def.code,
-					flags = bit32.bor(m.flags, if m.burning > 0 then FLAG.BURNING else 0, if m.charged then FLAG.CHARGED else 0),
+					flags = bit32.bor(m.flags, if m.burning > 0 then FLAG.BURNING else 0, if m.charged then FLAG.CHARGED else 0,
+						if m.age < 0 then FLAG.BABY else 0, if m.sheared then FLAG.SHEARED else 0),
+					variant = if m.color then Animals.colorIndex[m.color] else 0,
 					x = m.x * BS,
 					y = m.y * BS,
 					z = m.z * BS,
