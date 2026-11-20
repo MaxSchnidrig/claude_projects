@@ -132,14 +132,7 @@ function Weather.temperature(biomeKey: string, y: number): number
 end
 
 -- "none" | "rain" | "snow" at a block (Biome.getPrecipitationAt).
--- Testing switch (Studio key T / "/weather snow on"): everywhere snows, deserts too. Set from
--- the ReplicatedStorage attribute WeatherForceSnow on both server and clients.
-Weather.forceSnow = false
-
 function Weather.precipitation(biomeKey: string, y: number): string
-	if Weather.forceSnow then
-		return "snow"
-	end
 	local c = Weather.CLIMATE[biomeKey]
 	if c and not c.precipitation then
 		return "none"

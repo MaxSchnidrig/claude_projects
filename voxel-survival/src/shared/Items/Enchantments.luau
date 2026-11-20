@@ -224,6 +224,61 @@ function Enchantments.supports(id: string, item: string): boolean
 	return Enchantments.categories(item)[d.supported] == true
 end
 
+-- The level of enchantment `id` on a stack (0 = none).
+function Enchantments.level(stack: { ench: { [string]: number }? }?, id: string): number
+	local e = stack and stack.ench
+	return if e and e[id] then e[id] else 0
+end
+
+-- Unbreaking (Java): each point of wear is taken with chance 1 / (level + 1) for tools and
+-- weapons, 60 % + 40 % / (level + 1) for armour. Returns the points actually taken.
+function Enchantments.wear(n: number, level: number, armor: boolean, rand: () -> number): number
+	if level <= 0 or n <= 0 then
+		return n
+	end
+	local p = if armor then 0.6 + 0.4 / (level + 1) else 1 / (level + 1)
+	local taken = 0
+	for _ = 1, n do
+		if rand() < p then
+			taken += 1
+		end
+	end
+	return taken
+end
+
+-- Effects (Phase 10c) -------------------------------------------------------------------------
+
+-- Extra melee damage (Java): Sharpness 0.5 x level + 0.5; Smite 2.5 x level against undead;
+-- Bane of Arthropods 2.5 x level against arthropods (spiders). Scaled by the attack charge by
+-- the caller.
+function Enchantments.meleeBonus(stack: { ench: { [string]: number }? }?, undead: boolean, arthropod: boolean): number
+	local bonus = 0
+	local sharp = Enchantments.level(stack, "sharpness")
+	if sharp > 0 then
+		bonus += 0.5 * sharp + 0.5
+	end
+	if undead then
+		bonus += 2.5 * Enchantments.level(stack, "smite")
+	end
+	if arthropod then
+		bonus += 2.5 * Enchantments.level(stack, "bane_of_arthropods")
+	end
+	return bonus
+end
+
+-- Sweeping Edge: the sweep's damage = 1 + ratio x the attack's damage, ratio = level / (level + 1)
+function Enchantments.sweepRatio(level: number): number
+	return level / (level + 1)
+end
+
+-- Looting: Java's enchanted_count_increase: + round(level x random 0..1) per drop roll
+function Enchantments.lootingExtra(level: number, rand: () -> number): number
+	if level <= 0 then
+		return 0
+	end
+	return math.floor(level * rand() + 0.5)
+end
+
 -- Display --------------------------------------------------------------------------------------
 
 local ROMAN = { "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X" }

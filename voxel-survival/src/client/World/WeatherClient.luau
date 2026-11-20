@@ -141,9 +141,6 @@ function WeatherClient.describe(): string
 	return if rain and thunder then "thunderstorm" elseif rain then "rain" else "clear"
 end
 
-function WeatherClient.forcedSnow(): boolean
-	return attrOf("WeatherForceSnow") == true
-end
 
 local function clock(ticks: any): string
 	if typeof(ticks) ~= "number" then
@@ -260,7 +257,6 @@ function WeatherClient.init(blockSource: (number, number, number) -> number?, bi
 		WeatherClient.rain = math.clamp(WeatherClient.rain + (if rainOn then step else -step), 0, 1)
 		WeatherClient.thunder = math.clamp(WeatherClient.thunder + (if thunderOn then step else -step), 0, 1)
 		SkyLight.rainLevel, SkyLight.thunderLevel = WeatherClient.rain, WeatherClient.thunder
-		Weather.forceSnow = attr("WeatherForceSnow") == true
 		WeatherClient.flash = math.max(0, WeatherClient.flash - dt * 6)
 		Lighting.ExposureCompensation = baseBrightness + WeatherClient.flash * 1.2
 

@@ -66,6 +66,7 @@ Entries marked *built in* already work (Roblox's own default character sounds). 
 | `xp.pickup` | soft chime ding short (Phase 10a; Java plays it quietly, pitch 0.55-1.25) | — |
 | `xp.levelup` | level up chime (Phase 10a; every 5th level) | — |
 | `enchant` | magic enchant shimmer (Phase 10b; enchanting table) | — |
+| `attack.sweep` | sword sweep whoosh wide (Phase 10c; sweep attack) | — |
 | `item.break` | tool break snap | — |
 | `explosion` | explosion medium | — |
 | `shield.block` | wooden shield block thud | — |

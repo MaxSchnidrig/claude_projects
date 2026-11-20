@@ -219,14 +219,17 @@ export type Stack = { item: string, count: number }
 
 -- Items a farming block drops when broken (or washed away), or nil if it isn't one (use its
 -- normal drop). `toolKind`: the tool's kind ("shears" ...) or nil. `rand()` returns [0, 1).
-function Farming.drops(id: number, toolKind: string?, rand: () -> number): { Stack }?
+-- `fortune` (Phase 10c): Java's apply_bonus - crops roll 3 + level seed tries, short grass
+-- seeds get + 0..2 x level.
+function Farming.drops(id: number, toolKind: string?, rand: () -> number, fortune: number?): { Stack }?
 	local d = byId[id]
 	if not d then
 		return nil
 	end
+	local f = fortune or 0
 	local function bonus(): number
 		local n = 1
-		for _ = 1, 3 do
+		for _ = 1, 3 + f do
 			if rand() < 0.5714286 then
 				n += 1
 			end
@@ -237,7 +240,11 @@ function Farming.drops(id: number, toolKind: string?, rand: () -> number): { Sta
 		if toolKind == "shears" then
 			return { { item = "short_grass", count = 1 } }
 		end
-		return if rand() < 0.125 then { { item = "wheat_seeds", count = 1 } } else {}
+		if rand() < 0.125 then
+			-- uniform bonus: + 0 .. 2 x fortune
+			return { { item = "wheat_seeds", count = 1 + math.floor(rand() * (2 * f + 1)) } }
+		end
+		return {}
 	end
 	if d.shape == "plant" and d.state.attachedStem then
 		local n = 0

@@ -363,7 +363,9 @@ table aren't drawn yet; the enchant sound is a placeholder)
 - Every enchantment's data (levels, weights, items, conflicts, treasure / curse flags).
 - Books and enchanted books; the enchantment glint.
 
-**10c – Weapon and tool enchantments**
+**10c – Weapon and tool enchantments** (done in 0.10.2-10c; the sweep's particle isn't drawn and
+its sound is a placeholder; the sweep's "not moving faster than walking" check is "on the ground
+and not sprinting"; /enchant added for testing)
 - Efficiency, Unbreaking, Fortune, Silk Touch, Sharpness, Smite, Bane of Arthropods,
   Knockback, Fire Aspect, Looting, Sweeping Edge (with Java's sweep attack).
 - All bow and crossbow enchantments (Power, Punch, Flame, Infinity, Multishot, Piercing,

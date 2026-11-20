@@ -246,6 +246,10 @@ function InventoryService.damageSelectedTool(player: Player, n: number)
 	if not s or s.durability == nil then
 		return
 	end
+	n = Enchantments.wear(n, Enchantments.level(s, "unbreaking"), false, math.random)
+	if n <= 0 then
+		return
+	end
 	s.durability -= n
 	if (s.durability :: number) <= 0 then
 		i.slots[i.selected] = nil -- phase 7: break sound
@@ -298,8 +302,9 @@ function InventoryService.damageArmor(player: Player, damage: number): { string 
 	local broke = {}
 	for _, idx in ARMOR_SLOTS do
 		local s = i.slots[idx]
-		if s and s.durability then
-			s.durability -= loss
+		local taken = if s then Enchantments.wear(loss, Enchantments.level(s, "unbreaking"), true, math.random) else 0
+		if s and s.durability and taken > 0 then
+			s.durability -= taken
 			if (s.durability :: number) <= 0 then
 				table.insert(broke, s.item)
 				i.slots[idx] = nil
@@ -313,6 +318,40 @@ function InventoryService.damageArmor(player: Player, damage: number): { string 
 	return broke
 end
 
+-- Mending (Phase 10c, Java ExperienceOrb.repairPlayerItems): an orb's `value` repairs a random
+-- damaged Mending item you hold or wear, 2 durability a point; what isn't needed goes on to
+-- another such item, and the rest is returned (it becomes experience).
+function InventoryService.mend(player: Player, value: number): number
+	local i = inv(player)
+	local candidates = {}
+	for _, idx in { i.selected, OFFHAND, ARMOR_SLOTS[1], ARMOR_SLOTS[2], ARMOR_SLOTS[3], ARMOR_SLOTS[4] } do
+		local s = i.slots[idx]
+		local def = s and ItemRegistry.get(s.item)
+		if s and def and def.tool and s.durability and s.durability < def.tool.durability
+			and Enchantments.level(s, "mending") > 0
+		then
+			table.insert(candidates, s)
+		end
+	end
+	if #candidates == 0 or value <= 0 then
+		return value
+	end
+	local s = candidates[math.random(1, #candidates)]
+	local def = ItemRegistry.get(s.item) :: ItemRegistry.ItemDef
+	local repair = value * 2
+	local fixed = math.min(repair, (def.tool :: any).durability - (s.durability :: number))
+	s.durability = (s.durability :: number) + fixed
+	i.dirty = true
+	if fixed > 0 then
+		local left = value - (fixed * value) // repair
+		if left > 0 then
+			return InventoryService.mend(player, left)
+		end
+		return 0
+	end
+	return value
+end
+
 function InventoryService.offhand(player: Player): Stack?
 	return inv(player).slots[OFFHAND]
 end
@@ -322,6 +361,11 @@ function InventoryService.damageSlot(player: Player, idx: number, n: number): bo
 	local i = inv(player)
 	local s = i.slots[idx]
 	if not s or s.durability == nil then
+		return false
+	end
+	local def = ItemRegistry.get(s.item)
+	n = Enchantments.wear(n, Enchantments.level(s, "unbreaking"), def ~= nil and def.armor ~= nil, math.random)
+	if n <= 0 then
 		return false
 	end
 	s.durability -= n
@@ -1088,6 +1132,38 @@ end
 function InventoryService.init()
 	ItemEntityService.setInventoryAdder(function(player: Player, s: Stack): number
 		return InventoryService.addStack(player, s)
+	end)
+	ExperienceService.setMender(InventoryService.mend)
+	ExperienceService.setEnchanter(function(player: Player, id: string, level: number): string
+		local i = inv(player)
+		local s = i.slots[i.selected]
+		local d = Enchantments.byId[id]
+		if not d then
+			return `Unknown enchantment '{id}'`
+		elseif not s then
+			return "Hold the item to enchant"
+		elseif not Enchantments.supports(id, s.item) then
+			return `{d.name} can't go on that item`
+		elseif level < 1 or level > d.max then
+			return `{d.name} goes up to level {d.max}`
+		end
+		for other in s.ench or {} do
+			if other ~= id and not Enchantments.compatible(other, id) then
+				return `{d.name} doesn't go together with {Enchantments.label(other, 1)}`
+			end
+		end
+		if s.item == "book" then
+			-- (a book becomes an enchanted book, one at a time)
+			if s.count > 1 then
+				return "Hold a single book"
+			end
+			s = { item = "enchanted_book", count = 1 }
+			i.slots[i.selected] = s
+		end
+		s.ench = s.ench or {}
+		;(s.ench :: { [string]: number })[id] = level
+		i.dirty = true
+		return `Enchanted with {Enchantments.label(id, level)}`
 	end)
 
 	Remotes.get("SelectSlot").OnServerEvent:Connect(function(player: Player, n: any)

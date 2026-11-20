@@ -257,12 +257,7 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		remotes.WeatherCommand.OnServerEvent:Fire(player, { "clear", "60" })
 		eq(WS.current(), "clear")
 		eq(rs:GetAttribute("WeatherClearTime"), 1200)
-		-- forced snow (key T / "/weather snow on"): it snows even in deserts
-		remotes.DebugAction.OnServerEvent:Fire(player, { type = "weatherSnow" })
-		eq(rs:GetAttribute("WeatherForceSnow"), true)
-		eq(WS.precipitationAt(5, FLOOR, 0), "snow", "forced snow in the desert")
-		remotes.WeatherCommand.OnServerEvent:Fire(player, { "snow", "off" })
-		eq(WS.precipitationAt(5, FLOOR, 0), "none")
+		eq(WS.precipitationAt(5, FLOOR, 0), "none", "no rain in the desert")
 		eq(WS.precipitationAt(0, FLOOR, 0), "rain")
 		-- old-chat fallback and bad input
 		player.Chatted:Fire("/weather rain 30")

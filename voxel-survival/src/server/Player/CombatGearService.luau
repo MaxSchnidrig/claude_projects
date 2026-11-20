@@ -21,6 +21,7 @@ local Config = require(Shared.Config)
 local Remotes = require(Shared.Net.Remotes)
 local ItemRegistry = require(Shared.Items.ItemRegistry)
 local Combat = require(Shared.Gameplay.Combat)
+local Enchantments = require(Shared.Items.Enchantments)
 local SneakPose = require(Shared.Gameplay.SneakPose)
 local InventoryService = require(script.Parent.InventoryService)
 local SurvivalService = require(script.Parent.Parent.Survival.SurvivalService)
@@ -194,15 +195,28 @@ local function gaussian(): number
 end
 
 -- Java Projectile.shoot: direction + gaussian spread (0.0075 x inaccuracy), times speed.
-local function shoot(p: Player, look: Vector3, speedPerTick: number, crit: boolean)
+-- `stack`: the bow / crossbow (its enchantments, Phase 10c); `yawOffset`: degrees (Multishot's
+-- side arrows); `pickup`: can it be collected afterwards (not with Infinity / Multishot extras).
+local function shoot(p: Player, look: Vector3, speedPerTick: number, crit: boolean, stack: any?, yawOffset: number?, pickup: boolean?)
 	local eye = eyeOf(p)
 	if not eye or not MobService then
 		return
 	end
 	local d = look.Unit
+	if yawOffset and yawOffset ~= 0 then
+		d = CFrame.fromAxisAngle(Vector3.yAxis, math.rad(yawOffset)):VectorToWorldSpace(d)
+	end
 	d = (d + Vector3.new(gaussian(), gaussian(), gaussian()) * 0.0075).Unit
-	MobService.shootArrow(eye - Vector3.new(0, 0.1, 0) + d * 0.3, d * speedPerTick * 20, Combat.ARROW_DAMAGE,
-		p.DisplayName, nil, { player = p, crit = crit, pickup = true })
+	-- Power: + 0.5 x level + 0.5 base damage (Java)
+	local power = Enchantments.level(stack, "power")
+	local damage = Combat.ARROW_DAMAGE + (if power > 0 then 0.5 * power + 0.5 else 0)
+	MobService.shootArrow(eye - Vector3.new(0, 0.1, 0) + d * 0.3, d * speedPerTick * 20, damage,
+		p.DisplayName, nil, {
+			player = p, crit = crit, pickup = if pickup == nil then true else pickup,
+			punch = Enchantments.level(stack, "punch"),
+			flame = Enchantments.level(stack, "flame") > 0,
+			pierce = Enchantments.level(stack, "piercing"),
+		})
 end
 
 local function validLook(v: any): Vector3?
@@ -241,12 +255,22 @@ local function onGear(p: Player, m: any)
 		local ticks = (os.clock() - u.since) * 20 + 2
 		if item == "bow" then
 			local power = Combat.bowPower(ticks)
-			if power < 0.1 or not InventoryService.takeOne(p, "arrow") then
+			if power < 0.1 then
 				return
 			end
+			-- Infinity: the arrow isn't used up (you still need one), and can't be picked up
+			local infinity = Enchantments.level(held, "infinity") > 0
+			if infinity then
+				if not InventoryService.has(p, "arrow") then
+					return
+				end
+			elseif not InventoryService.takeOne(p, "arrow") then
+				return
+			end
+			local bowStack = held
 			InventoryService.damageSlot(p, InventoryService.selectedSlot(p), 1)
-			shoot(p, look, power * Combat.BOW_SPEED, power >= 1)
-		elseif item == "crossbow" and ticks >= Combat.CROSSBOW_CHARGE_TICKS then
+			shoot(p, look, power * Combat.BOW_SPEED, power >= 1, bowStack, 0, not infinity)
+		elseif item == "crossbow" and ticks >= Combat.crossbowChargeTicks(Enchantments.level(held, "quick_charge")) then
 			if InventoryService.takeOne(p, "arrow") then
 				local s = InventoryService.selectedStack(p)
 				if s and s.item == "crossbow" then
@@ -260,9 +284,17 @@ local function onGear(p: Player, m: any)
 			return
 		end
 		local slot = InventoryService.selectedSlot(p)
+		local bow = held
 		InventoryService.setSlot(p, slot, { item = "crossbow", count = 1, durability = held.durability, ench = held.ench })
-		InventoryService.damageSlot(p, slot, 1)
-		shoot(p, look, Combat.CROSSBOW_SPEED, true) -- Java: crossbow arrows are always critical
+		-- Multishot (Java): three arrows from one, 10 degrees apart; the side ones can't be
+		-- picked up; the crossbow loses 3 durability
+		local multishot = Enchantments.level(bow, "multishot") > 0
+		InventoryService.damageSlot(p, slot, if multishot then 3 else 1)
+		shoot(p, look, Combat.CROSSBOW_SPEED, true, bow) -- Java: crossbow arrows are always critical
+		if multishot then
+			shoot(p, look, Combat.CROSSBOW_SPEED, true, bow, -10, false)
+			shoot(p, look, Combat.CROSSBOW_SPEED, true, bow, 10, false)
+		end
 	end
 end
 

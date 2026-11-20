@@ -223,6 +223,15 @@ Recipes.smelting = {
 	raw_chicken = "cooked_chicken",
 	raw_mutton = "cooked_mutton",
 	cactus = "green_dye", -- Phase 9e (Java)
+	-- ore blocks (from Silk Touch, Phase 10c): Java smelting / blasting results
+	coal_ore = "coal",
+	iron_ore = "iron_ingot",
+	copper_ore = "copper_ingot",
+	gold_ore = "gold_ingot",
+	diamond_ore = "diamond",
+	emerald_ore = "emerald",
+	lapis_ore = "lapis_lazuli",
+	volt_ore = "volt_dust",
 } :: { [string]: string }
 
 -- Fuel burn time in seconds (one coal smelts 8 items).

@@ -13,7 +13,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local SneakPose = require(Shared.Gameplay.SneakPose)
 local TorchRules = require(Shared.Blocks.TorchRules)
-local Farming = require(Shared.Gameplay.Farming)
 local Placement = require(Shared.Blocks.Placement)
 local Shapes = require(Shared.Blocks.Shapes)
 local Config = require(Shared.Config)
@@ -24,6 +23,8 @@ local Mining = require(Shared.Gameplay.Mining)
 local VoxelRaycast = require(Shared.World.VoxelRaycast)
 local ChunkData = require(Shared.World.ChunkData)
 local Experience = require(Shared.Gameplay.Experience)
+local Enchantments = require(Shared.Items.Enchantments)
+local BlockLoot = require(Shared.Gameplay.BlockLoot)
 local WorldService = require(script.Parent.Parent.World.WorldService)
 local ChunkStreamer = require(script.Parent.Parent.World.ChunkStreamer)
 local InventoryService = require(script.Parent.Parent.Player.InventoryService)
@@ -232,7 +233,8 @@ local function finishBreak(player: Player, st: PState, x: number, y: number, z: 
 	end
 	local id = WorldService.getBlock(x, y, z)
 	local item = heldItem(player)
-	local expected = Mining.breakSeconds(id, item)
+	local heldStack = InventoryService.selectedStack(player)
+	local expected = Mining.breakSeconds(id, item, { efficiency = Enchantments.level(heldStack, "efficiency") })
 	if expected == math.huge then
 		return correct(player, x, y, z, "unbreakable")
 	end
@@ -260,36 +262,16 @@ local function finishBreak(player: Player, st: PState, x: number, y: number, z: 
 	local key = WorldService.setBlock(x, y, z, AIR)
 	local center = Vector3.new(x + 0.5, y + 0.5, z + 0.5) * BS
 	local def = BlockRegistry.get(id)
-	-- plants and crops drop by Java's loot rules (seeds, ripe crops, shears for grass)
-	local held = ItemRegistry.get(item)
-	local farmDrops = Farming.drops(id, if held and held.tool then held.tool.kind else nil, math.random)
-	if farmDrops then
-		for _, s in farmDrops do
-			if s.count > 0 then
-				ItemEntityService.spawn({ item = s.item, count = s.count }, center)
-			end
-		end
-	elseif def and def.drop and Mining.canHarvest(id, item) then
-		local count = if def.dropMax > def.dropMin then math.random(def.dropMin, def.dropMax) else def.dropMin
-		local dropItem = def.drop
-		local alt = def.altDrop
-		if alt and math.random() < alt.chance then
-			dropItem = alt.item -- Java: gravel drops flint 10 % of the time
-		end
-		ItemEntityService.spawn({ item = dropItem, count = count }, center)
-		-- ore experience (Java spawnAfterBreak with the right tool; silk touch: none, 10c)
-		local xp = Experience.ORE[def.key]
-		if xp then
-			ExperienceService.award(Vector3.new(x + 0.5, y + 0.5, z + 0.5), math.random(xp[1], xp[2]))
-		end
+	-- drops by Java's loot tables, with Fortune and Silk Touch (Gameplay/BlockLoot)
+	local silk = Enchantments.level(heldStack, "silk_touch") > 0
+	local stacks, oreXp = BlockLoot.drops(id, item, Enchantments.level(heldStack, "fortune"), silk, math.random, math.random)
+	for _, s in stacks do
+		ItemEntityService.spawn({ item = s.item, count = s.count }, center)
 	end
-	if def then
-		-- chance drops (apples / sticks from leaves), any tool or bare hands
-		for _, bonus in def.bonusDrops do
-			if math.random() < bonus.chance then
-				ItemEntityService.spawn({ item = bonus.item, count = 1 }, center)
-			end
-		end
+	-- ore experience (Java spawnAfterBreak with the right tool; none with Silk Touch)
+	local xp = def and Experience.ORE[def.key]
+	if xp and oreXp then
+		ExperienceService.award(Vector3.new(x + 0.5, y + 0.5, z + 0.5), math.random(xp[1], xp[2]))
 	end
 	for _, fn in blockBrokenListeners do
 		fn(player, x, y, z)

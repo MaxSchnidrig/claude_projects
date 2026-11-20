@@ -290,6 +290,12 @@ function SurvivalService.lightning(p: Player)
 	SurvivalService.damage(p, 5, "was struck by lightning", nil, { armor = true })
 end
 
+-- Set on fire for at least `seconds` (a Flame arrow: 5 s).
+function SurvivalService.ignite(p: Player, seconds: number)
+	local s = state(p)
+	s.burning = math.max(s.burning, seconds)
+end
+
 function SurvivalService.isSneaking(p: Player): boolean
 	return state(p).sneaking
 end

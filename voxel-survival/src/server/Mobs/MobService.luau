@@ -42,6 +42,7 @@ local SurvivalService = require(script.Parent.Parent.Survival.SurvivalService)
 local DayNightService = require(script.Parent.Parent.Survival.DayNightService)
 local ExperienceService = require(script.Parent.Parent.Player.ExperienceService)
 local Experience = require(Shared.Gameplay.Experience)
+local Enchantments = require(Shared.Items.Enchantments)
 
 local BS = Config.BLOCK_SIZE
 local H = Config.WORLD_HEIGHT
@@ -92,6 +93,10 @@ export type Mob = {
 	ownerPlayer: Player?, -- arrows a player shot (never hit them; pickup allowed)
 	crit: boolean?,
 	pickup: boolean?,
+	punch: number?, -- Phase 10c bow enchantments on the arrow
+	flame: boolean?,
+	pierce: number?, -- Piercing: mobs it can still pass through
+	pierced: { [any]: boolean }?,
 	damage: number?,
 	stuck: number?,
 	eggTime: number?, -- chickens: ticks until the next egg (Java 6000..11999)
@@ -102,6 +107,9 @@ export type Mob = {
 	love: number,
 	color: string?,
 	sheared: boolean?,
+	-- Phase 10c: the Looting level of the last player hit (drops), Slowness IV until (Bane)
+	looting: number?,
+	slowUntil: number?,
 }
 
 local FLAG = { BURNING = 1, FUSING = 2, ANGRY = 4, PANIC = 8, CHARGED = 16, STUCK = 32, BABY = 64, SHEARED = 128 }
@@ -294,12 +302,21 @@ local function die(m: Mob)
 	broadcastEvent({ type = "died", id = m.id }, center)
 	-- drops (meat comes out cooked if the mob was burning); babies drop nothing (Java)
 	local byPlayer = playerKill(m)
+	local looting = if byPlayer then m.looting or 0 else 0
 	local stacks = {}
 	for _, d in (if m.age < 0 then {} else m.def.drops) do
-		if (d.playerKill and not byPlayer) or (d.chance and math.random() >= d.chance) then
+		-- Looting: rare drops +1 % a level (the zombie's 2.5 % is shared by its three rare drops)
+		local chance = d.chance
+		if chance and d.playerKill and looting > 0 then
+			chance += 0.01 * looting / 3
+		end
+		if (d.playerKill and not byPlayer) or (chance and math.random() >= chance) then
 			continue
 		end
 		local n = math.random(d.min, d.max)
+		if not chance and d.item ~= "white_wool" then
+			n += Enchantments.lootingExtra(looting, math.random) -- (wool: no Looting, Java)
+		end
 		if d.item == "white_wool" and m.def.key == "sheep" then
 			n = if m.sheared then 0 else n -- a sheared sheep drops no wool; else its colour's
 		end
@@ -603,16 +620,32 @@ local function stepProjectile(m: Mob, dt: number)
 			if m.crit then
 				dmg += math.random(0, dmg // 2 + 1)
 			end
+			-- Piercing: each target is hit once; the arrow stops at the first one it can't pass
+			local pierced = m.pierced or {}
+			m.pierced = pierced
+			local function done(): boolean
+				if (m.pierce or 0) > 0 then
+					m.pierce = (m.pierce :: number) - 1
+					return false
+				end
+				MobService.remove(m)
+				return true
+			end
 			for _, t in targets do
 				local f = t.feet
-				if t.player ~= m.ownerPlayer and math.abs(m.x - f.X) < 0.55 and math.abs(m.z - f.Z) < 0.55 and m.y >= f.Y - 0.25 and m.y <= f.Y + 2.05 then
+				if t.player ~= m.ownerPlayer and not pierced[t.player] and math.abs(m.x - f.X) < 0.55 and math.abs(m.z - f.Z) < 0.55 and m.y >= f.Y - 0.25 and m.y <= f.Y + 2.05 then
+					pierced[t.player] = true
 					MobService.hurtPlayer(t, dmg, `was shot by {m.owner or "an arrow"}`, Vector3.new(m.x - vx * 4, m.y, m.z - vz * 4), m.ownerPlayer ~= nil)
-					MobService.remove(m)
-					return
+					if m.flame then
+						SurvivalService.ignite(t.player, 5)
+					end
+					if done() then
+						return
+					end
 				end
 			end
 			for _, o in mobs do
-				if o ~= m and o.alive and o.id ~= m.ownerId and o.def.category ~= "projectile" then
+				if o ~= m and o.alive and o.id ~= m.ownerId and o.def.category ~= "projectile" and not pierced[o] then
 					local hw = o.def.width / 2 + 0.25
 					if math.abs(m.x - o.x) < hw and math.abs(m.z - o.z) < hw and m.y >= o.y - 0.25 and m.y <= o.y + o.def.height + 0.25 then
 						if o.def.behavior == "teleporter" then
@@ -621,9 +654,26 @@ local function stepProjectile(m: Mob, dt: number)
 								ai.dodge(o)
 							end
 						else
-							MobService.damage(o, dmg, { kind = "projectile", from = Vector3.new(m.x - vx * 4, m.y, m.z - vz * 4), living = true, attacker = m.ownerPlayer })
-							MobService.remove(m)
-							return
+							pierced[o] = true
+							local dealt = MobService.damage(o, dmg, { kind = "projectile", from = Vector3.new(m.x - vx * 4, m.y, m.z - vz * 4), living = true, attacker = m.ownerPlayer })
+							if dealt > 0 and o.alive then
+								if m.flame then
+									o.burning = math.max(o.burning, 5) -- Flame: 5 s
+								end
+								local punch = m.punch or 0
+								if punch > 0 then
+									-- Punch (Java): pushed along the arrow's flight, 0.6 a level, 0.1 up
+									local h = math.sqrt(vx * vx + vz * vz)
+									if h > 1e-6 then
+										o.vx += vx / h * punch * 0.6 * 20
+										o.vz += vz / h * punch * 0.6 * 20
+										o.vy += 0.1 * 20
+									end
+								end
+							end
+							if done() then
+								return
+							end
 						end
 					end
 				end
@@ -647,7 +697,10 @@ end
 -- Fire an arrow (block units) from `from` with velocity `vel` (blocks/s). `opts.player`: shot
 -- by a player (it never hits them, and with `pickup` it can be collected from the ground);
 -- `opts.crit`: a critical arrow (Java: + random 0 .. damage / 2 + 1).
-function MobService.shootArrow(from: Vector3, vel: Vector3, baseDamage: number, owner: string, ownerId: number?, opts: { player: Player?, crit: boolean?, pickup: boolean? }?)
+-- Phase 10c: `punch` (knockback level), `flame` (sets what it hits on fire for 5 s), `pierce`
+-- (Piercing level: passes through that many mobs).
+export type ArrowOpts = { player: Player?, crit: boolean?, pickup: boolean?, punch: number?, flame: boolean?, pierce: number? }
+function MobService.shootArrow(from: Vector3, vel: Vector3, baseDamage: number, owner: string, ownerId: number?, opts: ArrowOpts?)
 	local a = MobService.spawn("arrow", from.X, from.Y, from.Z)
 	if a then
 		a.vx, a.vy, a.vz = vel.X, vel.Y, vel.Z
@@ -659,8 +712,15 @@ function MobService.shootArrow(from: Vector3, vel: Vector3, baseDamage: number, 
 			a.ownerPlayer = opts.player
 			a.crit = opts.crit
 			a.pickup = opts.pickup
+			a.punch = opts.punch
+			a.flame = opts.flame
+			a.pierce = opts.pierce
+			if opts.flame then
+				a.burning = 1e6 -- (drawn burning)
+			end
 		end
 	end
+	return a
 end
 
 local arrowPickup: ((Player) -> boolean)? = nil
@@ -707,9 +767,15 @@ local function onAttack(p: Player, id: any, critClaim: any)
 	if strength then
 		base += 3 * (strength.amp + 1)
 	end
+	-- Java Player.attack: f = base x (0.2 + charge^2 x 0.8), enchantment bonus x charge
 	local amount = Combat.scaledDamage(base, charge)
+	local function bonusFor(t: Mob): number
+		return Enchantments.meleeBonus(stack, t.def.undead, t.def.key == "spider") * charge
+	end
 
-	local sprinting, _grounded, inLiquid = SurvivalService.movement(p)
+	local sprinting, grounded, inLiquid = SurvivalService.movement(p)
+	local full = charge > Combat.CRIT_MIN_CHARGE
+	local sprintHit = sprinting and full
 	-- Critical hit: the client saw itself falling and airborne; the server re-checks what it can
 	-- (charge, sprint, liquid, not rising).
 	local crit = critClaim == true and Combat.isCrit({
@@ -722,20 +788,70 @@ local function onAttack(p: Player, id: any, critClaim: any)
 	if crit then
 		amount *= Combat.CRIT_MULTIPLIER
 	end
-	local dealt, fresh = MobService.damage(m, amount, { attacker = p, from = eye, kind = "attack" })
+	-- Java's sweep: a fully charged sword hit on the ground, not a crit, not a sprint hit
+	local sweep = full and not crit and not sprintHit and grounded and item ~= nil
+		and string.sub(item, -6) == "_sword"
+	local look = root.CFrame.LookVector
+	local looting = Enchantments.level(stack, "looting")
+	local fireAspect = Enchantments.level(stack, "fire_aspect")
+	local bane = Enchantments.level(stack, "bane_of_arthropods")
+	-- after-hit effects (Java doPostAttackEffects): Fire Aspect, Bane of Arthropods' slowness
+	local function postHit(t: Mob)
+		if not t.alive then
+			return
+		end
+		if fireAspect > 0 then
+			t.burning = math.max(t.burning, 4 * fireAspect)
+		end
+		if bane > 0 and t.def.key == "spider" then
+			-- Slowness IV for 1.5 s up to 1.5 + 0.5 x (level - 1) s
+			t.slowUntil = now + 1.5 + math.random() * 0.5 * (bane - 1)
+		end
+	end
+	m.looting = looting
+	local dealt, fresh = MobService.damage(m, amount + bonusFor(m), { attacker = p, from = eye, kind = "attack" })
 	if dealt <= 0 then
 		return
 	end
+	postHit(m)
 	if crit then
 		broadcastEvent({ type = "crit", id = m.id }, Vector3.new(m.x, m.y, m.z))
 	end
 	Remotes.get("MobEvent"):FireClient(p, { type = "hit", id = m.id, damage = dealt, crit = crit, charge = charge })
-	-- Sprint hit at full strength: extra 0.5 knockback along the attacker's facing; sprint ends.
-	if fresh and sprinting and charge > Combat.CRIT_MIN_CHARGE and m.alive then
-		local look = root.CFrame.LookVector
-		local vx, vy, vz = Combat.knockback(m.vx / 20, m.vy / 20, m.vz / 20, look.X, look.Z, Combat.SPRINT_KNOCKBACK, m.onGround)
+	-- Extra knockback (Java): the Knockback level, + 1 for a fully charged sprint hit; 0.5 each,
+	-- along the attacker's facing. A sprint hit ends the sprint.
+	local kb = Enchantments.level(stack, "knockback") + (if sprintHit then 1 else 0)
+	if fresh and kb > 0 and m.alive then
+		local vx, vy, vz = Combat.knockback(m.vx / 20, m.vy / 20, m.vz / 20, look.X, look.Z, kb * Combat.SPRINT_KNOCKBACK, m.onGround)
 		m.vx, m.vy, m.vz = vx * 20, vy * 20, vz * 20
+	end
+	if sprintHit then
 		SurvivalService.stopSprint(p)
+	end
+	if sweep then
+		-- every other mob within the target's box grown by (1, 0.25, 1) and 3 blocks of the
+		-- player: knocked back 0.4 and hurt 1 + Sweeping Edge ratio x the hit's damage
+		local sweepDamage = 1 + Enchantments.sweepRatio(Enchantments.level(stack, "sweeping_edge")) * amount
+		local feet = root.Position / BS - Vector3.new(0, 1, 0)
+		local hw = m.def.width / 2
+		for _, o in mobs do
+			if o ~= m and o.alive and o.def.category ~= "projectile" then
+				local ow = o.def.width / 2
+				local touches = o.x + ow > m.x - hw - 1 and o.x - ow < m.x + hw + 1
+					and o.z + ow > m.z - hw - 1 and o.z - ow < m.z + hw + 1
+					and o.y + o.def.height > m.y - 0.25 and o.y < m.y + m.def.height + 0.25
+				if touches and (Vector3.new(o.x, o.y, o.z) - feet).Magnitude < 3 then
+					local vx, vy, vz = Combat.knockback(o.vx / 20, o.vy / 20, o.vz / 20, look.X, look.Z, 0.4, o.onGround)
+					o.vx, o.vy, o.vz = vx * 20, vy * 20, vz * 20
+					o.looting = looting
+					local d = MobService.damage(o, sweepDamage + bonusFor(o), { attacker = p, from = eye, kind = "attack" })
+					if d > 0 then
+						postHit(o)
+					end
+				end
+			end
+		end
+		broadcastEvent({ type = "sweep", id = m.id, pos = Vector3.new(m.x, m.y + m.def.height / 2, m.z) * BS }, Vector3.new(m.x, m.y, m.z))
 	end
 	SurvivalService.addExhaustion(p, 0.1)
 	local wear = Combat.hitDurabilityCost(item)

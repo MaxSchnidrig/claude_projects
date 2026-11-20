@@ -13,7 +13,9 @@ local ItemRegistry = require(Shared.Items.ItemRegistry)
 
 local Mining = {}
 
-export type Modifiers = { inWater: boolean?, airborne: boolean? }
+-- efficiency: the held tool's Efficiency level (Phase 10c): + level^2 + 1 to the speed when the
+-- tool is the right one for the block (Java: only when its speed is above 1)
+export type Modifiers = { inWater: boolean?, airborne: boolean?, efficiency: number? }
 
 local function toolOf(itemKey: string?)
 	local item = ItemRegistry.get(itemKey)
@@ -62,6 +64,10 @@ function Mining.breakSeconds(blockId: number, itemKey: string?, mods: Modifiers?
 	end
 	local speed = Mining.toolSpeed(blockId, itemKey)
 	if mods then
+		local eff = mods.efficiency or 0
+		if eff > 0 and speed > 1 then
+			speed += eff * eff + 1
+		end
 		if mods.inWater then
 			speed /= 5
 		end

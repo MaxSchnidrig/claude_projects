@@ -20,6 +20,7 @@ local Remotes = require(Shared.Net.Remotes)
 local BlockRegistry = require(Shared.Blocks.BlockRegistry)
 local ItemRegistry = require(Shared.Items.ItemRegistry)
 local Mining = require(Shared.Gameplay.Mining)
+local Enchantments = require(Shared.Items.Enchantments)
 local VoxelRaycast = require(Shared.World.VoxelRaycast)
 local Crafting = require(Shared.Items.Crafting)
 local ClientWorld = require(script.Parent.Parent.World.ClientWorld)
@@ -396,6 +397,7 @@ local function modifiers(): Mining.Modifiers
 		inWater = id ~= nil and isLiquid[id + 1]
 	end
 	return {
+		efficiency = Enchantments.level(InventoryClient.heldStack(), "efficiency"),
 		airborne = humanoid ~= nil and not MovementController.onGround,
 		inWater = inWater,
 	}
@@ -542,7 +544,7 @@ local function stopGear(release: boolean)
 			gearRemote({ type = "release", look = lookVector() }) -- too short: the server ignores it
 		end
 	elseif release and g.kind == "crossbow" then
-		if (os.clock() - g.start) * 20 >= Combat.CROSSBOW_CHARGE_TICKS then
+		if (os.clock() - g.start) * 20 >= Combat.crossbowChargeTicks(Enchantments.level(InventoryClient.heldStack(), "quick_charge")) then
 			BlockInteraction.used:Fire("crossbow_load", 0)
 		end
 		gearRemote({ type = "release", look = lookVector() })
@@ -683,8 +685,9 @@ local function update(dt: number)
 		local m = mining
 		if not m or m.x ~= hit.x or m.y ~= hit.y or m.z ~= hit.z or m.item ~= item then
 			cancelMining()
-			if Mining.breakSeconds(hit.id, item) < math.huge then
-				local started = Mining.breakSeconds(hit.id, item) > 0
+			local eff = { efficiency = Enchantments.level(InventoryClient.heldStack(), "efficiency") }
+			if Mining.breakSeconds(hit.id, item, eff) < math.huge then
+				local started = Mining.breakSeconds(hit.id, item, eff) > 0
 				if started then
 					send("start", hit.x, hit.y, hit.z)
 				end

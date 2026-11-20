@@ -262,6 +262,21 @@ end
 
 -- The orb tick ------------------------------------------------------------------------------
 
+-- Set by InventoryService's owner at start (avoids a require cycle): Mending.
+local mender: ((Player, number) -> number)? = nil
+function ExperienceService.setMender(fn: (Player, number) -> number)
+	mender = fn
+end
+
+-- "/enchant <enchantment> [level]" (Java /enchant, for testing): adds it to the held item if it
+-- fits the item, doesn't clash with what's on it and the level is 1..max. Set by
+-- InventoryService (it owns the slots).
+local enchanter: ((Player, string, number) -> string)? = nil
+function ExperienceService.setEnchanter(fn: (Player, string, number) -> string)
+	enchanter = fn
+end
+
+
 local function nearestPlayer(o: Experience.Orb, feet: { [Player]: Vector3 }): Player?
 	local best, bestD = nil, Experience.FOLLOW_RANGE * Experience.FOLLOW_RANGE
 	for p, f in feet do
@@ -348,8 +363,11 @@ local function step()
 				local e = orbs[k]
 				s.takeDelay = Experience.PICKUP_DELAY
 				Remotes.get("Experience"):FireClient(p, { type = "pickup" })
-				-- (Mending repairs items first: Phase 10c)
-				ExperienceService.givePoints(p, e.orb.value)
+				-- Mending repairs items first; the rest is experience
+				local left = if mender then mender(p, e.orb.value) else e.orb.value
+				if left > 0 then
+					ExperienceService.givePoints(p, left)
+				end
 				e.orb.count -= 1
 				if e.orb.count <= 0 then
 					removeAt(k)
@@ -418,6 +436,18 @@ function ExperienceService.command(p: Player, args: { string })
 	end
 end
 
+function ExperienceService.enchantCommand(p: Player, id: string?, level: string?)
+	if not allowed(p) then
+		reply(p, "Only the world's owner can use /enchant")
+		return
+	end
+	if not id or not enchanter then
+		reply(p, "Usage: /enchant <enchantment> [level], e.g. /enchant silk_touch or /enchant sharpness 5")
+		return
+	end
+	reply(p, (enchanter :: (Player, string, number) -> string)(p, id, math.floor(tonumber(level or "1") or 1)))
+end
+
 function ExperienceService.init()
 	folder = Instance.new("Folder")
 	folder.Name = "XPOrbs"
@@ -431,12 +461,16 @@ function ExperienceService.init()
 		end
 		local clean = {}
 		for _, a in args do
-			if typeof(a) ~= "string" or #a > 16 then
+			if typeof(a) ~= "string" or #a > 24 then
 				return
 			end
 			table.insert(clean, string.lower(a))
 		end
-		ExperienceService.command(p, clean)
+		if clean[1] == "!enchant" then
+			ExperienceService.enchantCommand(p, clean[2], clean[3])
+		else
+			ExperienceService.command(p, clean)
+		end
 	end)
 	local function chatted(p: Player)
 		p.Chatted:Connect(function(msg: string)
@@ -444,6 +478,8 @@ function ExperienceService.init()
 			if words[1] == "/xp" or words[1] == "/experience" then
 				table.remove(words, 1)
 				ExperienceService.command(p, words)
+			elseif words[1] == "/enchant" then
+				ExperienceService.enchantCommand(p, words[2], words[3])
 			end
 		end)
 	end

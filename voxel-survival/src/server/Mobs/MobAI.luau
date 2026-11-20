@@ -58,7 +58,11 @@ local function face(m: any, dx: number, dz: number)
 end
 
 local function speedOf(m: any, modifier: number, attr: number?): number
-	return MobDefs.blocksPerSecond((attr or m.def.speedAttr) * modifier)
+	local a = attr or m.def.speedAttr
+	if m.slowUntil and os.clock() < m.slowUntil then
+		a *= 1 - 0.15 * 4 -- Slowness IV (Bane of Arthropods): -60 % speed
+	end
+	return MobDefs.blocksPerSecond(a * modifier)
 end
 
 local function eyeOf(m: any): Vector3

@@ -21,27 +21,34 @@ ExperienceClient.score = 0
 local changed = Instance.new("BindableEvent")
 ExperienceClient.Changed = changed.Event
 
+-- "/xp ..." and "/enchant <enchantment> [level]" (Java's /enchant: the held item; testing)
 local function chatCommand()
 	pcall(function()
 		if TextChatService.ChatVersion ~= Enum.ChatVersion.TextChatService then
 			return -- the old chat: the server listens to Player.Chatted instead
 		end
-		local cmd = Instance.new("TextChatCommand")
-		cmd.Name = "RocraftXp"
-		cmd.PrimaryAlias = "/xp"
-		cmd.SecondaryAlias = "/experience"
-		cmd.Triggered:Connect(function(_source: TextSource, text: string)
-			local words = string.split(string.lower(text), " ")
-			table.remove(words, 1)
-			local args = {}
-			for _, w in words do
-				if w ~= "" then
-					table.insert(args, w)
-				end
+		local function register(name: string, primary: string, secondary: string?, prefix: string?)
+			local cmd = Instance.new("TextChatCommand")
+			cmd.Name = name
+			cmd.PrimaryAlias = primary
+			if secondary then
+				cmd.SecondaryAlias = secondary
 			end
-			Remotes.get("XpCommand"):FireServer(args)
-		end)
-		cmd.Parent = TextChatService:FindFirstChild("TextChatCommands") or TextChatService
+			cmd.Triggered:Connect(function(_source: TextSource, text: string)
+				local words = string.split(string.lower(text), " ")
+				table.remove(words, 1)
+				local args = if prefix then { prefix } else {}
+				for _, w in words do
+					if w ~= "" then
+						table.insert(args, w)
+					end
+				end
+				Remotes.get("XpCommand"):FireServer(args)
+			end)
+			cmd.Parent = TextChatService:FindFirstChild("TextChatCommands") or TextChatService
+		end
+		register("RocraftXp", "/xp", "/experience", nil)
+		register("RocraftEnchant", "/enchant", nil, "!enchant")
 	end)
 end
 

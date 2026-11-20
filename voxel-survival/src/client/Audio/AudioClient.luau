@@ -354,6 +354,8 @@ function AudioClient.init(deps: { [string]: any })
 			AudioClient.play(`mob.{key}.hurt`, pos)
 		elseif e.type == "died" and key then
 			AudioClient.play(`mob.{key}.death`, pos)
+		elseif e.type == "sweep" then
+			AudioClient.play("attack.sweep", if typeof(e.pos) == "Vector3" then e.pos else pos)
 		elseif e.type == "teleport" then
 			AudioClient.play("mob.voidling.teleport", if typeof(e.to) == "Vector3" then e.to else pos)
 		elseif e.type == "angry" then

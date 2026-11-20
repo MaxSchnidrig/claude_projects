@@ -148,6 +148,10 @@ function Combat.bowPower(ticks: number): number
 	return math.min(f, 1)
 end
 Combat.CROSSBOW_CHARGE_TICKS = 25 -- Java: 1.25 s without Quick Charge
+-- Quick Charge (Phase 10c): 0.25 s faster a level
+function Combat.crossbowChargeTicks(quickCharge: number): number
+	return math.max(0, Combat.CROSSBOW_CHARGE_TICKS - 5 * quickCharge)
+end
 Combat.CROSSBOW_SPEED = 3.15 -- blocks/tick
 Combat.BOW_SPEED = 3.0 -- blocks/tick at full power
 Combat.ARROW_DAMAGE = 2.0

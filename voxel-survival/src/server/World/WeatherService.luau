@@ -240,15 +240,10 @@ function WeatherService.command(p: Player, args: { string })
 		reply(p, `Weather set to {if verb == "thunder" then "thunderstorm" else verb} for {timeText(d)}`)
 	elseif verb == "query" then
 		reply(p, `Weather: {WeatherService.current()}`)
-	elseif verb == "snow" then
-		local on = if args[2] == "on" then true elseif args[2] == "off" then false else not Weather.forceSnow
-		Weather.forceSnow = on
-		ReplicatedStorage:SetAttribute("WeatherForceSnow", on)
-		reply(p, if on then "Forced snow ON: it snows everywhere when it rains (testing)" else "Forced snow OFF: snow only in cold biomes")
 	elseif verb == "strike" then
 		reply(p, if WeatherService.strikeNear(p) then "Lightning strike near you" else "No ground there for lightning")
 	else
-		reply(p, "Usage: /weather clear|rain|thunder [seconds], /weather query, /weather snow on|off, /weather strike")
+		reply(p, "Usage: /weather clear|rain|thunder [seconds], /weather query, /weather strike")
 	end
 end
 
@@ -322,8 +317,6 @@ function WeatherService.init(h: Hooks)
 		end
 		if a.type == "weather" then
 			WeatherService.command(p, { "cycle" })
-		elseif a.type == "weatherSnow" then
-			WeatherService.command(p, { "snow", if Weather.forceSnow then "off" else "on" })
 		elseif a.type == "lightning" then
 			WeatherService.command(p, { "strike" })
 		end
