@@ -24,6 +24,7 @@ local BlockRegistry = require(Shared.Blocks.BlockRegistry)
 local WorldService = require(script.Parent.Parent.World.WorldService)
 local BlockEntityService = require(script.Parent.Parent.World.BlockEntityService)
 local ItemEntityService = require(script.Parent.Parent.World.ItemEntityService)
+local ExperienceService = require(script.Parent.ExperienceService)
 
 export type Stack = SlotLogic.Stack
 
@@ -744,10 +745,27 @@ local function isInt(v: any): boolean
 	return typeof(v) == "number" and v == v and v % 1 == 0 and math.abs(v) < 2 ^ 24
 end
 
+local handleAction: (Player, any) -> ()
 local function onAction(player: Player, a: any)
 	if typeof(a) ~= "table" or typeof(a.type) ~= "string" then
 		return
 	end
+	-- Java FurnaceResultSlot.onTake: taking anything out of a furnace's output (click, shift,
+	-- double-click, Q) pays out all the experience its smelting stored
+	local e = windowEntity(inv(player))
+	local out = e and e.furnace and e.slots[3]
+	local before = if out then out.count else 0
+	handleAction(player, a)
+	if e and e.furnace and before > 0 then
+		local now = e.slots[3]
+		if (if now then now.count else 0) < before and next(e.furnace.used) then
+			ExperienceService.furnacePayout(player, Vector3.new(e.x + 0.5, e.y + 0.5, e.z + 0.5), e.furnace.used, Crafting.smeltResult)
+			touchViewers(e)
+		end
+	end
+end
+
+handleAction = function(player: Player, a: any)
 	if player:GetAttribute("Spectator") == true and a.type ~= "close" then
 		return -- spectators have no inventory to use
 	end

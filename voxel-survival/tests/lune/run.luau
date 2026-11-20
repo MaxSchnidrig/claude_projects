@@ -2292,6 +2292,7 @@ require("./GraphicsTests")(test, eq)
 require("./HungerTests")(test, eq)
 require("./WeatherTests")(test, eq)
 require("./AnimalTests")(test, eq)
+require("./ExperienceTests")(test, eq)
 
 print(`\n{passed} passed, {failed} failed`)
 if failed > 0 then

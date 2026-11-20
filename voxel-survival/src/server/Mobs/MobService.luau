@@ -40,6 +40,8 @@ local ExplosionService = require(script.Parent.Parent.World.ExplosionService)
 local InventoryService = require(script.Parent.Parent.Player.InventoryService)
 local SurvivalService = require(script.Parent.Parent.Survival.SurvivalService)
 local DayNightService = require(script.Parent.Parent.Survival.DayNightService)
+local ExperienceService = require(script.Parent.Parent.Player.ExperienceService)
+local Experience = require(Shared.Gameplay.Experience)
 
 local BS = Config.BLOCK_SIZE
 local H = Config.WORLD_HEIGHT
@@ -313,6 +315,11 @@ local function die(m: Mob)
 		end
 	end
 	ItemEntityService.spawnAround(stacks, center * BS)
+	-- experience (Java LivingEntity.dropExperience): only if a player hit it in the last
+	-- 100 ticks, never from babies
+	if byPlayer and m.age >= 0 then
+		ExperienceService.award(Vector3.new(m.x, m.y, m.z), Experience.mobReward(m.def.key, math.random))
+	end
 end
 
 -- Damage kinds that armor reduces (Java: everything except fall, fire, drowning, starving...).
@@ -786,6 +793,8 @@ function MobService.breed(a: Mob, b: Mob): Mob?
 		color = Animals.offspringColor(a.color, b.color, mixDyes, math.random(0, 1))
 	end
 	local baby = MobService.spawn(a.def.key, a.x, a.y, a.z, math.random() * math.pi * 2, { age = Animals.BABY_AGE, color = color })
+	-- Java Animal.finalizeSpawnChildFromBreeding: one orb of 1-7 at the parent
+	ExperienceService.orb(Vector3.new(a.x, a.y, a.z), math.random(Experience.BREED[1], Experience.BREED[2]))
 	broadcastEvent({ type = "bred", id = a.id, other = b.id, pos = Vector3.new(a.x, a.y + 0.5, a.z) * BS }, Vector3.new(a.x, a.y, a.z))
 	return baby
 end

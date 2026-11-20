@@ -76,6 +76,9 @@ Startup.run("server", {
 	{ name = "BlockEntityService", run = function()
 		require(server.World.BlockEntityService).init()
 	end },
+	{ name = "ExperienceService", run = function()
+		require(server.Player.ExperienceService).init()
+	end },
 	{ name = "SettingsService", run = function()
 		local SettingsService = require(server.Player.SettingsService) :: any
 		if not SettingsService.started then

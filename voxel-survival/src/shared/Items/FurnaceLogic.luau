@@ -11,13 +11,15 @@ local Recipes = require(script.Parent.Recipes)
 
 export type Stack = SlotLogic.Stack
 -- slots: [1] input, [2] fuel, [3] output
-export type State = { slots: { [number]: Stack? }, burn: number, burnMax: number, progress: number }
+-- used: how many of each input were smelted since the output was last taken (Java's
+-- recipesUsed: the stored experience, Gameplay/Experience.furnacePayout)
+export type State = { slots: { [number]: Stack? }, burn: number, burnMax: number, progress: number, used: { [string]: number } }
 
 local FurnaceLogic = {}
 FurnaceLogic.INPUT, FurnaceLogic.FUEL, FurnaceLogic.OUTPUT = 1, 2, 3
 
 function FurnaceLogic.new(): State
-	return { slots = {}, burn = 0, burnMax = 0, progress = 0 }
+	return { slots = {}, burn = 0, burnMax = 0, progress = 0, used = {} }
 end
 
 local function canSmelt(st: State): (boolean, string?)
@@ -64,6 +66,7 @@ function FurnaceLogic.step(st: State, dt: number): boolean
 			if st.progress >= Recipes.SMELT_SECONDS then
 				st.progress -= Recipes.SMELT_SECONDS
 				local input = st.slots[1] :: Stack
+				st.used[input.item] = (st.used[input.item] or 0) + 1
 				input.count -= 1
 				if input.count <= 0 then
 					st.slots[1] = nil

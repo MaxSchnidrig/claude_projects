@@ -118,7 +118,7 @@ function SettingsSchema.soundCategory(name: string): string
 	local head = string.match(name, "^(%a+)") or name
 	if head == "step" or head == "eat" or head == "burp" or head == "hurt" or head == "fall" or head == "jump"
 		or head == "attack" or head == "item" or head == "shield" or head == "bow" or head == "crossbow"
-		or head == "armor" or name == "water.swim" or name == "water.splash"
+		or head == "armor" or head == "xp" or name == "water.swim" or name == "water.splash"
 	then
 		return "players"
 	elseif name == "lava.ambient" or head == "weather" then

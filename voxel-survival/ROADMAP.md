@@ -340,58 +340,48 @@ walls, amethyst geodes, fossils.
 
 ## Phase 10 – Experience, enchanting, anvils, smithing (L)
 
-Split into five parts; stop after each for testing.
+Java Edition values and algorithms exactly. Six parts; stop after each for testing.
+(Phase 9b caves and mineshafts is Leo's, on his own branch: Phase 10 doesn't touch world
+generation files.) Excluded: Swift Sneak (ancient cities), the mace and its enchantments
+(Density, Breach, Wind Burst; trial chambers). Enchantment names that are normal words stay;
+names Mojang invented get our own originals, proposed for approval.
 
-**10a – Experience (M)**
-- XP orbs: Java values from mobs (5 for most monsters, 1–3 for animals, breeding 1–7),
-  ores (coal 0–2, diamond/emerald 3–7, lapis 2–5, quartz-role 2–5, redstone-role 1–5),
-  smelting (stored in the furnace, paid out on taking the result), fishing 1–6.
-- Orb behaviour: pulled toward players within 8 blocks, merging, 6000-tick despawn, the
-  pickup delay between orbs; Java orb sizes and colours drawn our own way.
-- Java level curve (2L+7 / 5L−38 / 9L−158 points per level), the green XP bar and level
-  number in the HUD, score on death.
-- Dropping on death: 7 × level, at most 100 points; keepInventory-style rule later (phase 21).
-- Bottle o' enchanting-role item (name to approve) once trading or loot can give it.
+**10a – Experience** (done in 0.10.0-10a; orbs aren't saved when the server stops, like
+dropped items; level sounds are placeholders until licensed sounds are chosen)
+- XP orbs from every Java source: mobs, breeding, ores, smelting (stored in the furnace),
+  fishing; later sources (trading, bottles, the boss) hook in when those exist.
+- Java orb behaviour: value sizes (splitting into Java's orb values), follow the nearest
+  player within 8 blocks, merging, 6000-tick despawn, one orb picked up per tick.
+- Java level formula, the XP bar and level number in the HUD.
+- XP loss on death: drops 7 × level, at most 100 points.
 
-**10b – Enchanting table and the enchantment list (L)**
-- Enchanting table (crafting, the floating-book look as our own model), bookshelves
-  (power up to 15, Java placement rules: 2 blocks away, air in between), lapis cost 1–3.
-- Java offer generation: per-player enchantment seed, the three slots' level costs,
-  weights by item material (enchantability), the bonus-level rolls, extra enchantments,
-  the hint shown in each slot. Book and book enchanting.
-- Data for every enchantment: max level, weight, which items, conflicts (protection types,
-  sharpness group, silk touch vs fortune, infinity vs mending...), treasure-only and curse
-  flags. Excluded: Wind Burst, Density, Breach, Swift Sneak.
-- Enchantment glint on items (held, dropped, in the inventory) and tooltip lines.
-- Names: most are plain English words, but I'll list them for approval in case you want
-  any of our own.
+**10b – Enchanting table**
+- Enchanting table, bookshelves (power, max 15, Java placement checks), lapis cost 1–3.
+- The 3-option menu with Java's exact algorithm (enchantability, level costs, the
+  enchantment roll, extra enchantments), per-player enchantment seed.
+- Every enchantment's data (levels, weights, items, conflicts, treasure / curse flags).
+- Books and enchanted books; the enchantment glint.
 
-**10c – Enchantment effects: tools, weapons, armour (L)**
-- Tools: efficiency, silk touch, fortune (Java ore tables), unbreaking (Java chances for
-  tools vs armour).
-- Weapons: sharpness, smite, bane of arthropods (+ slowness), knockback, fire aspect,
-  looting, sweeping edge.
-- Armour: protection, fire / blast / projectile protection (Java damage-reduction formula,
-  cap 20 points), feather falling, thorns, respiration, aqua affinity, depth strider,
-  frost walker (frosted ice).
-- Curses: binding, vanishing.
+**10c – Weapon and tool enchantments**
+- Efficiency, Unbreaking, Fortune, Silk Touch, Sharpness, Smite, Bane of Arthropods,
+  Knockback, Fire Aspect, Looting, Sweeping Edge (with Java's sweep attack).
+- All bow and crossbow enchantments (Power, Punch, Flame, Infinity, Multishot, Piercing,
+  Quick Charge). Mending.
 
-**10d – Enchantment effects: ranged and fishing (M)**
-- Bow: power, punch, flame, infinity. Crossbow: multishot, piercing, quick charge.
-- Fishing rod: luck of the sea and lure, plugged into the friend's fishing loot table.
-- Mending (XP repairs items, 2 durability per point) and soul speed are added here but
-  only obtainable later (loot / trading / the Abyss). Trident enchantments wait for the
-  trident (phase 14).
+**10d – Armour and fishing enchantments**
+- Protection, Fire / Blast / Projectile Protection, Feather Falling, Respiration,
+  Aqua Affinity, Thorns, Depth Strider, Frost Walker, Luck of the Sea, Lure,
+  Curse of Binding, Curse of Vanishing.
+- Trident enchantments wait for the trident (Phase 20).
 
-**10e – Anvil, grindstone, smithing, trims (L)**
-- Anvil: repairing with material or a second item, combining enchantments (Java cost
-  rules), renaming, prior-work penalty (2^n − 1), "Too Expensive!" at 40 levels,
-  12 % damage chance per use (chipped / damaged / destroyed), falling-block anvils.
-- Grindstone: removes non-curse enchantments, returns XP, combines two items.
-- Smithing table: the GUI and armour trims (Java mechanics: template + item + material
-  colours). Template and pattern names and art are our own designs, proposed first.
-  Templates only become findable when their structures exist; Studio key to give them.
-- The top-tier upgrade waits for the phase 16 material; the slot is ready for it.
+**10e – Anvil and grindstone**
+- Anvil: repair, combine, rename (Roblox text filtering), prior-work penalty,
+  "Too Expensive!", anvil damage (chipped / damaged / broken).
+- Grindstone.
+
+**10f – Smithing**
+- Smithing table; the upgrade system, ready for Cindersteel (Phase 16).
+- Armour trims: Java mechanics, our own original art and pattern names.
 
 ## Phase 11 – Volt system: power and machines (XL)
 

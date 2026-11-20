@@ -105,6 +105,10 @@ SoundConfig.sounds = {
 	["attack.swing"] = E("", 0.3, 0.9, 1.1, "whoosh swing short"),
 	["attack.crit"] = E("", 0.6, 0.9, 1.1, "critical hit impact"),
 	["item.pickup"] = E("", 0.3, 1.2, 1.8, "pop pickup small"),
+	-- experience (Phase 10a): placeholders until licensed sounds are chosen. Java volumes:
+	-- orb pickup 0.1 (pitch 0.55-1.25), level up 0.75 x min(level / 30, 1)
+	["xp.pickup"] = E("", 0.1, 0.55, 1.25, "soft chime ding short"),
+	["xp.levelup"] = E("", 0.75, 1.0, 1.0, "level up chime"),
 	["item.break"] = E("", 0.6, 0.9, 1.1, "tool break snap"),
 	["explosion"] = E("", 1.0, 0.8, 1.0, "explosion medium"),
 	-- combat gear (Phase 8c)

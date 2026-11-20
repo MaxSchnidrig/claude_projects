@@ -246,6 +246,8 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		eq(a.love, 0); eq(b.love, 0)
 		assert(a.age > 5800 and b.age > 5800, "parents rest 5 minutes")
 		-- feeding the calf: 10 % of the time left; a parent on cooldown takes nothing
+		-- (the calf wanders at random: bring it back within reach first)
+		calf.x, calf.z = 2.5, 0.5
 		local ageBefore = calf.age
 		use(calf)
 		eq(calf.age - ageBefore, Animals.feedSpeedUpTicks(ageBefore))

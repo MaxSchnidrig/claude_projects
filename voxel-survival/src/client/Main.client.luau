@@ -67,6 +67,9 @@ Startup.run("client", {
 	system("DayNightClient", function()
 		return client.Survival.DayNightClient
 	end),
+	system("ExperienceClient", function()
+		return client.Survival.ExperienceClient
+	end),
 	system("SurvivalHUD", function()
 		return client.Survival.SurvivalHUD
 	end),

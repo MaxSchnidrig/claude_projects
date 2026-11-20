@@ -10,6 +10,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local BlockRegistry = require(Shared.Blocks.BlockRegistry)
 local Brewing = require(Shared.Items.Brewing)
 local FurnaceLogic = require(Shared.Items.FurnaceLogic)
+local Crafting = require(Shared.Items.Crafting)
 
 export type Stack = { item: string, count: number, durability: number? }
 export type Entity = {
@@ -130,7 +131,15 @@ function BlockEntityService.restore(kind: string, x: number, y: number, z: numbe
 		return
 	end
 	local e = BlockEntityService.ensure(x, y, z, kind)
-	if data then
+	if e.furnace then
+		-- stored smelting experience (data.used, kept in the furnace's own table)
+		local used = data and data.used
+		if typeof(used) == "table" then
+			for input, n in used do
+				e.furnace.used[input] = n
+			end
+		end
+	elseif data then
 		e.data = data
 	end
 	if e.furnace then
@@ -165,7 +174,8 @@ function BlockEntityService.ensure(x: number, y: number, z: number, kind: string
 			y = y,
 			z = z,
 			slots = if furnace then furnace.slots else {},
-			data = if kind == "brewing_stand" then {} else nil,
+			-- furnaces: { used = recipes smelted since the output was last taken } (saved)
+			data = if kind == "brewing_stand" then {} elseif furnace then { used = furnace.used } else nil,
 			furnace = furnace,
 		}
 		entities[k] = e
@@ -181,6 +191,11 @@ function BlockEntityService.remove(x: number, y: number, z: number): { Stack }
 	entities[k] = nil
 	if e then
 		BlockEntityService.markDirty(x, z)
+		if e.furnace and next(e.furnace.used) then
+			-- a broken / blown-up furnace pops the experience its smelting stored (Java)
+			local ExperienceService = require(script.Parent.Parent.Player.ExperienceService) :: any
+			ExperienceService.furnacePayout(nil, Vector3.new(x + 0.5, y + 0.5, z + 0.5), e.furnace.used, Crafting.smeltResult)
+		end
 	end
 	local out = {}
 	if e then

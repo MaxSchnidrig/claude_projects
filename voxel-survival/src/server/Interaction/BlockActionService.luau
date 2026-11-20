@@ -23,11 +23,13 @@ local ItemRegistry = require(Shared.Items.ItemRegistry)
 local Mining = require(Shared.Gameplay.Mining)
 local VoxelRaycast = require(Shared.World.VoxelRaycast)
 local ChunkData = require(Shared.World.ChunkData)
+local Experience = require(Shared.Gameplay.Experience)
 local WorldService = require(script.Parent.Parent.World.WorldService)
 local ChunkStreamer = require(script.Parent.Parent.World.ChunkStreamer)
 local InventoryService = require(script.Parent.Parent.Player.InventoryService)
 local ItemEntityService = require(script.Parent.Parent.World.ItemEntityService)
 local BlockEntityService = require(script.Parent.Parent.World.BlockEntityService)
+local ExperienceService = require(script.Parent.Parent.Player.ExperienceService)
 
 local BS = Config.BLOCK_SIZE
 local H = Config.WORLD_HEIGHT
@@ -275,6 +277,11 @@ local function finishBreak(player: Player, st: PState, x: number, y: number, z: 
 			dropItem = alt.item -- Java: gravel drops flint 10 % of the time
 		end
 		ItemEntityService.spawn({ item = dropItem, count = count }, center)
+		-- ore experience (Java spawnAfterBreak with the right tool; silk touch: none, 10c)
+		local xp = Experience.ORE[def.key]
+		if xp then
+			ExperienceService.award(Vector3.new(x + 0.5, y + 0.5, z + 0.5), math.random(xp[1], xp[2]))
+		end
 	end
 	if def then
 		-- chance drops (apples / sticks from leaves), any tool or bare hands

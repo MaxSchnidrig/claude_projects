@@ -40,6 +40,9 @@
 --   WorldSettings both    difficulty / friends of the running world (server/World/WorldSettingsService)
 --   Menu          C -> S  { type = "quit" } save and go back to the title screen
 --                 S -> C  { type = "status", text }
+--   Experience    S -> C  { type = "sync", level, progress, total, score } | { type = "pickup" }
+--                         | { type = "levelup", volume } | { type = "message", text }   C -> S { type = "hello" }
+--   XpCommand     C -> S  ({ words })  "/xp ..." typed in chat (owner / Studio)
 --   Settings      C -> S  { type = "save", settings }    S -> C { type = "load", settings }
 --                         the player's own options (render distance, FOV, volumes, ...)
 
@@ -73,6 +76,8 @@ local NAMES = {
 	"Decor",
 	"Gear",
 	"Fishing",
+	"Experience",
+	"XpCommand",
 	"HandAction",
 	"Bed",
 	"WorldSettings",

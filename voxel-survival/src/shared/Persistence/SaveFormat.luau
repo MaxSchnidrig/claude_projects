@@ -304,6 +304,17 @@ function SaveFormat.decodeData(kind: string, d: any): { [string]: any }?
 	if typeof(d) ~= "table" then
 		return nil
 	end
+	if kind == "furnace" then
+		local used = {}
+		if typeof(d.used) == "table" then
+			for input, n in d.used do
+				if typeof(input) == "string" and #input <= 64 and typeof(n) == "number" and n == n then
+					used[input] = math.clamp(math.floor(n), 0, 1e6)
+				end
+			end
+		end
+		return { used = used }
+	end
 	if kind == "brewing_stand" then
 		return { charges = math.floor(num(d.charges, 0, 0, 20)), progress = num(d.progress, 0, 0, 20), ingredient = if typeof(d.ingredient) == "string" then d.ingredient else nil }
 	end
@@ -387,6 +398,7 @@ export type PlayerState = {
 	spectator: boolean?, -- died in a Hardcore world: only watches from now on (Phase 8d)
 	effects: { [string]: any }?, -- status effects (Gameplay/Effects.encode) (Phase 9c)
 	absorption: number?, -- extra health from absorption
+	xp: { level: number, progress: number, total: number, score: number }?, -- experience (Phase 10a)
 }
 
 function SaveFormat.encodePlayer(p: PlayerState): { [string]: any }
@@ -406,6 +418,9 @@ function SaveFormat.encodePlayer(p: PlayerState): { [string]: any }
 		spec = if p.spectator then true else nil,
 		fx = if p.effects and next(p.effects) then p.effects else nil,
 		abs = if p.absorption and p.absorption > 0 then p.absorption else nil,
+		xp = if p.xp and (p.xp.level > 0 or p.xp.progress > 0 or p.xp.total > 0 or p.xp.score > 0)
+			then { p.xp.level, p.xp.progress, p.xp.total, p.xp.score }
+			else nil,
 	}
 end
 
@@ -437,6 +452,14 @@ function SaveFormat.decodePlayer(record: any, inventorySlots: number): PlayerSta
 		spectator = record.spec == true,
 		effects = if typeof(record.fx) == "table" then record.fx else nil,
 		absorption = num(record.abs, 0, 0, 2048),
+		xp = if typeof(record.xp) == "table"
+			then {
+				level = math.floor(num(record.xp[1], 0, 0, 2147483647)),
+				progress = num(record.xp[2], 0, 0, 0.99999),
+				total = math.floor(num(record.xp[3], 0, 0, 2147483647)),
+				score = math.floor(num(record.xp[4], 0, 0, 2147483647)),
+			}
+			else nil,
 	}
 end
 

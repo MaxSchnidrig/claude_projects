@@ -30,6 +30,8 @@ local WeatherClient = require(script.Parent.Parent.World.WeatherClient)
 local Hotbar = require(script.Parent.Parent.UI.Hotbar)
 local SurvivalClient = require(script.Parent.Parent.Survival.SurvivalClient)
 local DayNightClient = require(script.Parent.Parent.Survival.DayNightClient)
+local ExperienceClient = require(script.Parent.Parent.Survival.ExperienceClient)
+local Experience = require(Shared.Gameplay.Experience)
 local Remotes = require(Shared.Net.Remotes)
 local MobClient = require(script.Parent.Parent.Mobs.MobClient)
 local BlockInteraction = require(script.Parent.Parent.Interaction.BlockInteraction)
@@ -283,6 +285,13 @@ function DebugOverlay.init()
 			"weather timers: " .. WeatherClient.timersText() .. "   (Studio keys: Y weather, T snow, B lightning; chat: /weather)",
 			string.format("food (Java FoodData): hunger %d  saturation %.3f  exhaustion %.3f  food tick timer %d",
 				SurvivalClient.food, SurvivalClient.saturation, SurvivalClient.exhaustion, SurvivalClient.foodTimer),
+			string.format("experience: level %d  %d / %d points (%.3f)  total %d  score %d   orbs %d   (chat: /xp add 30 levels)",
+				ExperienceClient.level, math.floor(ExperienceClient.progress * Experience.needed(ExperienceClient.level)),
+				Experience.needed(ExperienceClient.level), ExperienceClient.progress, ExperienceClient.total, ExperienceClient.score,
+				(function()
+					local f = workspace:FindFirstChild("XPOrbs")
+					return if f then #f:GetChildren() else 0
+				end)()),
 			hotbarLines(),
 			`save: {game:GetService("ReplicatedStorage"):GetAttribute("SaveStatus") or "-"}`,
 			string.format("light: %d chunks lit, %.1f ms avg   textures: %s   torches %d",

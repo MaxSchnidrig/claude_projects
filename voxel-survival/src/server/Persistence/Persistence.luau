@@ -393,6 +393,7 @@ local function playerProducer(p: Player): (any) -> any
 		spectator = SurvivalService.isSpectator(p),
 		effects = surv.effects,
 		absorption = surv.absorption,
+		xp = require(script.Parent.Parent.Player.ExperienceService).snapshot(p),
 	}
 	local encoded = SaveFormat.encodePlayer(state)
 	return function(_old: any): any
@@ -447,6 +448,7 @@ local function onPlayer(p: Player)
 	if state then
 		InventoryService.restore(p, state.slots, state.selected)
 		require(script.Parent.Parent.Player.BedService).restore(p, state.bed, state.sinceRest or 0)
+		require(script.Parent.Parent.Player.ExperienceService).restore(p, state.xp)
 		if state.spectator and WorldSettings.isHardcore() then
 			SurvivalService.setSpectator(p, true)
 		end

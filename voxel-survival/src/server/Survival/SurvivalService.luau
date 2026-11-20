@@ -19,6 +19,7 @@ local Combat = require(Shared.Gameplay.Combat)
 local SneakPose = require(Shared.Gameplay.SneakPose)
 local WorldService = require(script.Parent.Parent.World.WorldService)
 local InventoryService = require(script.Parent.Parent.Player.InventoryService)
+local ExperienceService = require(script.Parent.Parent.Player.ExperienceService)
 local SpawnService = require(script.Parent.Parent.Player.SpawnService)
 local BlockActionService = require(script.Parent.Parent.Interaction.BlockActionService)
 local DayNightService = require(script.Parent.DayNightService)
@@ -71,6 +72,7 @@ type State = {
 	ticks: number, -- game ticks this life (Java tickCount: Peaceful healing)
 	lastDebug: number, -- when exhaustion / timer were last sent (F3)
 	exhaustAt: number, -- when the client last reported movement exhaustion
+	score: number?, -- experience score at death (death screen)
 }
 
 local SurvivalService = {}
@@ -147,6 +149,7 @@ local function sync(p: Player, event: string?, cause: string?)
 		canSprint = SurvivalRules.canSprint(h),
 		event = event,
 		cause = cause,
+		score = if event == "died" then s.score else nil,
 		absorption = math.ceil(s.absorption),
 		-- { id, level (0 = I), seconds left } in display order
 		effects = {} :: { { any } },
@@ -713,6 +716,9 @@ local function onCharacter(p: Player, character: Model)
 		if root then
 			InventoryService.dropAll(p, root.Position)
 		end
+		-- experience: 7 x level (max 100) drops as orbs, the rest is lost; the score shows on the
+		-- death screen
+		s.score = ExperienceService.onDeath(p, if root then root.Position / Config.BLOCK_SIZE - Vector3.new(0, 1, 0) else nil)
 		sync(p, "died", s.lastCause or "died")
 	end)
 	sync(p, "spawned")

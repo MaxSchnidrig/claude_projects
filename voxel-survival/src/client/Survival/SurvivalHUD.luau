@@ -8,6 +8,9 @@
 --   * status effects (Phase 9c): green health while poisoned, a wave while regenerating, gold
 --     extra pips for absorption (a row above health, armour moves up), a greenish hunger row
 --     with the hunger effect, and a list of active effects with their time at the top right
+--   * experience (Phase 10a): a thin bar right above the hotbar that fills toward the next
+--     level, the level number in green over its middle (hidden at 0), hearts and hunger above
+--     it like Java; the death screen shows the score
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -16,13 +19,16 @@ local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Effects = require(ReplicatedStorage:WaitForChild("Shared").Gameplay.Effects)
 local SurvivalClient = require(script.Parent.SurvivalClient)
+local ExperienceClient = require(script.Parent.ExperienceClient)
 local CameraController = require(script.Parent.Parent.Player.CameraController)
 local InventoryClient = require(script.Parent.Parent.Player.InventoryClient)
 
 local PIP = 16
 local PIP_GAP = 2
 local HOTBAR_WIDTH = 9 * 50 + 8 * 4 -- matches UI/Hotbar
-local ROW_Y = -12 - 50 - 8 -- just above the hotbar
+local XP_Y = -12 - 50 - 5 -- the experience bar's bottom, just above the hotbar
+local XP_H = 5
+local ROW_Y = XP_Y - XP_H - 4 -- hearts and hunger above the experience bar
 
 local SurvivalHUD = {}
 
@@ -39,6 +45,10 @@ local eatFill: Frame
 local deathScreen: Frame
 local deathCause: TextLabel
 local deathTitle: TextLabel
+local deathScore: TextLabel
+local xpBar: Frame
+local xpFill: Frame
+local xpLevel: TextLabel
 local respawnButton: TextButton
 local titleButton: TextButton
 local hud: Frame
@@ -104,6 +114,7 @@ local function showDeath(on: boolean)
 	CameraController.mouseUnlocked = on
 	if on then
 		deathCause.Text = `{Players.LocalPlayer.DisplayName} {SurvivalClient.deathCause}`
+		deathScore.Text = `Score: {SurvivalClient.deathScore}`
 		-- Hardcore (Java): "Game over!", and you can only watch from now on
 		local hc = isHardcore()
 		deathTitle.Text = if hc then "Game Over!" else "You died"
@@ -215,6 +226,45 @@ function SurvivalHUD.init()
 	hud.Size = UDim2.fromOffset(HOTBAR_WIDTH, PIP * 2 + 6)
 	hud.Parent = gui
 
+	-- experience bar (our own look: dark track, green fill, pale top edge)
+	xpBar = Instance.new("Frame")
+	xpBar.Name = "XPBar"
+	xpBar.BorderSizePixel = 0
+	xpBar.BackgroundColor3 = Color3.fromRGB(20, 22, 18)
+	xpBar.BackgroundTransparency = 0.2
+	xpBar.AnchorPoint = Vector2.new(0.5, 1)
+	xpBar.Position = UDim2.new(0.5, 0, 1, XP_Y)
+	xpBar.Size = UDim2.fromOffset(HOTBAR_WIDTH, XP_H)
+	xpBar.Parent = gui
+	local xpStroke = Instance.new("UIStroke")
+	xpStroke.Color = Color3.new(0, 0, 0)
+	xpStroke.Transparency = 0.3
+	xpStroke.Parent = xpBar
+	xpFill = Instance.new("Frame")
+	xpFill.BorderSizePixel = 0
+	xpFill.BackgroundColor3 = Color3.fromRGB(110, 220, 40)
+	xpFill.Size = UDim2.fromScale(0, 1)
+	xpFill.Parent = xpBar
+	local shine = Instance.new("Frame")
+	shine.BorderSizePixel = 0
+	shine.BackgroundColor3 = Color3.fromRGB(200, 255, 150)
+	shine.Size = UDim2.new(1, 0, 0, 1)
+	shine.Parent = xpFill
+	xpLevel = Instance.new("TextLabel")
+	xpLevel.Name = "XPLevel"
+	xpLevel.BackgroundTransparency = 1
+	xpLevel.AnchorPoint = Vector2.new(0.5, 0.5)
+	xpLevel.Position = UDim2.new(0.5, 0, 0, -3)
+	xpLevel.Size = UDim2.fromOffset(80, 18)
+	xpLevel.Font = Enum.Font.GothamBlack
+	xpLevel.TextSize = 16
+	xpLevel.TextColor3 = Color3.fromRGB(128, 255, 32)
+	xpLevel.TextStrokeColor3 = Color3.new(0, 0, 0)
+	xpLevel.TextStrokeTransparency = 0
+	xpLevel.ZIndex = 3
+	xpLevel.Visible = false
+	xpLevel.Parent = xpBar
+
 	local hRow, hp = pipRow(hud, 10, HEART, false, false)
 	hRow.AnchorPoint = Vector2.new(0, 1)
 	hRow.Position = UDim2.fromScale(0, 1)
@@ -312,6 +362,16 @@ function SurvivalHUD.init()
 	deathCause.TextSize = 20
 	deathCause.TextColor3 = Color3.fromRGB(240, 210, 210)
 	deathCause.Parent = deathScreen
+	deathScore = Instance.new("TextLabel")
+	deathScore.BackgroundTransparency = 1
+	deathScore.AnchorPoint = Vector2.new(0.5, 0.5)
+	deathScore.Position = UDim2.fromScale(0.5, 0.49)
+	deathScore.Size = UDim2.fromOffset(600, 26)
+	deathScore.Font = Enum.Font.GothamBold
+	deathScore.TextSize = 18
+	deathScore.TextColor3 = Color3.fromRGB(255, 255, 255)
+	deathScore.Text = "Score: 0"
+	deathScore.Parent = deathScreen
 	local respawn = Instance.new("TextButton")
 	respawn.AnchorPoint = Vector2.new(0.5, 0.5)
 	respawn.Position = UDim2.fromScale(0.5, 0.56)
@@ -372,6 +432,10 @@ function SurvivalHUD.init()
 	RunService.RenderStepped:Connect(function()
 		-- spectators have no health or hunger to show
 		hud.Visible = Players.LocalPlayer:GetAttribute("Spectator") ~= true
+		xpBar.Visible = hud.Visible
+		xpFill.Size = UDim2.fromScale(math.clamp(ExperienceClient.progress, 0, 1), 1)
+		xpLevel.Visible = ExperienceClient.level > 0
+		xpLevel.Text = tostring(ExperienceClient.level)
 		local h = humanoid()
 		setPips(healthPips, if h then math.ceil(h.Health) else 0, false)
 		setPips(hungerPips, SurvivalClient.food, true)

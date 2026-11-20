@@ -18,6 +18,7 @@ SurvivalClient.exhaustion = 0 -- (F3: Java's foodExhaustionLevel and foodTickTim
 SurvivalClient.foodTimer = 0
 SurvivalClient.dead = false
 SurvivalClient.deathCause = ""
+SurvivalClient.deathScore = 0
 SurvivalClient.speedLevel = 0
 SurvivalClient.absorption = 0 -- extra (gold) health from the absorption effect
 -- status effects from the server: { id, level (0 = I), seconds left } in display order
@@ -81,6 +82,7 @@ function SurvivalClient.init()
 		if d.event == "died" then
 			SurvivalClient.dead = true
 			SurvivalClient.deathCause = if typeof(d.cause) == "string" then d.cause else "died"
+			SurvivalClient.deathScore = if typeof(d.score) == "number" then d.score else 0
 		elseif d.event == "spawned" then
 			SurvivalClient.dead = false
 		end

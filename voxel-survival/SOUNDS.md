@@ -63,6 +63,8 @@ Entries marked *built in* already work (Roblox's own default character sounds). 
 | `attack.swing` | whoosh swing short | — |
 | `attack.crit` | critical hit impact | — |
 | `item.pickup` | pop pickup small | — |
+| `xp.pickup` | soft chime ding short (Phase 10a; Java plays it quietly, pitch 0.55-1.25) | — |
+| `xp.levelup` | level up chime (Phase 10a; every 5th level) | — |
 | `item.break` | tool break snap | — |
 | `explosion` | explosion medium | — |
 | `shield.block` | wooden shield block thud | — |

@@ -14,6 +14,8 @@ local Ray = require(Shared.World.VoxelRaycast)
 local World = require(script.Parent.Parent.World.WorldService)
 local Inventory = require(script.Parent.Parent.Player.InventoryService)
 local Drops = require(script.Parent.Parent.World.ItemEntityService)
+local ExperienceService = require(script.Parent.Parent.Player.ExperienceService)
+local Experience = require(Shared.Gameplay.Experience)
 local remote = Remotes.get("Fishing")
 local BS = Config.BLOCK_SIZE
 local rng = Random.new()
@@ -105,6 +107,9 @@ local function onUse(p: Player, aim: any)
 			if overflow > 0 then
 				Drops.spawn({ item = item, count = 1, durability = if def.tool then def.tool.durability else nil }, pos)
 			end
+			-- Java FishingHook.retrieve: one orb of 1-6 at the player (y + 0.5, z + 0.5)
+			local feet = pos / BS - Vector3.new(0, 1, 0)
+			ExperienceService.orb(feet + Vector3.new(0, 0.5, 0.5), rng:NextInteger(Experience.FISH[1], Experience.FISH[2]))
 			remote:FireClient(p, if overflow > 0 then `Caught {def.name} · inventory full, dropped at your feet` else `Caught {def.name}`, false, item, caughtAt)
 		else
 			finish(p, "Reeled in empty")
