@@ -29,7 +29,9 @@ local ExperienceService = {}
 ExperienceService.stats = { orbs = 0, merged = 0 }
 
 type Entry = { orb: Experience.Orb, part: Part, target: Player? }
-type PState = { xp: Experience.State, takeDelay: number, lastLevelUp: number, lastSent: string }
+-- seed: the enchanting seed (Java XpSeed): which offers the enchanting table shows; new after
+-- every enchantment
+type PState = { xp: Experience.State, takeDelay: number, lastLevelUp: number, lastSent: string, seed: number }
 
 local orbs: { Entry } = {}
 local players: { [Player]: PState } = {}
@@ -46,7 +48,7 @@ local solid = Shapes.physicsFn(WorldService.getBlock)
 local function pstate(p: Player): PState
 	local s = players[p]
 	if not s then
-		s = { xp = Experience.new(), takeDelay = 0, lastLevelUp = -1000, lastSent = "" }
+		s = { xp = Experience.new(), takeDelay = 0, lastLevelUp = -1000, lastSent = "", seed = rng:NextInteger(-2147483648, 2147483647) }
 		players[p] = s
 	end
 	return s
@@ -192,6 +194,19 @@ function ExperienceService.get(p: Player): Experience.State
 	return pstate(p).xp
 end
 
+-- The enchanting seed (Java Player.getEnchantmentSeed).
+function ExperienceService.seed(p: Player): number
+	return pstate(p).seed
+end
+
+-- Java Player.onEnchantmentPerformed: pay the levels, roll a new seed.
+function ExperienceService.enchanted(p: Player, levels: number)
+	local s = pstate(p)
+	Experience.addLevels(s.xp, -levels)
+	s.seed = rng:NextInteger(-2147483648, 2147483647)
+	send(p)
+end
+
 -- Death (Java Player.dropExperience): 7 x level points (max 100) drop as orbs where the player
 -- died; the rest is lost. Returns the score for the death screen.
 function ExperienceService.onDeath(p: Player, feet: Vector3?, keep: boolean?): number
@@ -210,11 +225,12 @@ end
 
 -- Persistence --------------------------------------------------------------------------------
 
-export type Saved = { level: number, progress: number, total: number, score: number }
+export type Saved = { level: number, progress: number, total: number, score: number, seed: number? }
 
 function ExperienceService.snapshot(p: Player): Saved
-	local x = pstate(p).xp
-	return { level = x.level, progress = x.progress, total = x.total, score = x.score }
+	local s = pstate(p)
+	local x = s.xp
+	return { level = x.level, progress = x.progress, total = x.total, score = x.score, seed = s.seed }
 end
 
 function ExperienceService.restore(p: Player, saved: Saved?)
@@ -223,6 +239,9 @@ function ExperienceService.restore(p: Player, saved: Saved?)
 	end
 	local s = pstate(p)
 	s.xp = { level = saved.level, progress = Experience.f32(saved.progress), total = saved.total, score = saved.score }
+	if saved.seed then
+		s.seed = saved.seed
+	end
 	send(p, true)
 end
 

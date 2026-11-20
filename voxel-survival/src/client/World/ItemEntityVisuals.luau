@@ -17,6 +17,7 @@ local RunService = game:GetService("RunService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local ItemMeshes = require(script.Parent.Parent.Render.ItemMeshes)
+local Glint = require(script.Parent.Parent.UI.Glint)
 
 local BS = Config.BLOCK_SIZE
 local PIXEL = 0.5 * BS / 16 -- flat items: 16 pixels = half a block (Java's 0.5 scale)
@@ -88,6 +89,9 @@ local function build(e: Entry): boolean
 		end
 	end
 	e.server.LocalTransparencyModifier = 1
+	if e.server:GetAttribute("Glint") == true then
+		Glint.highlight(e.parts[1]) -- enchanted: the shimmer (one highlight per dropped stack)
+	end
 	return true
 end
 

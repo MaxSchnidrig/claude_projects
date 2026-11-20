@@ -56,7 +56,7 @@ local function unpackV2(data: string): { [number]: number }
 end
 SaveFormat.REGION_CHUNKS = 4 -- region = 4 x 4 chunks (64 x 64 blocks)
 
-export type Stack = { item: string, count: number, durability: number? }
+export type Stack = { item: string, count: number, durability: number?, ench: { [string]: number }? }
 
 -- `world`: a world key (see the header); a plain owner id means that owner's first world.
 function SaveFormat.metaKey(world: string | number): string
@@ -214,7 +214,7 @@ function SaveFormat.encodeStacks(slots: { [number]: Stack? }): { { any } }
 	local out = {}
 	for i, s in slots do
 		if s and s.count > 0 then
-			table.insert(out, { i, s.item, s.count, s.durability })
+			table.insert(out, { i, s.item, s.count, s.durability or false, s.ench })
 		end
 	end
 	table.sort(out, function(a, b)
@@ -236,10 +236,20 @@ function SaveFormat.decodeStacks(list: any, maxSlot: number): { [number]: Stack 
 				and typeof(item) == "string" and ItemRegistry.get(item)
 				and typeof(count) == "number" and count % 1 == 0 and count >= 1 and count <= 64
 			then
+				local ench = nil
+				if typeof(e[5]) == "table" then
+					for id, lvl in e[5] do
+						if typeof(id) == "string" and #id <= 40 and typeof(lvl) == "number" and lvl == lvl then
+							ench = ench or {}
+							ench[id] = math.clamp(math.floor(lvl), 1, 255)
+						end
+					end
+				end
 				out[i] = {
 					item = item,
 					count = count,
 					durability = if typeof(durability) == "number" then durability else nil,
+					ench = ench,
 				}
 			end
 		end
@@ -398,7 +408,7 @@ export type PlayerState = {
 	spectator: boolean?, -- died in a Hardcore world: only watches from now on (Phase 8d)
 	effects: { [string]: any }?, -- status effects (Gameplay/Effects.encode) (Phase 9c)
 	absorption: number?, -- extra health from absorption
-	xp: { level: number, progress: number, total: number, score: number }?, -- experience (Phase 10a)
+	xp: { level: number, progress: number, total: number, score: number, seed: number? }?, -- experience (10a), enchanting seed (10b)
 }
 
 function SaveFormat.encodePlayer(p: PlayerState): { [string]: any }
@@ -418,9 +428,7 @@ function SaveFormat.encodePlayer(p: PlayerState): { [string]: any }
 		spec = if p.spectator then true else nil,
 		fx = if p.effects and next(p.effects) then p.effects else nil,
 		abs = if p.absorption and p.absorption > 0 then p.absorption else nil,
-		xp = if p.xp and (p.xp.level > 0 or p.xp.progress > 0 or p.xp.total > 0 or p.xp.score > 0)
-			then { p.xp.level, p.xp.progress, p.xp.total, p.xp.score }
-			else nil,
+		xp = if p.xp then { p.xp.level, p.xp.progress, p.xp.total, p.xp.score, p.xp.seed } else nil,
 	}
 end
 
@@ -458,6 +466,7 @@ function SaveFormat.decodePlayer(record: any, inventorySlots: number): PlayerSta
 				progress = num(record.xp[2], 0, 0, 0.99999),
 				total = math.floor(num(record.xp[3], 0, 0, 2147483647)),
 				score = math.floor(num(record.xp[4], 0, 0, 2147483647)),
+				seed = if typeof(record.xp[5]) == "number" then math.floor(num(record.xp[5], 0, -2147483648, 2147483647)) else nil,
 			}
 			else nil,
 	}

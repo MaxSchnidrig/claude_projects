@@ -26,7 +26,7 @@ local InventoryClient = require(script.Parent.Parent.Player.InventoryClient)
 local PIP = 16
 local PIP_GAP = 2
 local HOTBAR_WIDTH = 9 * 50 + 8 * 4 -- matches UI/Hotbar
-local XP_Y = -12 - 50 - 5 -- the experience bar's bottom, just above the hotbar
+local XP_Y = -12 - 50 - 12 -- the experience bar's bottom: above the hotbar, clear of the raised selected slot
 local XP_H = 5
 local ROW_Y = XP_Y - XP_H - 4 -- hearts and hunger above the experience bar
 

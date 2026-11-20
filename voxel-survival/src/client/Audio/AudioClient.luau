@@ -322,6 +322,8 @@ function AudioClient.init(deps: { [string]: any })
 			return
 		elseif m.type == "pickup" then
 			AudioClient.play("xp.pickup")
+		elseif m.type == "enchanted" then
+			AudioClient.play("enchant")
 		elseif m.type == "levelup" then
 			AudioClient.play("xp.levelup", nil, math.clamp(tonumber(m.volume) or 0.75, 0, 1) / 0.75)
 		end

@@ -1074,6 +1074,47 @@ T.paper = {
 	"................",
 }
 
+-- Book (Phase 10b, our own design): a thick closed book, cover "c", page edges "p",
+-- a band "g" around the spine
+T.book = {
+	"................",
+	"................",
+	"....cccccccc....",
+	"...cCccccccccp..",
+	"...cCcccccccpp..",
+	"...gGggggggppp..",
+	"...cCccccccppp..",
+	"...cCccccccppp..",
+	"...cCccccccppp..",
+	"...cCccccccppp..",
+	"...gGgggggpppp..",
+	"...cCcccccppp...",
+	"...cCccccccpp...",
+	"....cccccccc....",
+	"................",
+	"................",
+}
+
+-- Enchanted book (our own design): the same book, a violet cover with a gold star emblem "s"
+T.enchanted_book = {
+	"................",
+	"................",
+	"....cccccccc....",
+	"...cCccccccccp..",
+	"...cCcccccccpp..",
+	"...gGggggggppp..",
+	"...cCcccsccppp..",
+	"...cCccsssfppp..",
+	"...cCcccscfppp..",
+	"...cCccccccppp..",
+	"...gGgggggpppp..",
+	"...cCcccccppp...",
+	"...cCccccccpp...",
+	"....cccccccc....",
+	"................",
+	"................",
+}
+
 T.flint = {
 	"................",
 	"................",
@@ -1492,6 +1533,8 @@ add("clay_ball", T.ball, { m = P.clay })
 add("glow_ink_sac", T.sac, { m = P.ink })
 add("leather", T.leather, { m = P.leather })
 add("paper", T.paper, { m = P.paper })
+add("book", T.book, { c = { 132, 70, 40 }, p = P.paper, g = { 196, 150, 70 } })
+add("enchanted_book", T.enchanted_book, { c = { 98, 52, 150 }, p = P.paper, g = P.gold, s = { 255, 226, 110 }, f = { 200, 160, 60 } })
 add("flint", T.flint, { m = P.flint })
 add("void_shard", T.shard, { m = P.void })
 add("torch", T.torch, { s = P.wood, f = { 255, 214, 90 }, F = { 255, 160, 40 } })

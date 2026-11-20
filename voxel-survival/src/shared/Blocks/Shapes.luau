@@ -460,6 +460,8 @@ end
 local FARMLAND: { Box } = { { 0, 0, 0, 1, 15 / 16, 1 } }
 -- Carpet (Java): a 1/16 sheet; you walk on it (Phase 9e)
 local CARPET: { Box } = { { 0, 0, 0, 1, 1 / 16, 1 } }
+-- Enchanting table (Java): 12/16 high
+local ENCHANTING_TABLE: { Box } = { { 0, 0, 0, 1, 12 / 16, 1 } }
 -- Cactus (Java): 1/16 in from every side; you can walk 1/16 into it (and get pricked)
 local CACTUS_BOX: { Box } = { { 1 / 16, 0, 1 / 16, 15 / 16, 1, 15 / 16 } }
 local CACTUS_COLLISION: { Box } = { { 1 / 16, 0, 1 / 16, 15 / 16, 15 / 16, 15 / 16 } }
@@ -534,6 +536,8 @@ function Shapes.boxes(id: number, get: Getter, collision: boolean): { Box }
 		return FARMLAND
 	elseif shape == "carpet" then
 		return CARPET
+	elseif shape == "enchanting_table" then
+		return ENCHANTING_TABLE
 	elseif shape == "cactus" then
 		return if collision then CACTUS_COLLISION else CACTUS_BOX
 	elseif shape == "plant" then

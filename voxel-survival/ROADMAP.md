@@ -355,7 +355,8 @@ dropped items; level sounds are placeholders until licensed sounds are chosen)
 - Java level formula, the XP bar and level number in the HUD.
 - XP loss on death: drops 7 × level, at most 100 points.
 
-**10b – Enchanting table**
+**10b – Enchanting table** (done in 0.10.1-10b; the floating book and flying glyphs above the
+table aren't drawn yet; the enchant sound is a placeholder)
 - Enchanting table, bookshelves (power, max 15, Java placement checks), lapis cost 1–3.
 - The 3-option menu with Java's exact algorithm (enchantability, level costs, the
   enchantment roll, extra enchantments), per-player enchantment seed.

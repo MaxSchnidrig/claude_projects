@@ -44,6 +44,9 @@ local palette: { [string]: { number } } = {
 
 	glass = { 205, 232, 240 },
 	obsidian = { 26, 16, 40 },
+	enchanting_table_top = { 34, 44, 104 },
+	enchanting_table_side = { 30, 22, 52 },
+	bookshelf = { 140, 90, 60 },
 	crafting_table_top = { 150, 110, 60 },
 	crafting_table_side = { 130, 95, 55 },
 	furnace_top = { 110, 110, 110 },

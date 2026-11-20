@@ -99,6 +99,10 @@ local defs: { ItemDefInput } = {
 	{ key = "melon_slice", name = "Melon Slice", color = { 214, 60, 50 }, food = { hunger = 2, saturation = 1.2 } },
 	{ key = "sugar", name = "Sugar", color = { 240, 240, 244 } },
 	{ key = "paper", name = "Paper", color = { 236, 232, 216 } },
+	-- Phase 10b: books and enchanted books (an enchanted book keeps its enchantments in the
+	-- stack's `ench`; never stacks, like Java)
+	{ key = "book", name = "Book", color = { 132, 70, 40 } },
+	{ key = "enchanted_book", name = "Enchanted Book", stack = 1, color = { 98, 52, 150 }, hidden = true },
 	-- Phase 9c
 	{ key = "gold_nugget", name = "Gold Nugget", color = { 250, 222, 90 } },
 	{ key = "golden_apple", name = "Golden Apple", color = { 246, 206, 50 }, food = { hunger = 4, saturation = 9.6, alwaysEat = true } },

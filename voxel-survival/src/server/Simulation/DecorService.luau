@@ -158,7 +158,7 @@ local function dropFrame(e: BlockEntityService.Entity)
 	local pos = frameCentre(e)
 	local s = e.slots[1]
 	if s then
-		ItemEntityService.spawn({ item = s.item, count = 1, durability = s.durability }, pos)
+		ItemEntityService.spawn({ item = s.item, count = 1, durability = s.durability, ench = s.ench }, pos)
 	end
 	ItemEntityService.spawn({ item = if (e.data or {}).glow then "glow_item_frame" else "item_frame", count = 1 }, pos)
 	remote():FireAllClients({ type = "frameRemove", key = k })
@@ -231,11 +231,11 @@ local function onFrameUse(player: Player, m: any)
 		if not stack or not ItemRegistry.get(stack.item) then
 			return
 		end
-		local item, durability = stack.item, stack.durability
+		local item, durability, ench = stack.item, stack.durability, stack.ench
 		if not InventoryService.consumeSelected(player, 1) then
 			return
 		end
-		e.slots[1] = { item = item, count = 1, durability = durability }
+		e.slots[1] = { item = item, count = 1, durability = durability, ench = ench }
 		d.rot = 0
 	end
 	e.data = d
@@ -254,7 +254,7 @@ local function onFrameHit(player: Player, m: any)
 	local s = e.slots[1]
 	if s then
 		e.slots[1] = nil
-		ItemEntityService.spawn({ item = s.item, count = 1, durability = s.durability }, frameCentre(e))
+		ItemEntityService.spawn({ item = s.item, count = 1, durability = s.durability, ench = s.ench }, frameCentre(e))
 		BlockEntityService.markDirty(e.x, e.z)
 		remote():FireAllClients(frameMessage(e))
 	else

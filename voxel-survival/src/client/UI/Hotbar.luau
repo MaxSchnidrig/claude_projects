@@ -17,6 +17,7 @@ local Config = require(Shared.Config)
 local ItemRegistry = require(Shared.Items.ItemRegistry)
 local InventoryClient = require(script.Parent.Parent.Player.InventoryClient)
 local ItemIcon = require(script.Parent.ItemIcon)
+local Glint = require(script.Parent.Glint)
 
 local SLOT = 50
 local GAP = 4
@@ -42,7 +43,7 @@ local function step(name: string)
 	table.insert(Hotbar.status.steps, string.format("%s@%.1fs", name, os.clock() - startTime))
 end
 
-type SlotUI = { frame: TextButton, stroke: UIStroke, icon: Frame, count: TextLabel, durability: Frame, durabilityBg: Frame }
+type SlotUI = { frame: TextButton, stroke: UIStroke, icon: Frame, count: TextLabel, durability: Frame, durabilityBg: Frame, glint: Frame? }
 local slots: { SlotUI } = {}
 local nameLabel: TextLabel
 
@@ -64,6 +65,7 @@ local function refresh(selectionChanged: boolean)
 			end
 		end
 		ui.count.Text = if stack and stack.count > 1 then tostring(stack.count) else ""
+		Glint.set(ui.glint, stack ~= nil and stack.ench ~= nil)
 		local def = key and ItemRegistry.get(key)
 		if stack and def and def.tool and stack.durability and stack.durability < def.tool.durability then
 			local f = math.clamp(stack.durability / def.tool.durability, 0, 1)
@@ -217,7 +219,8 @@ local function buildGui()
 			end)
 		end)
 		frame.Parent = bar
-		slots[i] = { frame = frame, stroke = stroke, icon = icon, count = count, durability = durability, durabilityBg = durabilityBg }
+		slots[i] = { frame = frame, stroke = stroke, icon = icon, count = count, durability = durability, durabilityBg = durabilityBg,
+			glint = Glint.attach(frame, 2) }
 	end
 
 	-- the off hand (Java: a slot left of the hotbar, only while holding something there)

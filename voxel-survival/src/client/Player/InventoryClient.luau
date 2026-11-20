@@ -9,7 +9,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Remotes = require(Shared.Net.Remotes)
 
-export type Stack = { item: string, count: number, durability: number? }
+export type Stack = { item: string, count: number, durability: number?, ench: { [string]: number }? }
 export type Window = {
 	kind: string, -- "inventory" | "crafting_table" | "furnace" | "chest"
 	x: number?,
@@ -23,6 +23,7 @@ export type Window = {
 	burnMax: number?,
 	charges: number?,
 	progress: number?,
+	offers: { { any } }?, -- enchanting table: { cost, clue id or false, clue level } x 3
 }
 
 local InventoryClient = {}
@@ -76,6 +77,8 @@ function InventoryClient.init()
 				burn = w.burn,
 				burnMax = w.burnMax,
 				progress = w.progress,
+				charges = w.charges,
+				offers = if typeof(w.offers) == "table" then w.offers else nil,
 			}
 		end
 		InventoryClient.syncCount += 1
@@ -121,6 +124,11 @@ function InventoryClient.click(container: string, index: number, button: string,
 end
 
 -- Double-click: gather matching items into the cursor (Java PICKUP_ALL).
+-- Enchanting table: take offer 0, 1 or 2.
+function InventoryClient.enchant(slot: number)
+	Remotes.get("InventoryAction"):FireServer({ type = "enchant", slot = slot })
+end
+
 function InventoryClient.collect(container: string, index: number)
 	send({ type = "collect", container = container, index = index })
 end

@@ -12,7 +12,7 @@ local Brewing = require(Shared.Items.Brewing)
 local FurnaceLogic = require(Shared.Items.FurnaceLogic)
 local Crafting = require(Shared.Items.Crafting)
 
-export type Stack = { item: string, count: number, durability: number? }
+export type Stack = { item: string, count: number, durability: number?, ench: { [string]: number }? }
 export type Entity = {
 	kind: string, -- "furnace" | "chest" | "campfire"
 	x: number,

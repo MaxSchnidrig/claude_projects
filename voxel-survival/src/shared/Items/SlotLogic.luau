@@ -15,7 +15,9 @@
 
 local ItemRegistry = require(script.Parent.ItemRegistry)
 
-export type Stack = { item: string, count: number, durability: number? }
+-- `ench`: enchantments { [id] = level } (Phase 10b, Items/Enchantments); an enchanted book keeps
+-- its stored enchantments here too
+export type Stack = { item: string, count: number, durability: number?, ench: { [string]: number }? }
 export type Slots = { [number]: Stack? }
 
 local SlotLogic = {}
@@ -25,13 +27,41 @@ function SlotLogic.maxStack(item: string): number
 	return if def then def.stack else 64
 end
 
-function SlotLogic.copy(s: Stack, count: number?): Stack
-	return { item = s.item, count = count or s.count, durability = s.durability }
+local function copyEnch(e: { [string]: number }?): { [string]: number }?
+	if not e or next(e) == nil then
+		return nil
+	end
+	local out = {}
+	for k, v in e do
+		out[k] = v
+	end
+	return out
 end
+SlotLogic.copyEnch = copyEnch
+
+function SlotLogic.copy(s: Stack, count: number?): Stack
+	return { item = s.item, count = count or s.count, durability = s.durability, ench = copyEnch(s.ench) }
+end
+
+local function sameEnch(a: { [string]: number }?, b: { [string]: number }?): boolean
+	local ea, eb = a or {}, b or {}
+	for k, v in ea do
+		if eb[k] ~= v then
+			return false
+		end
+	end
+	for k in eb do
+		if ea[k] == nil then
+			return false
+		end
+	end
+	return true
+end
+SlotLogic.sameEnch = sameEnch
 
 -- Can `b` be merged onto `a`? (Tools never stack: their max stack is 1.)
 function SlotLogic.sameKind(a: Stack, b: Stack): boolean
-	return a.item == b.item and a.durability == b.durability
+	return a.item == b.item and a.durability == b.durability and sameEnch(a.ench, b.ench)
 end
 
 -- Returns the new cursor stack.

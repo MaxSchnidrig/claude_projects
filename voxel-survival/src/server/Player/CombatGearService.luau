@@ -250,7 +250,7 @@ local function onGear(p: Player, m: any)
 			if InventoryService.takeOne(p, "arrow") then
 				local s = InventoryService.selectedStack(p)
 				if s and s.item == "crossbow" then
-					InventoryService.setSlot(p, InventoryService.selectedSlot(p), { item = "crossbow_loaded", count = 1, durability = s.durability })
+					InventoryService.setSlot(p, InventoryService.selectedSlot(p), { item = "crossbow_loaded", count = 1, durability = s.durability, ench = s.ench })
 				end
 			end
 		end
@@ -260,7 +260,7 @@ local function onGear(p: Player, m: any)
 			return
 		end
 		local slot = InventoryService.selectedSlot(p)
-		InventoryService.setSlot(p, slot, { item = "crossbow", count = 1, durability = held.durability })
+		InventoryService.setSlot(p, slot, { item = "crossbow", count = 1, durability = held.durability, ench = held.ench })
 		InventoryService.damageSlot(p, slot, 1)
 		shoot(p, look, Combat.CROSSBOW_SPEED, true) -- Java: crossbow arrows are always critical
 	end

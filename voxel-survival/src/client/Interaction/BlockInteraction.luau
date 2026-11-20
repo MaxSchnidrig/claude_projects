@@ -43,6 +43,7 @@ local AIR = 0
 -- Right-clicking these opens their window instead of placing (hold Shift to place against them).
 local INTERACTABLE = {
 	[BlockRegistry.id("crafting_table")] = true,
+	[BlockRegistry.id("enchanting_table")] = true,
 	[BlockRegistry.id("brewing_stand")] = true,
 	[BlockRegistry.id("furnace")] = true,
 	[BlockRegistry.id("chest")] = true,

@@ -22,7 +22,7 @@ local function baseOf(s: ItemMotion.State): Vector3
 	return Vector3.new(s.x * BS, s.y * BS + 0.45, s.z * BS)
 end
 
-export type Stack = { item: string, count: number, durability: number? }
+export type Stack = { item: string, count: number, durability: number?, ench: { [string]: number }? }
 type Entity = { part: Part, stack: Stack, pickupAt: number, despawnAt: number, motion: ItemMotion.State }
 
 local ItemEntityService = {}
@@ -66,11 +66,14 @@ function ItemEntityService.spawn(stack: Stack, pos: Vector3, pickupDelay: number
 	part.CFrame = CFrame.new(base)
 	part:SetAttribute("Base", base) -- clients animate around this point
 	part:SetAttribute("Count", stack.count)
+	if stack.ench then
+		part:SetAttribute("Glint", true) -- enchanted: drawn with the shimmer
+	end
 	part.Parent = folder
 	local now = os.clock()
 	table.insert(entities, {
 		part = part,
-		stack = { item = stack.item, count = stack.count, durability = stack.durability },
+		stack = { item = stack.item, count = stack.count, durability = stack.durability, ench = stack.ench },
 		pickupAt = now + (pickupDelay or Config.ITEM_PICKUP_DELAY),
 		despawnAt = now + Config.ITEM_DESPAWN_SECONDS,
 		motion = m,

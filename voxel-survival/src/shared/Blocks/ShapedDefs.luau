@@ -35,6 +35,7 @@
 --   856..871  carpets       16 colours
 --   872..887  stained glass 16 colours
 --   888..903  stained glass panes 16 colours
+--   904       enchanting table (Phase 10b);  905 bookshelf
 
 local ShapedDefs = {}
 
@@ -419,6 +420,17 @@ function ShapedDefs.list(): { Def }
 			shape = "pane", state = { bars = false }, sound = "glass", icon = "pane",
 		})
 	end
+	-- Phase 10b: the enchanting table (Java: 12/16 high, light 7, needs a pickaxe) and bookshelves
+	-- (drop 3 books; Silk Touch keeps the block, 10c)
+	table.insert(out, {
+		id = 904, key = "enchanting_table", name = "Enchanting Table", hardness = 5, tool = "pickaxe", minTier = 1,
+		textures = { top = "enchanting_table_top", side = "enchanting_table_side", bottom = "obsidian" },
+		transparent = true, opacity = 0, light = 7, shape = "enchanting_table", sound = "stone",
+	})
+	table.insert(out, {
+		id = 905, key = "bookshelf", name = "Bookshelf", hardness = 1.5, tool = "axe", drop = "book", dropMin = 3, dropMax = 3,
+		textures = { top = "oak_planks", side = "bookshelf", bottom = "oak_planks" }, sound = "wood", flammable = { 30, 20 },
+	})
 	return out
 end
 

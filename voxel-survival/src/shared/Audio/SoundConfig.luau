@@ -109,6 +109,7 @@ SoundConfig.sounds = {
 	-- orb pickup 0.1 (pitch 0.55-1.25), level up 0.75 x min(level / 30, 1)
 	["xp.pickup"] = E("", 0.1, 0.55, 1.25, "soft chime ding short"),
 	["xp.levelup"] = E("", 0.75, 1.0, 1.0, "level up chime"),
+	["enchant"] = E("", 1.0, 0.9, 1.1, "magic enchant shimmer"), -- (Phase 10b) placeholder
 	["item.break"] = E("", 0.6, 0.9, 1.1, "tool break snap"),
 	["explosion"] = E("", 1.0, 0.8, 1.0, "explosion medium"),
 	-- combat gear (Phase 8c)
@@ -218,13 +219,13 @@ SoundConfig.footsteps = {
 		"wheat", "carrots", "potatoes", "beetroots", "sugar_cane", "vine",
 	}, woods({ "leaves", "sapling" })), with(with(beds(), colored("wool")), colored("carpet"))),
 	wood = with(woods({ "planks", "log", "slab", "stairs", "fence", "fence_gate", "door", "trapdoor", "sign", "hanging_sign" }), {
-		"crafting_table", "chest", "ladder", "campfire", "campfire_unlit", "torch",
+		"crafting_table", "chest", "ladder", "bookshelf", "campfire", "campfire_unlit", "torch",
 		"wall_torch_north", "wall_torch_east", "wall_torch_south", "wall_torch_west",
 		"pumpkin", "melon", "pumpkin_stem", "melon_stem", "attached_pumpkin_stem", "attached_melon_stem",
 	}),
 	stone = {
 		"stone", "stone_slab", "stone_stairs", "cobblestone", "cobblestone_slab", "cobblestone_stairs", "cobblestone_wall",
-		"sandstone", "sandstone_slab", "sandstone_stairs", "sandstone_wall", "bedrock", "obsidian", "furnace", "brewing_stand",
+		"sandstone", "sandstone_slab", "sandstone_stairs", "sandstone_wall", "bedrock", "obsidian", "furnace", "brewing_stand", "enchanting_table",
 		"coal_ore", "iron_ore", "gold_ore", "copper_ore", "diamond_ore", "emerald_ore", "lapis_ore", "volt_ore",
 		"glass", "glass_pane", "ice", "iron_bars", "iron_door", "iron_trapdoor",
 		table.unpack(with(colored("stained_glass"), colored("stained_glass_pane"))),

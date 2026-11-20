@@ -18,6 +18,7 @@ local HeldItems = {}
 HeldItems.stats = { shown = 0 }
 
 local Grip = require(script.Parent.ItemGrip)
+local Glint = require(script.Parent.Parent.UI.Glint)
 
 type Slot = { key: string, part: BasePart?, final: boolean }
 type Rig = { character: Model, right: Slot, left: Slot }
@@ -113,6 +114,8 @@ function HeldItems.init()
 			-- (spectators)
 			local head = character:FindFirstChild("Head") :: BasePart?
 			local hidden = (character == me and firstPerson) or (head ~= nil and head.Transparency >= 1)
+			Glint.sync(rig.right.part, not hidden and character:GetAttribute("HeldGlint") == true)
+			Glint.sync(rig.left.part, not hidden and character:GetAttribute("HeldOffGlint") == true)
 			for _, s in { rig.right, rig.left } do
 				local p = s.part
 				if p then

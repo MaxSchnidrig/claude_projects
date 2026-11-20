@@ -487,6 +487,89 @@ recipes.obsidian = function(seed)
 	return img
 end
 
+-- Enchanting table (Phase 10b, our own design): a midnight-blue cloth with a gold-thread border
+-- and a four-point star in the middle on top; the sides are obsidian with the cloth hanging
+-- over the top edge.
+local CLOTH: RGB = { 34, 44, 104 }
+local GOLD: RGB = { 226, 184, 74 }
+recipes.enchanting_table_top = function(seed)
+	local img = noisy(seed, CLOTH, 0.08, 0.15)
+	for i = 0, N - 1 do
+		for _, k in { 1, 14 } do
+			put(img, i, k, GOLD)
+			put(img, k, i, GOLD)
+		end
+		for _, k in { 0, 15 } do
+			put(img, i, k, shade(CLOTH, 0.6))
+			put(img, k, i, shade(CLOTH, 0.6))
+		end
+	end
+	-- the star
+	for d = 0, 3 do
+		put(img, 7 - d, 7, shade(GOLD, 1 - d * 0.12))
+		put(img, 8 + d, 8, shade(GOLD, 1 - d * 0.12))
+		put(img, 8, 7 - d, shade(GOLD, 1 - d * 0.12))
+		put(img, 7, 8 + d, shade(GOLD, 1 - d * 0.12))
+	end
+	put(img, 7, 8, { 255, 236, 170 })
+	put(img, 8, 7, { 255, 236, 170 })
+	return img
+end
+
+recipes.enchanting_table_side = function(seed)
+	local img = recipes.obsidian(seed)
+	for x = 0, N - 1 do
+		for y = 0, 3 do
+			put(img, x, y, shade(CLOTH, 0.9 + rnd(seed, x, y) * 0.15))
+		end
+		-- the cloth ends in a scalloped edge with gold thread
+		local hang = if x % 4 == 1 or x % 4 == 2 then 5 else 4
+		put(img, x, hang, GOLD)
+		if hang == 5 then
+			put(img, x, 4, shade(CLOTH, 0.85))
+		end
+	end
+	return img
+end
+
+-- Bookshelf (our own design): an oak frame with two shelves of books in mixed colours and
+-- heights, a few leaning.
+local BOOKS: { RGB } = { { 150, 40, 36 }, { 46, 80, 140 }, { 52, 110, 60 }, { 120, 84, 40 }, { 110, 50, 120 }, { 180, 150, 70 } }
+recipes.bookshelf = function(seed)
+	local img = planks(seed, P.oakWood)
+	for _, shelf in { { top = 1, bottom = 6 }, { top = 9, bottom = 14 } } do
+		local x = 1
+		local k = 0
+		while x < 15 do
+			k += 1
+			local w = if rnd(seed, x, shelf.top, k) < 0.3 then 2 else 1
+			local col = BOOKS[1 + math.floor(rnd(seed, x, shelf.bottom, k) * #BOOKS)]
+			local h = shelf.top + (if rnd(seed, k, x) < 0.35 then 1 else 0)
+			for bx = x, math.min(14, x + w - 1) do
+				for y = h, shelf.bottom do
+					local c = if bx == x then shade(col, 1.1) else col
+					if y == h + 1 or y == shelf.bottom - 1 then
+						c = shade(GOLD, 0.8) -- bands on the spine
+					end
+					put(img, bx, y, c)
+				end
+			end
+			x += w
+			if rnd(seed, x, k) < 0.15 then
+				x += 1 -- a gap
+			end
+		end
+		for xx = 0, N - 1 do
+			put(img, xx, shelf.bottom + 1, shade(P.oakWood, 0.65)) -- the shelf board
+		end
+	end
+	for xx = 0, N - 1 do
+		put(img, xx, 0, shade(P.oakWood, 0.75))
+		put(img, xx, 15, shade(P.oakWood, 0.75))
+	end
+	return img
+end
+
 recipes.crafting_table_top = function(seed)
 	local img = planks(seed, P.oakWood)
 	for i = 0, N - 1 do

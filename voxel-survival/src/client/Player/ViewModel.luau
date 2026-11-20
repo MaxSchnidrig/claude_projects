@@ -18,6 +18,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local ItemRegistry = require(Shared.Items.ItemRegistry)
 local ItemMeshes = require(script.Parent.Parent.Render.ItemMeshes)
+local Glint = require(script.Parent.Parent.UI.Glint)
 local CameraController = require(script.Parent.CameraController)
 local InventoryClient = require(script.Parent.InventoryClient)
 
@@ -162,6 +163,11 @@ function ViewModel.init(swingEvent: BindableEvent)
 		end
 		equipT = math.min(1, equipT + dt * 4)
 		arm.Color = armColor()
+		-- enchanted items shimmer in your hands too
+		local hs = InventoryClient.heldStack()
+		Glint.sync(held, hs ~= nil and hs.ench ~= nil)
+		local os2 = InventoryClient.offhand()
+		Glint.sync(offHeld, os2 ~= nil and os2.ench ~= nil)
 
 		local base = cam.CFrame * CFrame.new(1.05, -1.02 - (1 - equipT) * 0.9, -1.62)
 			* ActionAnimator.view(false) * CFrame.Angles(0, math.rad(8), 0)

@@ -36,6 +36,9 @@ type Inv = {
 	craft: { [number]: Stack? },
 	window: Window,
 	dirty: boolean,
+	-- the enchanting table's two slots (item, lapis) while one is open (Phase 10b); like Java they
+	-- belong to the open menu and go back to the player when it closes
+	enchant: BlockEntityService.Entity?,
 }
 
 local N = Config.INVENTORY_SLOTS
@@ -48,6 +51,9 @@ local BS = Config.BLOCK_SIZE
 local ItemMotion = require(Shared.Gameplay.ItemMotion)
 local Brewing = require(Shared.Items.Brewing)
 local CRAFTING_TABLE = BlockRegistry.id("crafting_table")
+local ENCHANTING_TABLE = BlockRegistry.id("enchanting_table")
+local Enchantments = require(Shared.Items.Enchantments)
+local LAPIS = "lapis_lazuli"
 
 local InventoryService = {}
 local invs: { [Player]: Inv } = {}
@@ -114,7 +120,19 @@ function InventoryService.add(player: Player, item: string, count: number, durab
 end
 
 function InventoryService.addStack(player: Player, s: Stack): number
-	return InventoryService.add(player, s.item, s.count, s.durability)
+	if not s.ench then
+		return InventoryService.add(player, s.item, s.count, s.durability)
+	end
+	-- enchanted: keep everything about it
+	if not ItemRegistry.get(s.item) or s.count <= 0 then
+		return s.count
+	end
+	local i = inv(player)
+	local left = SlotLogic.insert(i.slots, 1, N, SlotLogic.copy(s))
+	if left ~= s.count then
+		i.dirty = true
+	end
+	return left
 end
 
 -- Studio test kit (only for players without saved data).
@@ -143,6 +161,14 @@ function InventoryService.snapshot(player: Player): ({ [number]: Stack }, number
 	for _, st in i.craft do
 		if st then
 			table.insert(loose, SlotLogic.copy(st, st.count))
+		end
+	end
+	-- items left in an open enchanting table go back to the player too
+	if i.enchant then
+		for _, st in i.enchant.slots do
+			if st then
+				table.insert(loose, SlotLogic.copy(st, st.count))
+			end
 		end
 	end
 	for _, st in loose do
@@ -372,6 +398,16 @@ end
 
 -- Close the current window: crafting grid and cursor go back to the inventory (or the floor).
 local function closeWindow(player: Player, i: Inv)
+	local en = i.enchant
+	if en then
+		for idx, s in en.slots do
+			if s then
+				giveOrDrop(player, s)
+			end
+			en.slots[idx] = nil
+		end
+		i.enchant = nil
+	end
 	for idx, s in i.craft do
 		if s then
 			giveOrDrop(player, s)
@@ -389,6 +425,9 @@ end
 -- The block entity behind the current window, if it's a furnace/chest window.
 local function windowEntity(i: Inv): BlockEntityService.Entity?
 	local w = i.window
+	if w.kind == "enchanting_table" then
+		return i.enchant -- (not a saved block entity: the menu's own two slots)
+	end
 	if (w.kind == "brewing_stand" or w.kind == "furnace" or w.kind == "chest") and w.x then
 		return BlockEntityService.get(w.x :: number, w.y :: number, w.z :: number)
 	end
@@ -397,11 +436,15 @@ end
 
 local function blockSlots(e: BlockEntityService.Entity): number
 	if e.kind == "brewing_stand" then return 5 end
+	if e.kind == "enchanting_table" then return 2 end
 	return if e.kind == "chest" then BlockEntityService.CHEST_SLOTS else 3
 end
 
 -- Mark everyone who has this container open as needing a sync.
 local function touchViewers(e: BlockEntityService.Entity)
+	if e.kind == "enchanting_table" then
+		return -- the menu's own slots: one viewer, nothing to save
+	end
 	BlockEntityService.markDirty(e.x, e.z)
 	for _, other in invs do
 		local w = other.window
@@ -426,12 +469,16 @@ local function openBlock(player: Player, i: Inv, x: number, y: number, z: number
 		return
 	end
 	local id = WorldService.getBlock(x, y, z)
-	local kind: string? = if id == CRAFTING_TABLE then "crafting_table" else BlockEntityService.kindOf(id)
+	local kind: string? = if id == CRAFTING_TABLE then "crafting_table"
+		elseif id == ENCHANTING_TABLE then "enchanting_table"
+		else BlockEntityService.kindOf(id)
 	if not kind then
 		return
 	end
 	closeWindow(player, i)
-	if kind ~= "crafting_table" then
+	if kind == "enchanting_table" then
+		i.enchant = { kind = kind, x = x, y = y, z = z, slots = {} }
+	elseif kind ~= "crafting_table" then
 		BlockEntityService.ensure(x, y, z, kind)
 	end
 	i.window = { kind = kind, x = x, y = y, z = z }
@@ -447,6 +494,13 @@ local function inventoryTargets(i: Inv, from: number): { { slots: SlotLogic.Slot
 	local e = windowEntity(i)
 	if e and e.kind == "chest" then
 		return { { slots = e.slots, lo = 1, hi = BlockEntityService.CHEST_SLOTS } }
+	end
+	if e and e.kind == "enchanting_table" then
+		local stack = i.slots[from]
+		if stack and stack.item == LAPIS then
+			return { { slots = e.slots, lo = 2, hi = 2 } }
+		end
+		-- (other items: one at a time into the item slot, handled in click)
 	end
 	if e and e.kind == "brewing_stand" then
 		local stack = i.slots[from]
@@ -546,6 +600,22 @@ local function click(player: Player, i: Inv, container: string, index: number, b
 				return
 			end
 		end
+		local et = windowEntity(i)
+		if shift and et and et.kind == "enchanting_table" and index <= N then
+			local s = i.slots[index]
+			if s and s.item ~= LAPIS then
+				-- Java EnchantmentMenu.quickMoveStack: one item into the empty item slot
+				if not et.slots[1] then
+					et.slots[1] = SlotLogic.copy(s, 1)
+					s.count -= 1
+					if s.count <= 0 then
+						i.slots[index] = nil
+					end
+				end
+				i.dirty = true
+				return
+			end
+		end
 		if shift then
 			if index > N then
 				SlotLogic.quickMove(i.slots, index, toInventory(i)) -- armour / off hand back to the bag
@@ -605,6 +675,21 @@ local function click(player: Player, i: Inv, container: string, index: number, b
 			SlotLogic.quickMove(e.slots, index, toInventory(i))
 		elseif e.kind == "brewing_stand" and i.cursor and not Brewing.accepts(index, i.cursor.item) then
 			return
+		elseif e.kind == "enchanting_table" and index == 2 and i.cursor and i.cursor.item ~= LAPIS then
+			return -- the lapis slot takes only lapis
+		elseif e.kind == "enchanting_table" and index == 1 and i.cursor then
+			-- the item slot holds one item (Java: max stack size 1)
+			local c = i.cursor :: Stack
+			local cur = e.slots[1]
+			if not cur then
+				e.slots[1] = SlotLogic.copy(c, 1)
+				c.count -= 1
+				if c.count <= 0 then
+					i.cursor = nil
+				end
+			elseif c.count == 1 then
+				e.slots[1], i.cursor = c, cur
+			end
 		elseif e.kind == "furnace" and index == 3 then
 			-- output slot: take only
 			local out = e.slots[3]
@@ -699,7 +784,7 @@ local function pack(slots: { [number]: Stack? }, n: number): { any }
 	local out = table.create(n)
 	for idx = 1, n do
 		local s = slots[idx]
-		out[idx] = if s then { item = s.item, count = s.count, durability = s.durability } else false
+		out[idx] = if s then { item = s.item, count = s.count, durability = s.durability, ench = s.ench } else false
 	end
 	return out
 end
@@ -730,16 +815,100 @@ local function sync(player: Player)
 			window.burnMax = f.burnMax
 			window.progress = f.progress
 		end
+		if e.kind == "enchanting_table" then
+			-- the three offers: { cost, clue, clueLevel } (cost 0 = none)
+			window.offers = InventoryService.enchantOffers(player, e)
+		end
 	end
 	Remotes.get("InventorySync"):FireClient(player, {
 		slots = pack(i.slots, ALL),
 		selected = i.selected,
-		cursor = if i.cursor then { item = i.cursor.item, count = i.cursor.count, durability = i.cursor.durability } else false,
+		cursor = if i.cursor then { item = i.cursor.item, count = i.cursor.count, durability = i.cursor.durability, ench = i.cursor.ench } else false,
 		window = window,
 	})
 end
 
 ---------------------------------------------------------------------------------------------
+
+-- Enchanting (Phase 10b) ----------------------------------------------------------------------
+
+local BOOKSHELF = BlockRegistry.id("bookshelf")
+-- Java's #enchantment_power_transmitter (#replaceable): what may stand between table and shelf
+local TRANSMITS: { [number]: boolean } = { [0] = true }
+for id, def in BlockRegistry.byId do
+	if def.key == "short_grass" or def.key == "vine" or def.key == "fire" then
+		TRANSMITS[id] = true
+	end
+end
+local function transmits(id: number): boolean
+	if TRANSMITS[id] then
+		return true
+	end
+	local def = BlockRegistry.get(id)
+	return def ~= nil and def.liquid == true
+end
+
+function InventoryService.bookshelvesAt(x: number, y: number, z: number): number
+	return Enchantments.bookshelves(WorldService.getBlock, x, y, z, function(id)
+		return id == BOOKSHELF
+	end, transmits)
+end
+
+function InventoryService.enchantOffers(player: Player, e: BlockEntityService.Entity): { any }
+	local item = e.slots[1]
+	if not item or not Enchantments.canEnchant(item) then
+		return { { 0 }, { 0 }, { 0 } }
+	end
+	local shelves = InventoryService.bookshelvesAt(e.x, e.y, e.z)
+	local out = {}
+	for k, o in Enchantments.offers(ExperienceService.seed(player), shelves, item.item) do
+		out[k] = { o.cost, o.clue or false, o.clueLevel or 0 }
+	end
+	return out
+end
+
+-- Clicking offer `slot` (0..2): Java EnchantmentMenu.clickMenuButton.
+local function enchant(player: Player, i: Inv, slot: number)
+	local e = i.enchant
+	if not e or i.window.kind ~= "enchanting_table" then
+		return
+	end
+	local item, lapis = e.slots[1], e.slots[2]
+	local need = slot + 1
+	if not item or not Enchantments.canEnchant(item) then
+		return
+	end
+	if not lapis or lapis.item ~= LAPIS or lapis.count < need then
+		return
+	end
+	local seed = ExperienceService.seed(player)
+	local offers = Enchantments.offers(seed, InventoryService.bookshelvesAt(e.x, e.y, e.z), item.item)
+	local cost = offers[slot + 1].cost
+	local level = ExperienceService.get(player).level
+	if cost <= 0 or level < need or level < cost then
+		return
+	end
+	local list = Enchantments.enchant(seed, item.item, slot, cost)
+	if #list == 0 then
+		return -- nothing to give: nothing is paid (Java)
+	end
+	ExperienceService.enchanted(player, need)
+	local ench = {}
+	for _, en in list do
+		ench[en.id] = en.level
+	end
+	if item.item == "book" then
+		e.slots[1] = { item = "enchanted_book", count = 1, ench = ench }
+	else
+		item.ench = ench
+	end
+	lapis.count -= need
+	if lapis.count <= 0 then
+		e.slots[2] = nil
+	end
+	i.dirty = true
+	Remotes.get("Experience"):FireClient(player, { type = "enchanted" })
+end
 
 local function isInt(v: any): boolean
 	return typeof(v) == "number" and v == v and v % 1 == 0 and math.abs(v) < 2 ^ 24
@@ -776,6 +945,10 @@ handleAction = function(player: Player, a: any)
 			return
 		end
 		click(player, i, a.container, a.index, if a.button == "right" then "right" else "left", a.shift == true)
+	elseif t == "enchant" then
+		if isInt(a.slot) and a.slot >= 0 and a.slot <= 2 then
+			enchant(player, i, a.slot)
+		end
 	elseif t == "collect" then
 		if typeof(a.container) == "string" and isInt(a.index) then
 			collect(i, a.container, a.index)
@@ -836,7 +1009,8 @@ handleAction = function(player: Player, a: any)
 					table.insert(targets, { slots = i.craft, index = index })
 				elseif container == "block" and e then
 					local size = if e.kind == "furnace" then 2 else blockSlots(e)
-					if index >= 1 and index <= size and (e.kind ~= "brewing_stand" or Brewing.accepts(index, i.cursor.item)) then
+					local okEnchant = e.kind ~= "enchanting_table" or (index == 2 and i.cursor.item == LAPIS)
+					if okEnchant and index >= 1 and index <= size and (e.kind ~= "brewing_stand" or Brewing.accepts(index, i.cursor.item)) then
 						table.insert(targets, { slots = e.slots, index = index })
 					end
 				end
@@ -899,7 +1073,9 @@ local function validateWindows()
 		local w = i.window
 		if w.x and player.Parent then
 			local id = WorldService.getBlock(w.x :: number, w.y :: number, w.z :: number)
-			local expected = if w.kind == "crafting_table" then CRAFTING_TABLE else nil
+			local expected = if w.kind == "crafting_table" then CRAFTING_TABLE
+				elseif w.kind == "enchanting_table" then ENCHANTING_TABLE
+				else nil
 			local ok = inReach(player, w.x :: number, w.y :: number, w.z :: number)
 				and (if expected then id == expected else BlockEntityService.kindOf(id) == w.kind)
 			if not ok then
@@ -943,6 +1119,15 @@ function InventoryService.init()
 				end
 				if c:GetAttribute("HeldOff") ~= ok then
 					c:SetAttribute("HeldOff", ok)
+				end
+				-- enchanted items in hand shimmer for everyone (Phase 10b)
+				local me = main ~= nil and main.ench ~= nil
+				local oe = off ~= nil and off.ench ~= nil
+				if c:GetAttribute("HeldGlint") ~= me then
+					c:SetAttribute("HeldGlint", me)
+				end
+				if c:GetAttribute("HeldOffGlint") ~= oe then
+					c:SetAttribute("HeldOffGlint", oe)
 				end
 			end
 		end

@@ -31,6 +31,9 @@ local Recipes = require(Shared.Items.Recipes)
 local InventoryClient = require(script.Parent.Parent.Player.InventoryClient)
 local CameraController = require(script.Parent.Parent.Player.CameraController)
 local ItemIcon = require(script.Parent.ItemIcon)
+local Glint = require(script.Parent.Glint)
+local Enchantments = require(Shared.Items.Enchantments)
+local ExperienceClient = require(script.Parent.Parent.Survival.ExperienceClient)
 
 local SLOT = 44
 local GAP = 4
@@ -50,6 +53,7 @@ type Widget = {
 	durability: Frame,
 	shown: string?,
 	hint: string?, -- faint label of an empty armour / off-hand slot
+	glint: Frame?, -- the enchantment shimmer
 }
 
 local gui: ScreenGui
@@ -80,6 +84,10 @@ end
 local brewStatus: TextLabel? = nil
 local furnaceArrow: Frame? = nil
 local furnaceFlame: Frame? = nil
+-- enchanting table: the three offer buttons
+type OfferButton = { button: TextButton, cost: TextLabel, text: TextLabel, lapis: TextLabel }
+local offerButtons: { OfferButton } = {}
+local cursorGlint: Frame? = nil
 
 local TITLES = {
 	inventory = "Inventory",
@@ -87,6 +95,7 @@ local TITLES = {
 	brewing_stand = "Brewing Stand",
 	furnace = "Furnace",
 	chest = "Chest",
+	enchanting_table = "Enchanting Table",
 }
 
 -- Result slots and the furnace output can't receive dragged items.
@@ -100,6 +109,9 @@ local function dragTarget(w: any): boolean
 	end
 	if w.container == "block" and InventoryClient.window.kind == "furnace" and w.index == 3 then
 		return false
+	end
+	if w.container == "block" and InventoryClient.window.kind == "enchanting_table" then
+		return w.index == 2 and cursor ~= nil and cursor.item == "lapis_lazuli"
 	end
 	return true
 end
@@ -198,6 +210,7 @@ local function slot(x: number, y: number, container: string, index: number, big:
 		durabilityBg = durabilityBg,
 		durability = durability,
 		shown = nil,
+		glint = Glint.attach(b, 2),
 	}
 	-- Clicks act on press (Java). With a carried stack (and no Shift) a press starts a possible
 	-- drag instead; it becomes a click on release if no second slot was visited.
@@ -302,6 +315,7 @@ local function build(kind: string)
 	hovered = nil
 	brewStatus = nil
 	furnaceArrow, furnaceFlame = nil, nil
+	table.clear(offerButtons)
 	layoutKind = kind
 
 	local y = PAD
@@ -381,6 +395,40 @@ local function build(kind: string)
 	elseif kind == "chest" then
 		grid(PAD, y, COLS, 3, "block", 1)
 		y += rowsHeight(3)
+	elseif kind == "enchanting_table" then
+		-- item and lapis on the left, the three offers on the right (our own layout)
+		label(panel, "Item", UDim2.fromOffset(PAD + 10, y), UDim2.fromOffset(60, 16), 12)
+		label(panel, "Lapis", UDim2.fromOffset(PAD + 10 + SLOT + GAP * 2, y), UDim2.fromOffset(60, 16), 12)
+		local w2 = slot(PAD + 10 + SLOT + GAP * 2, y + 18, "block", 2)
+		w2.hint = "Lapis"
+		w2.shown = "\0"
+		slot(PAD + 10, y + 18, "block", 1)
+		local bx = PAD + 140
+		local bw = PANEL_W - bx - PAD
+		for k = 1, 3 do
+			local b = Instance.new("TextButton")
+			b.AutoButtonColor = true
+			b.Text = ""
+			b.BackgroundColor3 = Color3.fromRGB(36, 30, 56)
+			b.BorderSizePixel = 0
+			b.Position = UDim2.fromOffset(bx, y + (k - 1) * 40)
+			b.Size = UDim2.fromOffset(bw, 36)
+			local c = Instance.new("UICorner")
+			c.CornerRadius = UDim.new(0, 4)
+			c.Parent = b
+			local lapis = label(b, "", UDim2.fromOffset(8, 0), UDim2.fromOffset(40, 36), 12)
+			lapis.TextColor3 = Color3.fromRGB(120, 150, 255)
+			local text = label(b, "", UDim2.fromOffset(50, 0), UDim2.new(1, -100, 1, 0), 13)
+			text.TextTruncate = Enum.TextTruncate.AtEnd
+			local cost = label(b, "", UDim2.new(1, -46, 0, 0), UDim2.fromOffset(40, 36), 15)
+			cost.TextXAlignment = Enum.TextXAlignment.Right
+			b.Parent = panel
+			b.Activated:Connect(function()
+				InventoryClient.enchant(k - 1)
+			end)
+			offerButtons[k] = { button = b, cost = cost, text = text, lapis = lapis }
+		end
+		y += 120
 	end
 	y += 14
 	label(panel, "Inventory", UDim2.fromOffset(PAD, y), UDim2.fromOffset(300, 18), 13)
@@ -460,6 +508,7 @@ function refresh()
 			end
 		end
 		w.count.Text = if s and s.count > 1 then tostring(s.count) else ""
+		Glint.set(w.glint, s ~= nil and s.ench ~= nil)
 		local def = key and ItemRegistry.get(key)
 		if s and def and def.tool and s.durability and s.durability < def.tool.durability then
 			local f = math.clamp(s.durability / def.tool.durability, 0, 1)
@@ -476,6 +525,32 @@ function refresh()
 		local status = if progress > 0 then `Brewing: {math.ceil(Brewing.SECONDS - progress)}s` else "Ready"
 		brewStatus.Text = `{status}   |   Fuel charges: {win.charges or 0}`
 	end
+	if #offerButtons == 3 then
+		-- Java: an offer is usable with enough levels (at least its cost) and lapis (1, 2, 3)
+		local offers = win.offers
+		local lapis = win.block and win.block[2]
+		local lapisCount = if lapis and lapis.item == "lapis_lazuli" then lapis.count else 0
+		local level = ExperienceClient.level
+		for k, ob in offerButtons do
+			local o = offers and offers[k]
+			local cost = if o then o[1] else 0
+			if cost and cost > 0 then
+				local ok = lapisCount >= k and level >= k and level >= cost
+				local clue = if o[2] then Enchantments.label(o[2], o[3]) .. " . . . ?" else "?"
+				ob.text.Text = clue
+				ob.cost.Text = tostring(cost)
+				ob.lapis.Text = `{k} lapis`
+				ob.cost.TextColor3 = if ok then Color3.fromRGB(128, 255, 32) else Color3.fromRGB(64, 120, 30)
+				ob.text.TextColor3 = if ok then Color3.fromRGB(225, 215, 255) else Color3.fromRGB(110, 104, 130)
+				ob.button.BackgroundColor3 = if ok then Color3.fromRGB(54, 42, 92) else Color3.fromRGB(30, 28, 38)
+			else
+				ob.text.Text = ""
+				ob.cost.Text = ""
+				ob.lapis.Text = ""
+				ob.button.BackgroundColor3 = Color3.fromRGB(24, 24, 30)
+			end
+		end
+	end
 	if furnaceArrow and furnaceFlame then
 		furnaceArrow.Size = UDim2.fromScale(math.clamp((win.progress or 0) / Recipes.SMELT_SECONDS, 0, 1), 1)
 		local burnMax = win.burnMax or 0
@@ -484,6 +559,7 @@ function refresh()
 	-- cursor stack (minus what the drag preview has spread)
 	local c = previewCursor
 	cursorFrame.Visible = c ~= nil
+	Glint.set(cursorGlint, c ~= nil and c.ench ~= nil)
 	if c then
 		ItemIcon.draw(cursorIcon, c.item)
 		cursorCount.Text = if c.count > 1 then tostring(c.count) else ""
@@ -587,6 +663,7 @@ function InventoryUI.init()
 	cursorIcon.Size = UDim2.fromOffset(SLOT - 18, SLOT - 18)
 	cursorIcon.ZIndex = 50
 	cursorIcon.Parent = cursorFrame
+	cursorGlint = Glint.attach(cursorFrame, 2)
 	cursorCount = Instance.new("TextLabel")
 	cursorCount.BackgroundTransparency = 1
 	cursorCount.AnchorPoint = Vector2.new(1, 1)
@@ -608,6 +685,7 @@ function InventoryUI.init()
 	tooltip.TextSize = 14
 	tooltip.TextColor3 = Color3.fromRGB(240, 240, 250)
 	tooltip.AutomaticSize = Enum.AutomaticSize.XY
+	tooltip.RichText = true
 	tooltip.ZIndex = 60
 	tooltip.Visible = false
 	local tp = Instance.new("UIPadding")
@@ -643,6 +721,10 @@ function InventoryUI.init()
 	-- Server state drives the UI: a container window opening shows it; the server closing a
 	-- container (walked away, block broken) hides it.
 	local lastKind = "inventory"
+	-- offers light up when the player's level changes
+	ExperienceClient.Changed:Connect(function()
+		refresh()
+	end)
 	InventoryClient.Changed:Connect(function()
 		local kind = InventoryClient.window.kind
 		if kind ~= "inventory" and not gui.Enabled then
@@ -716,7 +798,19 @@ function InventoryUI.init()
 		local s = h and stackFor(h)
 		local def = s and ItemRegistry.get(s.item)
 		if s and def and not InventoryClient.cursor then
-			local text = def.name
+			-- enchanted items: the name in light blue (Java's rarity colour), then each enchantment
+			-- in grey (curses in red)
+			local function esc(t: string): string
+				return (string.gsub(string.gsub(string.gsub(t, "&", "&amp;"), "<", "&lt;"), ">", "&gt;"))
+			end
+			local text = esc(def.name)
+			if s.ench then
+				local nameColor = if s.item == "enchanted_book" then "#FFFF55" else "#55FFFF"
+				text = `<font color="{nameColor}">{text}</font>`
+				for _, line in Enchantments.lines(s.ench) do
+					text ..= `\n<font color="{if line.curse then "#FF5555" else "#AAAAAA"}">{esc(line.text)}</font>`
+				end
+			end
 			if def.tool and s.durability then
 				text ..= `\nDurability {s.durability} / {def.tool.durability}`
 			end
