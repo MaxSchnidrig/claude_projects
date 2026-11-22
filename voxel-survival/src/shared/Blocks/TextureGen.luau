@@ -292,8 +292,10 @@ recipes.lava = function(seed)
 	local img = new()
 	for y = 0, N - 1 do
 		for x = 0, N - 1 do
-			local n = tileNoise(seed, x, y, 4)
-			local c = if n > 0.65 then { 255, 196, 60 } elseif n > 0.35 then P.lava else { 176, 52, 12 }
+			local warp = tileNoise(seed, x, y, 4)
+			local seam = math.abs(math.sin(2 * math.pi * (x / N + 0.65 * warp) + 1.4 * math.sin(2 * math.pi * y / N)))
+			local c = if seam < 0.055 then { 226, 134, 52 } elseif seam < 0.23 then { 186, 68, 24 }
+				elseif seam < 0.39 then { 98, 44, 33 } elseif warp < 0.5 then { 64, 47, 48 } else { 49, 39, 43 }
 			put(img, x, y, shade(c, 0.94 + rnd(seed, x, y) * 0.12))
 		end
 	end
@@ -709,8 +711,9 @@ recipes.fire = function(seed)
 		for y = 0, N - 1 do
 			if y >= top then
 				local t = (y - top) / math.max(1, N - top)
-				local c = if t > 0.7 then { 255, 236, 120 } elseif t > 0.35 then { 255, 160, 40 } else { 220, 72, 24 }
-				put(img, x, y, shade(c, 0.9 + rnd(seed, x, y) * 0.2), if y == top then 160 else 255)
+				local core = math.abs(x - 7.5) < 2 and t > 0.65
+				local c = if core then { 234, 146, 54 } elseif t > 0.45 then { 177, 64, 27 } else { 128, 42, 28 }
+				put(img, x, y, shade(c, 0.9 + rnd(seed, x, y) * 0.2), if core then 244 elseif y == top then 115 else 189)
 			else
 				put(img, x, y, { 0, 0, 0 }, 0)
 			end

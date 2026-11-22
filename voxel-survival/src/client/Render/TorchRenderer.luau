@@ -61,14 +61,29 @@ local function buildFire(x: number, y: number, z: number): Torch
 	model.Name = "Fire"
 	local base = Vector3.new(x + 0.5, y, z + 0.5) * BS
 	local flames = {}
+	-- Offset tongues taper to separate tips. Only the ember at their base is emissive.
 	for i = 0, 3 do
-		local f = plain(Vector3.new(BS * 0.9, BS * 0.8, 0.05), if i % 2 == 0 then Color3.fromRGB(255, 150, 40) else Color3.fromRGB(255, 210, 90), Enum.Material.Neon)
-		f.Transparency = 0.25
-		f.CFrame = CFrame.new(base + Vector3.new(0, BS * 0.4, 0)) * CFrame.Angles(0, math.rad(i * 45), 0)
-		f.Parent = model
-		table.insert(flames, f)
+		local angle = i * math.pi / 2
+		local height = if i % 2 == 0 then 0.69 else 0.49
+		local tongue = plain(Vector3.new(0.17, height, 0.19) * BS, Color3.fromRGB(143, 51, 29))
+		tongue.CFrame = CFrame.new(base) * CFrame.Angles(0, angle, 0)
+			* CFrame.new(BS * 0.14, BS * height / 2, 0) * CFrame.Angles(0, 0, math.rad(-9))
+		tongue.Transparency = 0.42
+		tongue.Parent = model
+		table.insert(flames, tongue)
+		local tip = plain(Vector3.new(0.09, 0.14, 0.11) * BS, Color3.fromRGB(122, 41, 29))
+		tip.CFrame = tongue.CFrame * CFrame.new(0, BS * (height / 2 + 0.055), 0)
+		tip.Transparency = 0.52
+		tip.Parent = model
+		table.insert(flames, tip)
 	end
-	local light = pointLight(flames[1], 15 * BS * 0.6)
+	local core = plain(Vector3.new(0.20, 0.21, 0.18) * BS, Color3.fromRGB(216, 112, 39), Enum.Material.Neon)
+	core.CFrame = CFrame.new(base + Vector3.new(0, 0.115 * BS, 0))
+	core.Parent = model
+	local lightAnchor = Instance.new("Attachment")
+	lightAnchor.Position = Vector3.new(0, (0.4 - 0.115) * BS, 0)
+	lightAnchor.Parent = core
+	local light = pointLight(lightAnchor, 15 * BS * 0.6)
 	model.Parent = folder
 	return { model = model, light = light, pos = base + Vector3.new(0, BS * 0.4, 0), cx = x // CS, cz = z // CS, kind = "fire", flames = flames, lit = true }
 end
@@ -392,7 +407,7 @@ function TorchRenderer.init()
 			flick = 0
 			for _, t in torches do
 				for _, f in t.flames do
-					f.Transparency = 0.15 + math.random() * 0.25
+					f.Transparency = (if t.kind == "fire" then 0.39 else 0.15) + math.random() * 0.25
 				end
 			end
 		end

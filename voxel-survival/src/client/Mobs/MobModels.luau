@@ -9,8 +9,7 @@
 --               crude bow in one hand
 --   Spider      dark-brown two-part body with orange stripes, cluster of amber eyes, 8 thin legs
 --   Sneaker     plated seedpod with three amber vents, a low sensor and four walking feet
---   Voidling   legless floating violet crystal figure: glassy core, diamond-shaped glowing head,
---               shard "arms" orbiting it, a tapering crystal trail below, a block hovering in front
+--   Voidling    slate-blue cave walker with a split crystal crest and a floating stone
 --   Cow         tawny with a dark back stripe, cream belly patch, small curved horns
 --   Pig         dusky pink-grey with a bristly darker ridge and little tusk nubs
 --   Sheep       cream wool with a charcoal face and legs
@@ -149,22 +148,31 @@ end
 
 -- Voidling ------------------------------------------------------------------------------------
 do
-	local crystal, core = rgb(92, 64, 168), rgb(170, 140, 255)
-	designs.voidling = {
-		{ size = v(0.14, 0.14, 0.14), pos = v(0, 0.35, 0), color = crystal, material = Enum.Material.Glass, transparency = 0.2, rotation = v(45, 45, 0) },
-		{ size = v(0.2, 0.2, 0.2), pos = v(0, 0.65, 0), color = crystal, material = Enum.Material.Glass, transparency = 0.2, rotation = v(45, 45, 0) },
-		{ size = v(0.28, 0.4, 0.22), pos = v(0, 1.0, 0), color = crystal, material = Enum.Material.Glass, transparency = 0.15 },
-		{ size = v(0.36, 0.95, 0.26), pos = v(0, 1.62, 0), color = crystal, material = Enum.Material.Glass, transparency = 0.15, limb = "core" },
-		{ size = v(0.16, 0.5, 0.14), pos = v(0, 1.62, 0), color = core, material = Enum.Material.Neon, glow = true, limb = "core" },
-		{ size = v(0.34, 0.34, 0.34), pos = v(0, 2.36, 0), color = core, material = Enum.Material.Neon, rotation = v(45, 0, 45), glow = true, limb = "core" },
-		-- orbiting shard "arms"
-		{ size = v(0.12, 0.42, 0.12), pos = v(-0.5, 1.7, 0), color = crystal, material = Enum.Material.Glass, transparency = 0.1, limb = "shard", phase = 0 },
-		{ size = v(0.1, 0.3, 0.1), pos = v(-0.55, 1.25, 0), color = crystal, material = Enum.Material.Glass, transparency = 0.1, limb = "shard", phase = 0.33 },
-		{ size = v(0.12, 0.42, 0.12), pos = v(0.5, 1.7, 0), color = crystal, material = Enum.Material.Glass, transparency = 0.1, limb = "shard", phase = 0.5 },
-		{ size = v(0.1, 0.3, 0.1), pos = v(0.55, 1.25, 0), color = crystal, material = Enum.Material.Glass, transparency = 0.1, limb = "shard", phase = 0.83 },
-		-- a carried block hovering in front
-		{ size = v(0.4, 0.4, 0.4), pos = v(0, 1.45, -0.55), color = rgb(96, 160, 56), limb = "carry" },
-	}
+	local skin, shadow, facet = rgb(82, 106, 132), rgb(51, 68, 92), rgb(103, 146, 154)
+	local teal = rgb(146, 201, 192)
+	local d: { Box } = {
+		{ size = v(0.31, 0.83, 0.24), pos = v(0, 1.78, 0), color = skin },
+		{ size = v(0.46, 0.18, 0.29), pos = v(0, 2.13, 0), color = shadow },
+		{ size = v(0.14, 0.19, 0.16), pos = v(0, 2.26, 0), color = shadow },
+		{ size = v(0.31, 0.30, 0.29), pos = v(0, 2.44, -0.02), color = skin },
+		-- Forked crest grows from one temple. Its front facet echoes the diagonal chest mark.
+		{ size = v(0.08, 0.30, 0.10), pos = v(-0.13, 2.59, -0.01), color = facet, rotation = v(0, 0, 24) },
+		{ size = v(0.06, 0.18, 0.08), pos = v(-0.07, 2.61, 0.04), color = facet, rotation = v(-18, 0, -8) },
+		{ size = v(0.05, 0.12, 0.022), pos = v(-0.045, 2.45, -0.17), color = teal, rotation = v(0, 0, 28), material = Enum.Material.Neon, limb = "core", glow = true },
+		{ size = v(0.035, 0.17, 0.02), pos = v(0.04, 1.94, -0.125), color = teal, rotation = v(0, 0, 28), material = Enum.Material.Neon, limb = "core", glow = true },
+		{ size = v(0.28, 0.28, 0.28), pos = v(0, 1.45, -0.45), color = facet, limb = "carry" },
+	for _, side in { -1, 1 } do
+		local hip = v(side * 0.095, 1.40, 0)
+		local shoulder = v(side * 0.245, 2.15, 0)
+		local phase = if side < 0 then 0 else 1
+		table.insert(d, { size = v(0.13, 1.39, 0.15), pos = v(hip.X, 0.705, 0), color = shadow,
+			limb = "legL", hinge = hip, phase = phase })
+		table.insert(d, { size = v(0.14, 0.11, 0.23), pos = v(hip.X, 0.055, -0.035), color = skin,
+			limb = "legL", hinge = hip, phase = phase })
+		table.insert(d, { size = v(0.11, 1.14, 0.13), pos = v(shoulder.X, 1.61, 0), color = skin,
+			limb = "armL", hinge = shoulder, phase = 1 - phase })
+	end
+	designs.voidling = d
 end
 
 -- Cow ------------------------------------------------------------------------------------------

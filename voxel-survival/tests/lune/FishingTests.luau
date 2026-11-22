@@ -53,7 +53,7 @@ return function(test, eq)
 		local rod = { item = "fishing_rod", count = 1, durability = 64 }
 		local spills = 0
 		-- Force a diamond-boots catch through the actual inventory insertion path.
-		local rolls = { 1, 100, 4, 1, 100, 4 }
+		local rolls = { 1, 100, 4, 1, 1, 100, 4, 1 }
 		Loader.globals.Random = { new = function()
 			return { NextNumber = function() return 6 end, NextInteger = function(_, lo, hi)
 				local result = table.remove(rolls, 1)

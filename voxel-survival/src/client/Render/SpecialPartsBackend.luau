@@ -17,6 +17,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local GreedyMesher = require(Shared.Meshing.GreedyMesher)
+local LavaSurface = require(script.Parent.LavaSurface)
 local RenderStyle = require(script.Parent.RenderStyle)
 local BlockRegistry = require(Shared.Blocks.BlockRegistry)
 local Fluids = require(Shared.World.Fluids)
@@ -80,7 +81,7 @@ Backend.stats = { parts = 0, sections = 0 }
 -- Is this texture rendered by this backend (instead of the opaque mesh)?
 function Backend.isSpecial(tex: number): boolean
 	local style = RenderStyle.forTexture(tex)
-	return style.transparency > 0 or style.material ~= RenderStyle.baseMaterial
+	return fluidTex[tex] ~= nil or style.transparency > 0 or style.material ~= RenderStyle.baseMaterial
 end
 
 -- `groups`: texture -> quad list (GreedyMesher format), special textures only.
@@ -146,6 +147,9 @@ function Backend.build(groups: { [number]: { number } }, padded: buffer, originS
 			part.Transparency = style.transparency
 			part.Size = Vector3.new(size[1], size[2], size[3])
 			part.CFrame = CFrame.new(originStuds + Vector3.new(center[1], center[2], center[3]))
+			if ft and ft.fluid == "lava" then
+				LavaSurface.draw(part, LavaSurface.faces[d])
+			end
 			part.Parent = folder
 			table.insert(handle.parts, part)
 		end

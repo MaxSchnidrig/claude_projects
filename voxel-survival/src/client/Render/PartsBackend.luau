@@ -11,10 +11,12 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local BlockRegistry = require(Shared.Blocks.BlockRegistry)
 local BoxMerger = require(Shared.Meshing.BoxMerger)
+local LavaSurface = require(script.Parent.LavaSurface)
 local RenderStyle = require(script.Parent.RenderStyle)
 
 local Shapes = require(Shared.Blocks.Shapes)
 local STRIDE = require(Shared.Meshing.SectionSampler).SIZE
+local FIRE = BlockRegistry.id("fire")
 local STAND = BlockRegistry.id("brewing_stand")
 local BS = Config.BLOCK_SIZE
 local isOpaque = BlockRegistry.isOpaque
@@ -36,7 +38,7 @@ for pid, def in BlockRegistry.byId do
 end
 
 function Backend.partKey(padded: buffer, id: number, p: number): number
-	if PLANT[id] then
+	if PLANT[id] or id == FIRE then
 		return 0 -- (the low-detail fallback doesn't draw plants; it would make them cubes)
 	end
 	for i = 1, 6 do
@@ -63,6 +65,7 @@ local function addPart(parts: { BasePart }, folder: Instance, center: Vector3, s
 	part.CFrame = CFrame.new(center)
 	part.Parent = folder
 	table.insert(parts, part)
+	return part
 end
 
 function Backend.build(padded: buffer, originStuds: Vector3, folder: Instance): Handle
@@ -80,7 +83,12 @@ function Backend.build(padded: buffer, originStuds: Vector3, folder: Instance): 
 		local x, y, z, sx, sy, sz, id = boxes[o + 1], boxes[o + 2], boxes[o + 3], boxes[o + 4], boxes[o + 5], boxes[o + 6], boxes[o + 7]
 		local style = RenderStyle.forBlock(id)
 		local center = originStuds + Vector3.new(x + sx / 2, y + sy / 2, z + sz / 2) * BS
-		addPart(handle.parts, folder, center, Vector3.new(sx, sy, sz), style.material, style.color, style.transparency)
+		local part = addPart(handle.parts, folder, center, Vector3.new(sx, sy, sz), style.material, style.color, style.transparency)
+		if BlockRegistry.byId[id].fluid == "lava" then
+			for _, face in LavaSurface.faces do
+				LavaSurface.draw(part, face)
+			end
+		end
 	end
 	for _, cell in stands do
 		local pos = Vector3.new(cell % STRIDE - 1, cell // (STRIDE * STRIDE) - 1, cell // STRIDE % STRIDE - 1)

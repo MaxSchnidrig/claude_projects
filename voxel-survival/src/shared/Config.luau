@@ -69,7 +69,6 @@ Config.TEXTURE_STYLE = {
 	ice = { transparency = 0.2 },
 	glass = { transparency = 0.6 },
 	stained_glass = { transparency = 0.45 }, -- every "<colour>_stained_glass" (Phase 9e)
-	lava = { neon = true },
 }
 -- Per-direction brightness baked into vertex colours (Java's directional face shading).
 Config.FACE_SHADE = {

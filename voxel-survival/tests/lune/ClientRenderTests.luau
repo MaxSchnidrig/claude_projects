@@ -129,6 +129,33 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		Backend.destroy(handle)
 	end)
 
+	test("lava: all nine levels use the crust art and retain the fluid surface renderer", function()
+		local backend = Loader.require("src/client/Render/SpecialPartsBackend")
+		local style = Loader.require("src/client/Render/RenderStyle")
+		local gen = Loader.require("src/shared/Blocks/TextureGen")
+		local blocks = Loader.require("src/shared/Blocks/BlockRegistry")
+		local tile = gen.generate("lava")
+		local crust, highlights = 0, 0
+		for offset = 0, buffer.len(tile) - 4, 4 do
+			local red = buffer.readu8(tile, offset)
+			if red < 110 then crust += 1 end
+			if red > 210 then highlights += 1 end
+		end
+		assert(crust > 192 and highlights > 0 and highlights < 16)
+		local count = 0
+		for _, def in blocks.byId do
+			if def.fluid == "lava" then
+				local tex = def.faceTexture[blocks.Dir.TOP]
+				assert(backend.isSpecial(tex))
+				eq(style.forTexture(tex).material, style.baseMaterial)
+				eq(buffer.tostring(gen.generate(blocks.textureKeys[tex])), buffer.tostring(tile))
+				eq(def.light, 15)
+				count += 1
+			end
+		end
+		eq(count, 9)
+	end)
+
 	-- leave the loader as the other tests expect it
 	for _, k in { "game", "workspace", "Instance", "Enum", "CFrame", "Vector2", "Color3", "UDim2", "UDim", "task", "os", "time", "tick", "warn", "Random" } do
 		Loader.globals[k] = nil
