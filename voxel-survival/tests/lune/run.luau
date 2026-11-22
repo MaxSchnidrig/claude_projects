@@ -31,6 +31,35 @@ local function eq(a: any, b: any, msg: string?)
 	end
 end
 
+local ItemMotion = Loader.require("src/shared/Gameplay/ItemMotion")
+test("drop: view pitch and yaw determine a constant-gravity arc", function()
+	local V = Loader.globals.Vector3
+	for _, look in { V.new(1, 0, 0), V.new(0, 0.6, -0.8), V.new(0, -1, 0), V.new(0, 1, 0) } do
+		local v = ItemMotion.launch(look)
+		local s = { x = 3, y = 10, z = -7, vx = v.X, vy = v.Y, vz = v.Z, resting = false }
+		local t = 0.5
+		for _ = 1, 15 do ItemMotion.step(s, function() return false end) end
+		assert(math.abs(s.x - (3 + 6 * look.X * t)) < 1e-5)
+		assert(math.abs(s.z - (-7 + 6 * look.Z * t)) < 1e-5)
+		assert(math.abs(s.y - (10 + (2 + 6 * look.Y) * t - 8 * t * t)) < 1e-5)
+	end
+end)
+test("drop: stops at a wall, settles on a slab, falls when its support disappears", function()
+	local supported = true
+	local function solid(x, y, z)
+		if y == 0 and supported then return { { 0, 0, 0, 1, 0.5, 1 } } end
+		return x == 2 and y >= 1
+	end
+	local s = { x = 0, y = 2, z = 0.5, vx = 7, vy = 1, vz = 0, resting = false }
+	for _ = 1, 100 do ItemMotion.step(s, solid) end
+	assert(s.x <= 2 - ItemMotion.SIZE / 2 and s.x > 1.8)
+	eq(s.y, 0.5)
+	eq(s.resting, true)
+	supported = false
+	ItemMotion.step(s, solid)
+	assert(s.y < 0.5 and not s.resting)
+end)
+
 local function checksum(buf: buffer): number
 	local h = 0
 	for i = 0, buffer.len(buf) - 1, 4 do
@@ -2287,10 +2316,13 @@ require("./ServerBedTests")(test, eq)
 require("./ServerLobbyTests")(test, eq)
 require("./ServerSurvivalTests")(test, eq)
 require("./FarmingTests")(test, eq)
+require("./BrewingTests")(test, eq)
 require("./EffectsTests")(test, eq)
 require("./GraphicsTests")(test, eq)
 require("./HungerTests")(test, eq)
 require("./WeatherTests")(test, eq)
+require("./FishingTests")(test, eq)
+require("./HandMotionTests")(test, eq)
 require("./AnimalTests")(test, eq)
 require("./ExperienceTests")(test, eq)
 require("./EnchantingTests")(test, eq)

@@ -412,7 +412,7 @@ local function configure(humanoid: Humanoid)
 	humanoid.WalkSpeed = 0
 	for _, state in {
 		Enum.HumanoidStateType.Climbing, Enum.HumanoidStateType.GettingUp, Enum.HumanoidStateType.FallingDown,
-		Enum.HumanoidStateType.Ragdoll, Enum.HumanoidStateType.Swimming, Enum.HumanoidStateType.Seated,
+		Enum.HumanoidStateType.Ragdoll, Enum.HumanoidStateType.Swimming,
 	} do
 		humanoid:SetStateEnabled(state, false)
 	end
@@ -515,6 +515,18 @@ local function step(dt: number)
 		local modifier = (if MovementController.sprinting then 1.15 else 1) * (1 - MovementController.bowPull * 0.15)
 		local targetFov = baseFov * (1 + (modifier - 1) * fovEffects)
 		camera.FieldOfView += (targetFov - camera.FieldOfView) * (1 - 0.5 ^ (dt * 20))
+	end
+
+	local seat = character:GetAttribute("RidingPig") and humanoid.SeatPart
+	if seat and seat.Name == "PigSaddle" then
+		local feet = feetOf(root)
+		st.x, st.y, st.z = feet.X, feet.Y, feet.Z
+		st.vx, st.vy, st.vz = 0, 0, 0
+		st.fallDistance = 0
+		b.px, b.py, b.pz = st.x, st.y, st.z
+		b.acc = 0
+		if jumpHeld then humanoid.Sit = false end
+		return
 	end
 
 	-- Asleep in a bed: the client holds the body in the lying pose itself (the server's

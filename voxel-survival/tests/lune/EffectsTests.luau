@@ -189,6 +189,14 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		eq(slots[1].item, "bucket")
 		eq(next(Survival.effects(player)), nil, "milk cleared the effects")
 
+		for id, ticks in { speed = 3600, strength = 3600, regeneration = 900 } do
+			eat("potion_" .. id)
+			eq(slots[1].item, "glass_bottle")
+			eq(Survival.effects(player)[id].ticks, ticks)
+		end
+		eat("milk_bucket")
+		eq(next(Survival.effects(player)), nil)
+
 		-- spider eye: poisoned, health drops but poison never kills
 		h.Health = 3
 		for _ = 1, 400 do -- hungry enough that nothing heals (one point used per tick, like Java)

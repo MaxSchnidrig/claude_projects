@@ -245,8 +245,14 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 			enchanted_golden_apple = { 4, 9.6 }, golden_carrot = { 6, 14.4 }, melon_slice = { 2, 1.2 },
 			poisonous_potato = { 2, 1.2 }, potato = { 1, 0.6 }, pumpkin_pie = { 8, 4.8 }, raw_beef = { 3, 1.8 },
 			raw_chicken = { 2, 1.2 }, raw_mutton = { 2, 1.2 }, raw_porkchop = { 3, 1.8 }, rotten_flesh = { 4, 0.8 },
-			spider_eye = { 2, 3.2 },
+			water_bottle = { 0, 0 }, potion_base = { 0, 0 }, potion_speed = { 0, 0 },
+			potion_strength = { 0, 0 }, potion_regeneration = { 0, 0 }, spider_eye = { 2, 3.2 },
 		}
+		for _, fish in Loader.require("src/shared/Items/Fishing").SPECIES do
+			local small = fish.key == "pufferfish" or fish.key == "clownfish"
+			WIKI[fish.key] = if small then { 1, 0.2 } else { 2, 0.4 }
+		end
+		WIKI.cooked_fish = { 5, 6 }
 		for key, v in WIKI do
 			local def = ItemRegistry.get(key)
 			assert(def and def.food, `{key} is food`)

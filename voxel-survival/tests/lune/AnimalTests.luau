@@ -145,6 +145,18 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		eq((Placement.supported(carpet, 0, 20, 0, get)), false, "no block under it: it drops")
 	end)
 
+	test("9f: egg impact outcomes over all 256 rolls", function()
+		local counts = { [0] = 0, [1] = 0, [4] = 0 }
+		for hatch = 1, 8 do
+			for clutch = 1, 32 do
+				counts[Animals.eggChicks(hatch, clutch)] += 1
+			end
+		end
+		eq(counts[0], 224)
+		eq(counts[1], 31)
+		eq(counts[4], 1)
+	end)
+
 	test("server (real MobService + MobAI): feed two cows, they breed a calf; feeding the calf; shear, dye, graze", function()
 		local G = Fake.newGame()
 		for k, v in G.env do
@@ -246,8 +258,7 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		eq(a.love, 0); eq(b.love, 0)
 		assert(a.age > 5800 and b.age > 5800, "parents rest 5 minutes")
 		-- feeding the calf: 10 % of the time left; a parent on cooldown takes nothing
-		-- (the calf wanders at random: bring it back within reach first)
-		calf.x, calf.z = 2.5, 0.5
+		calf.x, calf.y, calf.z = 1, FLOOR, 1 -- keep the interaction inside server reach
 		local ageBefore = calf.age
 		use(calf)
 		eq(calf.age - ageBefore, Animals.feedSpeedUpTicks(ageBefore))
@@ -301,6 +312,47 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		local lambBorn = MS.breed(s2, s3)
 		eq(lambBorn.color, "light_blue")
 		eq(lambBorn.age, Animals.BABY_AGE)
+
+		local pig = MS.spawn("pig", 1, FLOOR, 1, 0)
+		hand = { item = "name_tag", count = 2 }
+		use(pig)
+		pig.x = 40
+		remotes.NameAnimal.OnServerEvent:Fire(player, a.id, "Wrong animal")
+		eq(hand.count, 2, "selection belongs to the original animal")
+		remotes.NameAnimal.OnServerEvent:Fire(player, pig.id, "bad Pig")
+		eq(pig.animalName, "### Pig", "filtered name follows the selected animal outside reach")
+		eq(hand.count, 1)
+		remotes.NameAnimal.OnServerEvent:Fire(player, pig.id, "Repeat")
+		eq(hand.count, 1, "duplicate submissions cannot spend another tag")
+		use(pig)
+		remotes.NameAnimal.OnServerEvent:Fire(player, pig.id, "Far")
+		eq(pig.animalName, "### Pig", "must start naming within reach")
+		pig.x = 1
+		use(pig)
+		remotes.NameAnimal.OnServerEvent:Fire(player, pig.id, nil)
+		remotes.NameAnimal.OnServerEvent:Fire(player, pig.id, "Cancelled")
+		eq(hand.count, 1, "cancel releases the selection")
+		local piglet = MS.spawn("pig", 1, FLOOR, 1, 0, { age = Animals.BABY_AGE })
+		hand = { item = "saddle", count = 2 }
+		use(piglet)
+		eq(hand.count, 2, "piglets cannot wear saddles")
+		use(pig)
+		use(pig)
+		eq(pig.saddled, true)
+		eq(hand.count, 1, "exactly one saddle consumed")
+		hand = { item = "egg", count = 2 }
+		remotes.ThrowEgg.OnServerEvent:Fire(player, Vector3.zero)
+		eq(hand.count, 2, "reject zero aim")
+		remotes.ThrowEgg.OnServerEvent:Fire(player, Vector3.new(0,-1,0))
+		eq(hand.count, 1, "valid throw consumes one egg")
+		local projectile
+		for _, mob in MS.mobs do
+			if mob.def.key == "thrown_egg" then projectile = mob end
+		end
+		assert(projectile and projectile.ownerPlayer == player, "server creates egg projectile")
+		MS.remove(pig)
+		frames(1)
+		eq(projectile.alive, false, "egg breaks on impact")
 
 		for _, path in {
 			"src/shared/Net/Remotes.luau", "src/server/World/WorldService.luau", "src/server/World/ItemEntityService.luau",

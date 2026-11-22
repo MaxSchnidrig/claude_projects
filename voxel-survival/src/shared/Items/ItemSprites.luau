@@ -1398,6 +1398,60 @@ add("beetroot", T.beetroot, { m = P.beet, l = P.leaf })
 add("bread", T.bread, { m = P.bread })
 add("melon_slice", T.melon_slice, { m = P.melon, r = P.rind, w = { 236, 240, 200 }, k = { 30, 24, 20 } })
 add("pumpkin_pie", T.pie, { m = P.pie, c = P.crust })
+add("lead", {
+	"....mmmmmmmm....",
+	"....mmmmmmmm....",
+	"..mm........mm..",
+	"..mm........mm..",
+	"..mm........mm..",
+	"..mm........mm..",
+	"....mmmmmmmm....",
+	"....mmmmmmmm....",
+	"..........mm....",
+	"..........mm....",
+	"........mm......",
+	"........mm......",
+	"......mm........",
+	"......mm........",
+	"....mmmm........",
+	"....mmmm........",
+}, { m = {150,105,65} })
+add("name_tag", {
+	"............bbb.",
+	"...........bg.gb",
+	"..........bb..gb",
+	".......oooo.bgb.",
+	"......opppho.bb.",
+	".....ophppgpo...",
+	"....ophppp.po...",
+	"...ophppppppo...",
+	"..ophppppppto...",
+	".ophppmmppto....",
+	"oppppmmpppto....",
+	"oppppppppto.....",
+	".oppppppto......",
+	"..oppppto.......",
+	"...ottto........",
+	"....ooo.........",
+}, { o = {86,58,40}, p = {229,191,128}, h = {255,230,174}, t = {194,148,91}, m = {132,88,52}, b = {110,77,37}, g = {241,194,94} })
+add("saddle", {
+	"................",
+	"................",
+	"..mmmm....mmmm..",
+	"..mmmm....mmmm..",
+	"..mmmmmmmmmmmm..",
+	"..mmmmmmmmmmmm..",
+	"mmmmmmmmmmmmmmmm",
+	"mmmmmmmmmmmmmmmm",
+	"..mm........mm..",
+	"..mm........mm..",
+	"..mm........mm..",
+	"..mm........mm..",
+	"..mmmm....mmmm..",
+	"..mmmm....mmmm..",
+	"................",
+	"................",
+}, { m = {150,75,41} })
 add("egg", T.egg, { m = P.egg })
 add("raw_porkchop", T.chop, { m = P.rawMeat, f = P.fat, b = P.bone })
 add("cooked_porkchop", T.chop, { m = P.cooked, f = { 220, 180, 130 }, b = P.bone })

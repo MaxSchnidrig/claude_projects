@@ -218,7 +218,7 @@ end
 
 -- Animals in unloaded chunks are parked here and restored when the chunk loads again.
 type Parked = { key: string, x: number, y: number, z: number, yaw: number, health: number,
-	age: number?, color: string?, sheared: boolean? }
+	animalName: string?, saddled: boolean?, tie: Vector3?, age: number?, color: string?, sheared: boolean? }
 local parked: { [number]: { Parked } } = {}
 
 local function chunkKeyOf(m: any): number
@@ -232,7 +232,7 @@ local function onUnloaded(key: number)
 				local list = parked[key] or {}
 				parked[key] = list
 				table.insert(list, { key = m.def.key, x = m.x, y = m.y, z = m.z, yaw = m.yaw, health = m.health,
-					age = m.age, color = m.color, sheared = m.sheared })
+					animalName = m.animalName, saddled = m.saddled, tie = m.tie, age = m.age, color = m.color, sheared = m.sheared })
 			else
 				S.stats.despawned += 1
 			end
@@ -246,7 +246,7 @@ local function onLoaded(key: number, firstTime: boolean)
 	if list then
 		parked[key] = nil
 		for _, p in list do
-			local m = S.spawn(p.key, p.x, p.y, p.z, p.yaw, { age = p.age, color = p.color, sheared = p.sheared })
+			local m = S.spawn(p.key, p.x, p.y, p.z, p.yaw, { animalName = p.animalName, saddled = p.saddled, tie = p.tie, age = p.age, color = p.color, sheared = p.sheared })
 			if m then
 				m.health = p.health
 			end

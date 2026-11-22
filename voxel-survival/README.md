@@ -99,10 +99,12 @@ Build a place file without Studio: `rojo build -o rocraft.rbxl`.
 |---|---|
 | Mouse | Look (mouse is locked to the centre) |
 | WASD / Space | Move / jump (jump height 1.2 blocks) |
-| Double-tap W | Sprint (until you release W, stop, hit a wall, sneak, eat, or are too hungry; holding W again does not resume it). No sprint key |
+| Tap Left Control while holding W | Sprint until you release W or run into an obstacle |
+| Double-tap W | Sprint (until you release W, stop, hit a wall, sneak, eat, or are too hungry; holding W again does not resume it) |
 | Left Shift (hold) | Sneak: 30 % speed, lower eyes, 1.5-block body, can't walk off edges |
 | Left mouse (hold) | Mine the targeted block |
 | Left mouse on a mob (3 blocks) | Attack (full damage once the weapon has recharged; critical hit ×1.5 while falling after a jump) |
+| Right mouse / L2 / tap with Fishing Rod | Cast toward water, then use again when the float dips and “Bite!” appears |
 | Right mouse (hold) | Place the held block (repeats) |
 | 1–9 / mouse wheel | Select hotbar slot |
 | E | Inventory (2×2 crafting). Esc or E closes |

@@ -240,6 +240,9 @@ do
 end
 
 -- Arrow (feet centre = arrow centre) ------------------------------------------------------------
+designs.thrown_egg = {
+	{ size = v(0.18, 0.23, 0.18), pos = v(0, 0, 0), color = rgb(236, 222, 190) },
+}
 designs.arrow = {
 	{ size = v(0.05, 0.05, 0.6), pos = v(0, 0, 0), color = rgb(150, 120, 80) },
 	{ size = v(0.08, 0.08, 0.1), pos = v(0, 0, -0.32), color = rgb(150, 150, 156) },

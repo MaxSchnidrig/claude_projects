@@ -39,6 +39,14 @@ are fine.
 - 7.2: atmosphere sky (default), faster torch light.
 - 7.3: Java world height −64…320 (internal 0…383), save format v2 with conversion, Java ore height bands, cave culling.
 
+- 9f (0.9.9-animals): use an egg to throw it. On impact it has a 1/8 chance
+  to hatch, with four chicks on 1/32 of successful hatches. Use a lead on an
+  animal to attach it, then use a fence to tether it. Use an empty hand on the
+  animal to release it. Use a name tag on an animal and press Enter to apply
+  the filtered name. Saddle an adult pig and use an empty hand to mount.
+  Jump to dismount. The pig follows its own AI while carrying its rider.
+  Names, saddles and fence ties follow the animal through chunk parking.
+
 ## Phase 8 progress
 
 - 8a (done): flowing water and lava, buckets, falling sand and gravel, fire, campfires, TNT.
@@ -227,8 +235,7 @@ are fine.
   sheared state when their chunk unloads. 16 dyes (Java recipes from flowers, bone meal, lapis,
   beetroot, cactus smelting, and mixing), wool, carpets, stained glass and panes in 16 colours,
   beds from coloured wool, dyeing wool / carpets / beds.
-  Left for later: black and brown dye have no source yet (ink sacs, cocoa beans), thrown eggs and
-  chicks from eggs, leads, name tags, saddles, XP orbs from breeding, animal sounds when bred,
+  Left for later: black and brown dye have no source yet (ink sacs, cocoa beans), XP orbs from breeding, animal sounds when bred,
   sheep colours by biome (we use the temperate table everywhere).
 
 ## Phase 8 – Survival foundations (XL)

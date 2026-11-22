@@ -48,6 +48,7 @@ local BS = Config.BLOCK_SIZE
 local H = Config.WORLD_HEIGHT
 local TICK = 0.05
 local FIRE = BlockRegistry.id("fire")
+local gear
 local function isLava(id: number?): boolean
 	local def = id and BlockRegistry.byId[id]
 	return def ~= nil and def.fluid == "lava"
@@ -106,6 +107,7 @@ export type Mob = {
 	age: number,
 	love: number,
 	color: string?,
+	animalName: string?, saddled: boolean?, tie: Vector3?,
 	sheared: boolean?,
 	-- Phase 10c: the Looting level of the last player hit (drops), Slowness IV until (Bane)
 	looting: number?,
@@ -220,7 +222,7 @@ end
 
 -- `opts.age` / `opts.color` set an animal's state (breeding, chunks coming back); `opts.natural`:
 -- a natural spawn (5 % babies unless it's the first of its group, sheep get Java's colours).
-export type SpawnOpts = { age: number?, color: string?, sheared: boolean?, natural: boolean?, first: boolean? }
+export type SpawnOpts = { animalName: string?, saddled: boolean?, tie: Vector3?, age: number?, color: string?, sheared: boolean?, natural: boolean?, first: boolean? }
 function MobService.spawn(key: string, x: number, y: number, z: number, yaw: number?, opts: SpawnOpts?): Mob?
 	local def = MobDefs.byKey[key]
 	if not def then
@@ -259,6 +261,7 @@ function MobService.spawn(key: string, x: number, y: number, z: number, yaw: num
 		love = 0,
 	}
 	local o: SpawnOpts = opts or {}
+	m.animalName, m.saddled, m.tie = o.animalName, o.saddled, o.tie
 	if Animals.isAnimal(key) then
 		m.age = o.age or (if o.natural and not o.first and math.random() < Animals.BABY_CHANCE then Animals.BABY_AGE else 0)
 		if key == "sheep" then
@@ -273,6 +276,7 @@ function MobService.spawn(key: string, x: number, y: number, z: number, yaw: num
 end
 
 function MobService.remove(m: Mob)
+	if gear then gear.remove(m) end
 	m.alive = false
 	mobs[m.id] = nil
 end
@@ -296,6 +300,7 @@ local function die(m: Mob)
 	if not m.alive then
 		return
 	end
+	local tied = m.tie ~= nil
 	MobService.remove(m)
 	MobService.stats.killed += 1
 	local center = Vector3.new(m.x, m.y + m.def.height / 2, m.z)
@@ -304,6 +309,8 @@ local function die(m: Mob)
 	local byPlayer = playerKill(m)
 	local looting = if byPlayer then m.looting or 0 else 0
 	local stacks = {}
+	if m.saddled then table.insert(stacks, { item = "saddle", count = 1 }) end
+	if tied then table.insert(stacks, { item = "lead", count = 1 }) end
 	for _, d in (if m.age < 0 then {} else m.def.drops) do
 		-- Looting: rare drops +1 % a level (the zombie's 2.5 % is shared by its three rare drops)
 		local chance = d.chance
@@ -580,6 +587,15 @@ end
 
 -- Arrows (Java): per tick move, then v *= 0.99 (0.6 in water), vy -= 0.05. Damage on hit =
 -- ceil(speed (blocks/tick) * baseDamage). Hitbox 0.5 x 0.5.
+local function hatch(m: Mob): boolean
+	if m.def.key ~= "thrown_egg" then return false end
+	MobService.remove(m)
+	for _ = 1, Animals.eggChicks(math.random(8), math.random(32)) do
+		MobService.spawn("chicken", m.x, m.y, m.z, nil, { age = Animals.BABY_AGE })
+	end
+	return true
+end
+
 local function stepProjectile(m: Mob, dt: number)
 	if m.stuck then
 		m.stuck -= dt
@@ -610,6 +626,7 @@ local function stepProjectile(m: Mob, dt: number)
 		for _ = 1, steps do
 			local nx, ny, nz = m.x + vx / steps, m.y + vy / steps, m.z + vz / steps
 			if solid(math.floor(nx), math.floor(ny), math.floor(nz)) then
+				if hatch(m) then return end
 				if m.flame then
 					-- Java: a burning arrow lights the TNT or the unlit campfire it hits
 					local bx, by, bz = math.floor(nx), math.floor(ny), math.floor(nz)
@@ -647,6 +664,7 @@ local function stepProjectile(m: Mob, dt: number)
 				local f = t.feet
 				if t.player ~= m.ownerPlayer and not pierced[t.player] and math.abs(m.x - f.X) < 0.55 and math.abs(m.z - f.Z) < 0.55 and m.y >= f.Y - 0.25 and m.y <= f.Y + 2.05 then
 					pierced[t.player] = true
+					if hatch(m) then return end
 					MobService.hurtPlayer(t, dmg, `was shot by {m.owner or "an arrow"}`, Vector3.new(m.x - vx * 4, m.y, m.z - vz * 4), m.ownerPlayer ~= nil)
 					if m.flame then
 						SurvivalService.ignite(t.player, 5)
@@ -660,6 +678,7 @@ local function stepProjectile(m: Mob, dt: number)
 				if o ~= m and o.alive and o.id ~= m.ownerId and o.def.category ~= "projectile" and not pierced[o] then
 					local hw = o.def.width / 2 + 0.25
 					if math.abs(m.x - o.x) < hw and math.abs(m.z - o.z) < hw and m.y >= o.y - 0.25 and m.y <= o.y + o.def.height + 0.25 then
+						if hatch(m) then return end
 						if o.def.behavior == "teleporter" then
 							-- voidlings dodge projectiles by teleporting; the arrow flies on
 							if ai then
@@ -702,7 +721,7 @@ local function stepProjectile(m: Mob, dt: number)
 		if id and isLiquid[id + 1] then
 			drag = 0.6
 		end
-		m.vx, m.vy, m.vz = vx * drag * 20, (vy * drag - 0.05) * 20, vz * drag * 20
+		m.vx, m.vy, m.vz = vx * drag * 20, (vy * drag - (if m.def.key == "thrown_egg" then 0.03 else 0.05)) * 20, vz * drag * 20
 	end
 	local horizontal = math.sqrt(m.vx * m.vx + m.vz * m.vz)
 	m.yaw = math.atan2(-m.vx, -m.vz)
@@ -967,6 +986,45 @@ end
 -- turns into the milk bucket, one from a stack goes to the inventory (dropped if it's full).
 -- Animals (Phase 9e): their food puts an adult in love (or speeds a baby's growth by 10 % of the
 -- time left), shears shear a sheep (1-3 wool of its colour), a dye colours a sheep.
+local naming: { [Player]: { mob: Mob, character: Model, slot: number, busy: boolean } } = {}
+
+local function finishName(p: Player, id: any, name: any)
+	local session = naming[p]
+	if not session or session.mob.id ~= id then return end
+	local remote = Remotes.get("NameAnimal")
+	if name == nil then naming[p] = nil return end
+	if session.busy then return end
+	if type(name) ~= "string" or #name > 120 or not name:find("%S") then
+		remote:FireClient(p, "retry", id, "Enter a shorter, nonempty name.")
+		return
+	end
+	local function valid(): boolean
+		local c = p.Character
+		local h = c and c:FindFirstChildOfClass("Humanoid")
+		local stack = InventoryService.getSlot(p, session.slot)
+		return naming[p] == session and mobs[id] == session.mob and session.mob.alive
+			and c == session.character and h ~= nil and h.Health > 0 and p:GetAttribute("Spectator") ~= true
+			and InventoryService.selectedSlot(p) == session.slot and stack ~= nil and stack.item == "name_tag"
+	end
+	if valid() then
+		session.busy = true
+		local ok, filtered = pcall(function()
+			return game:GetService("TextService"):FilterStringAsync(name, p.UserId):GetNonChatStringForBroadcastAsync()
+		end)
+		if naming[p] ~= session then return end
+		session.busy = false
+		if valid() then
+			if not ok or filtered == "" then
+				remote:FireClient(p, "retry", id, "Couldn’t save that name. Try again.")
+				return
+			end
+			if InventoryService.consumeSelected(p, 1) then session.mob.animalName = filtered end
+		end
+	end
+	naming[p] = nil
+	remote:FireClient(p, "close", id)
+end
+
 local function onUseMob(p: Player, id: any)
 	if typeof(id) ~= "number" or p:GetAttribute("Spectator") == true then
 		return
@@ -992,6 +1050,12 @@ local function onUseMob(p: Player, id: any)
 	local stack = InventoryService.getSlot(p, slot)
 	local item = stack and stack.item
 	local center = Vector3.new(m.x, m.y + m.def.height * MobService.scaleOf(m) / 2, m.z)
+	if item == "name_tag" and Animals.isAnimal(m.def.key) then
+		naming[p] = { mob = m, character = c, slot = slot, busy = false }
+		Remotes.get("NameAnimal"):FireClient(p, "open", id, m.def.name)
+		return
+	end
+	if gear and gear.use(m, p, item) then return end
 	if item and Animals.isFood(m.def.key, item) then
 		if m.age == 0 and m.love <= 0 then
 			InventoryService.consumeSelected(p, 1)
@@ -1120,6 +1184,8 @@ function MobService.anyIn(category: string, lo: Vector3, hi: Vector3): boolean
 end
 
 function MobService.init()
+	gear = require(script.Parent.AnimalEquipment)
+	gear.init(MobService)
 	ai = require(script.Parent.MobAI)
 	ai.init(MobService)
 	local spawner = require(script.Parent.MobSpawner)
@@ -1141,10 +1207,32 @@ function MobService.init()
 		SurvivalService.damage(p, amount, cause, nil, { armor = true, source = center, scales = byMob })
 	end, explosionDamage)
 
+	local lastEgg: { [Player]: number } = {}
+	Remotes.get("ThrowEgg").OnServerEvent:Connect(function(player, look)
+		if typeof(look) ~= "Vector3" or not (look.Magnitude >= 0.99 and look.Magnitude <= 1.01) then return end
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if not root or not humanoid or humanoid.Health <= 0 or player:GetAttribute("Spectator") then return end
+		local stack = InventoryService.getSlot(player, InventoryService.selectedSlot(player))
+		if not stack or stack.item ~= "egg" or os.clock() - (lastEgg[player] or -math.huge) < 0.15 then return end
+		if not InventoryService.consumeSelected(player, 1) then return end
+		lastEgg[player] = os.clock()
+		local pos = (root.Position + Vector3.yAxis * SneakPose.eyeHeight(character)) / BS
+		local egg = MobService.spawn("thrown_egg", pos.X, pos.Y, pos.Z)
+		if egg then
+			local velocity = look.Unit * 30
+			egg.vx, egg.vy, egg.vz = velocity.X, velocity.Y, velocity.Z
+			egg.ownerPlayer = player
+		end
+	end)
 	Remotes.get("AttackMob").OnServerEvent:Connect(onAttack)
 	Remotes.get("StareMob").OnServerEvent:Connect(onStare)
 	Remotes.get("UseMob").OnServerEvent:Connect(onUseMob)
+	Remotes.get("NameAnimal").OnServerEvent:Connect(finishName)
 	Players.PlayerRemoving:Connect(function(p)
+		naming[p] = nil
+		lastEgg[p] = nil
 		lastSwing[p] = nil
 		heldItem[p] = nil
 	end)
@@ -1165,6 +1253,7 @@ function MobService.init()
 					else
 						ai.think(m, step, targets)
 						if m.alive then
+							gear.step(m, MobService.blockAt)
 							stepPhysics(m, step)
 						end
 					end

@@ -60,6 +60,11 @@ function Animals.isAnimal(key: string): boolean
 	return Animals.FOOD[key] ~= nil
 end
 
+function Animals.eggChicks(hatchRoll: number, clutchRoll: number): number
+	if hatchRoll ~= 1 then return 0 end
+	return if clutchRoll == 1 then 4 else 1
+end
+
 function Animals.isFood(key: string, item: string?): boolean
 	local f = Animals.FOOD[key]
 	return f ~= nil and item ~= nil and f[item] == true

@@ -131,6 +131,12 @@ local list: { MobDef } = {
 		speed = 0, attack = 0, attackCooldown = 0, followRange = 0, armor = 0, undead = false, canClimb = false,
 		drops = {}, spawnWeight = 0, groupMin = 0, groupMax = 0,
 	},
+	{
+		key = "thrown_egg", name = "Egg", code = 21, category = "projectile", behavior = "projectile",
+		health = 1, width = 0.5, height = 0.5, speedAttr = 0, chase = 0, wander = 0, panic = 0,
+		speed = 0, attack = 0, attackCooldown = 0, followRange = 0, armor = 0, undead = false, canClimb = false,
+		drops = {}, spawnWeight = 0, groupMin = 0, groupMax = 0,
+	},
 }
 
 local MobDefs = {}

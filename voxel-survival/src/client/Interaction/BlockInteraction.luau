@@ -125,13 +125,22 @@ local lastHeld: string? = nil
 -- a bucket on a cow, an animal's food (love / growing babies), shears or a dye on a sheep
 -- (Mobs/Animals.wants). The server checks it and acts. True if the click was used.
 local function useMob(): boolean
+	if Players.LocalPlayer.PlayerGui:FindFirstChild("AnimalNamePrompt") then return true end
 	local id = BlockInteraction.mobTarget
 	local key = id and MobClient.keyOf(id)
 	if not id or not key then
 		return false
 	end
 	local baby, sheared = MobClient.stateOf(id)
-	if not Animals.wants(key, InventoryClient.heldItem(), baby, sheared) then
+	local held = InventoryClient.heldItem()
+	local gearPart = workspace:FindFirstChild("AnimalGear_" .. id)
+	if held == "name_tag" and Animals.isAnimal(key) then
+		Remotes.get("UseMob"):FireServer(id)
+		return true
+	end
+	local equipment = Animals.isAnimal(key) and (held == "lead" or (not baby and key == "pig" and held == "saddle")
+		or (not held and gearPart and (gearPart:FindFirstChildOfClass("Beam") or gearPart:FindFirstChildOfClass("Seat"))))
+	if not equipment and not Animals.wants(key, InventoryClient.heldItem(), baby, sheared) then
 		return false
 	end
 	Remotes.get("UseMob"):FireServer(id)
@@ -254,6 +263,16 @@ local function tryUse(): boolean
 	local held = InventoryClient.heldItem()
 	local def = ItemRegistry.get(held)
 	local hit = BlockInteraction.target
+	if held == "egg" then
+		local _, look = CameraController.getEyeAndLook()
+		Remotes.get("ThrowEgg"):FireServer(look)
+		BlockInteraction.swing:Fire()
+		return true
+	end
+	if hit and BlockRegistry.byId[hit.id] and BlockRegistry.byId[hit.id].shape == "fence" and (Players.LocalPlayer:GetAttribute("LeadingAnimal") or 0) > 0 then
+		Remotes.get("TieLead"):FireServer(Vector3.new(hit.x, hit.y, hit.z))
+		return true
+	end
 	if held == "fishing_rod" then
 		local _, look = CameraController.getEyeAndLook()
 		Remotes.get("Fishing"):FireServer(look)
@@ -845,6 +864,8 @@ touchStep = function()
 		touchState = nil
 		if useMob() then
 			-- tapping a cow with a bucket milks it
+		elseif BlockInteraction.mobTarget and InventoryClient.heldItem() == "egg" then
+			tryUse()
 		elseif BlockInteraction.mobTarget then
 			attackMob(BlockInteraction.mobTarget :: number)
 		else
@@ -872,6 +893,7 @@ touchStep = function()
 end
 
 function BlockInteraction.init()
+	require(script.Parent.Parent.UI.AnimalNamePrompt).init()
 	makeVisuals()
 
 	local keyDrop = (Enum.KeyCode :: any)[Config.KEY_DROP]
