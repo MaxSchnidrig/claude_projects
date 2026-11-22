@@ -129,6 +129,9 @@ Startup.run("server", {
 	{ name = "EntityService", run = function()
 		require(server.Simulation.EntityService).init()
 	end },
+	{ name = "FrostWalkerService", run = function()
+		require(server.Simulation.FrostWalkerService).init()
+	end },
 	{ name = "FireService", run = function()
 		require(server.Simulation.FireService).init()
 	end },

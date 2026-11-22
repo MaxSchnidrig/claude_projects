@@ -6,6 +6,7 @@ local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Remotes = require(Shared.Net.Remotes)
 local Fishing = require(Shared.Items.Fishing)
+local Enchantments = require(Shared.Items.Enchantments)
 local Items = require(Shared.Items.ItemRegistry)
 local Blocks = require(Shared.Blocks.BlockRegistry)
 local Shapes = require(Shared.Blocks.Shapes)
@@ -88,6 +89,12 @@ local function valid(c: Cast, p: Player): boolean
 		and (c.root.Position / BS - c.pos).Magnitude <= MAX_LINE
 end
 
+-- Wait for a bite: 5 to 14 s (this game's range), Lure takes 5 s off a level (Java), never
+-- below 1 s.
+local function waitFor(c: Cast): number
+	return math.max(1, rng:NextNumber(5, 14) - 5 * Enchantments.level(c.rod, "lure"))
+end
+
 local function onUse(p: Player, aim: any)
 	local now = os.clock()
 	if now - (lastUse[p] or -1) < 0.18 then return end
@@ -96,7 +103,9 @@ local function onUse(p: Player, aim: any)
 	if c then
 		if not valid(c, p) then finish(p, "Line withdrawn") return end
 		if c.water and wet(c.water) and Fishing.phase(now - c.landed, c.waitTime) == "bite" then
-			local item = Fishing.catch(rng:NextInteger(1, 100), rng:NextInteger(1, 100), rng:NextInteger(1, 4))
+			-- Luck of the Sea shifts the catch toward treasure (Java quality weights)
+			local luck = Enchantments.level(c.rod, "luck_of_the_sea")
+			local item = Fishing.catch(rng:NextInteger(1, Fishing.categoryTotal(luck)), rng:NextInteger(1, 100), rng:NextInteger(1, 4), luck)
 			local def = Items.get(item)
 			assert(def, "Unknown fishing catch")
 			local pos = c.root.Position
@@ -138,7 +147,7 @@ local function step(p: Player, c: Cast, now: number)
 		if not inWater then finish(p, "The float is out of water") return end
 		local phase = Fishing.phase(now - c.landed, c.waitTime)
 		if phase == "missed" then
-			c.landed, c.waitTime = now, rng:NextNumber(5, 14)
+			c.landed, c.waitTime = now, waitFor(c)
 			phase = "waiting"
 			remote:FireClient(p, "Missed the bite · waiting for another", true)
 		elseif phase ~= c.phase then
@@ -157,7 +166,7 @@ local function step(p: Player, c: Cast, now: number)
 			finish(p, "Cast into open water") return
 		end
 		c.water, c.pos = water, Vector3.new(hit.px, hit.py, hit.pz)
-		c.landed, c.waitTime, c.phase = now, rng:NextNumber(5, 14), "waiting"
+		c.landed, c.waitTime, c.phase = now, waitFor(c), "waiting"
 		remote:FireClient(p, "Watch the float…", true)
 	else
 		c.velocity += GRAVITY * TICK

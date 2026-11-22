@@ -292,6 +292,67 @@ function Enchantments.lootingExtra(level: number, rand: () -> number): number
 	return math.floor(level * rand() + 0.5)
 end
 
+-- Armour (Phase 10d) ---------------------------------------------------------------------------
+
+-- Enchantment protection factor of the worn pieces for one hit (Java): Protection 1 a level
+-- (everything but starving and the void), Fire / Blast / Projectile Protection 2 a level against
+-- their kind, Feather Falling 3 a level against falls. Capped at 20; damage x (1 - EPF / 25).
+export type HitKind = { fire: boolean?, explosion: boolean?, projectile: boolean?, fall: boolean? }
+function Enchantments.protection(armor: { any }, hit: HitKind): number
+	local epf = 0
+	for _, s in armor do
+		if s then
+			epf += Enchantments.level(s, "protection")
+			if hit.fire then
+				epf += 2 * Enchantments.level(s, "fire_protection")
+			end
+			if hit.explosion then
+				epf += 2 * Enchantments.level(s, "blast_protection")
+			end
+			if hit.projectile then
+				epf += 2 * Enchantments.level(s, "projectile_protection")
+			end
+			if hit.fall then
+				epf += 3 * Enchantments.level(s, "feather_falling")
+			end
+		end
+	end
+	return math.clamp(epf, 0, 20)
+end
+
+function Enchantments.afterProtection(damage: number, epf: number): number
+	return damage * (1 - math.clamp(epf, 0, 20) / 25)
+end
+
+-- The sum of one enchantment's levels over the worn pieces.
+function Enchantments.total(armor: { any }, id: string): number
+	local n = 0
+	for _, s in armor do
+		if s then
+			n += Enchantments.level(s, id)
+		end
+	end
+	return n
+end
+
+-- Fire Protection: burning lasts 15 % shorter a level (Java burning_time); Blast Protection:
+-- 15 % less explosion knockback a level (explosion_knockback_resistance).
+function Enchantments.burnFactor(armor: { any }): number
+	return math.max(0, 1 - 0.15 * Enchantments.total(armor, "fire_protection"))
+end
+function Enchantments.blastKnockbackFactor(armor: { any }): number
+	return math.max(0, 1 - 0.15 * Enchantments.total(armor, "blast_protection"))
+end
+
+-- Thorns (Java): each piece triggers with chance 15 % x level; it deals level - 10 if the level
+-- is above 10, else 1 to 5 (a float). Returns the damage, or nil when it doesn't trigger.
+function Enchantments.thorns(level: number, rand: () -> number): number?
+	if level <= 0 or rand() >= 0.15 * level then
+		return nil
+	end
+	return if level > 10 then level - 10 else 1 + rand() * 4
+end
+
 -- Display --------------------------------------------------------------------------------------
 
 local ROMAN = { "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X" }

@@ -36,6 +36,7 @@
 --   872..887  stained glass 16 colours
 --   888..903  stained glass panes 16 colours
 --   904       enchanting table (Phase 10b);  905 bookshelf
+--   906..909  frosted ice  age 0..3 (Phase 10d, Frost Walker)
 
 local ShapedDefs = {}
 
@@ -427,6 +428,15 @@ function ShapedDefs.list(): { Def }
 		textures = { top = "enchanting_table_top", side = "enchanting_table_side", bottom = "obsidian" },
 		transparent = true, opacity = 0, light = 7, shape = "enchanting_table", sound = "stone",
 	})
+	-- Phase 10d: frosted ice (Frost Walker), ages 0..3; melts back into water. No item.
+	for age = 0, 3 do
+		table.insert(out, {
+			id = 906 + age, key = if age == 0 then "frosted_ice" else `frosted_ice_{age}`, name = "Frosted Ice",
+			hardness = 0.5, tool = "pickaxe", drop = false, textures = { all = "frosted_ice" },
+			transparent = true, opacity = 1, sound = "glass", family = "frosted_ice", noItem = true,
+			state = { age = age },
+		})
+	end
 	table.insert(out, {
 		id = 905, key = "bookshelf", name = "Bookshelf", hardness = 1.5, tool = "axe", drop = "book", dropMin = 3, dropMax = 3,
 		textures = { top = "oak_planks", side = "bookshelf", bottom = "oak_planks" }, sound = "wood", flammable = { 30, 20 },

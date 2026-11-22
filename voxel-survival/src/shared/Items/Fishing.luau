@@ -33,9 +33,16 @@ local function weighted(entries: {any}, roll: number): string
 	error("Fishing weights must total 100")
 end
 
+-- Luck of the Sea (Phase 10d): Java's loot weights move by `quality x luck` (fish quality -1,
+-- treasure +2). Here the two categories are treasure (armour, weight 20) and fish (80), so with
+-- luck L: treasure 20 + 2L, fish 80 - L. Roll `category` in 1 .. Fishing.categoryTotal(luck).
+function Fishing.categoryTotal(luck: number?): number
+	return 100 + (luck or 0)
+end
+
 -- Independent, inclusive integer rolls. Only the server draws these.
-function Fishing.catch(category: number, variety: number, slot: number): string
-	if category <= 20 then
+function Fishing.catch(category: number, variety: number, slot: number, luck: number?): string
+	if category <= 20 + 2 * (luck or 0) then
 		return weighted(materials, variety) .. "_" .. pieces[slot]
 	end
 	return weighted(Fishing.SPECIES, variety)

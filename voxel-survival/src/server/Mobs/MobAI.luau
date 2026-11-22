@@ -497,7 +497,7 @@ local function melee(m: any, now: number, dt: number, targets: { any }, speed: n
 		face(m, t.feet.X - m.x, t.feet.Z - m.z)
 		if now >= (a.nextAttack or 0) and canSee(m, t) then
 			a.nextAttack = now + def.attackCooldown
-			S.hurtPlayer(t, def.attack, `was slain by {def.name}`, Vector3.new(m.x, m.y, m.z))
+			S.hurtPlayer(t, def.attack, `was slain by {def.name}`, Vector3.new(m.x, m.y, m.z), nil, m)
 		end
 		return
 	end

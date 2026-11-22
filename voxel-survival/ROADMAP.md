@@ -371,7 +371,9 @@ and not sprinting"; /enchant added for testing)
 - All bow and crossbow enchantments (Power, Punch, Flame, Infinity, Multishot, Piercing,
   Quick Charge). Mending.
 
-**10d – Armour and fishing enchantments**
+**10d – Armour and fishing enchantments** (done in 0.10.4-10d; frosted ice uses one texture for
+all four ages; Thorns counts worn armour only; the friend's fishing has no junk category, so Luck
+of the Sea moves weight from fish to treasure with Java's quality values)
 - Protection, Fire / Blast / Projectile Protection, Feather Falling, Respiration,
   Aqua Affinity, Thorns, Depth Strider, Frost Walker, Luck of the Sea, Lure,
   Curse of Binding, Curse of Vanishing.

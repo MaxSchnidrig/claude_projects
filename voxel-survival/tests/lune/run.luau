@@ -2295,6 +2295,7 @@ require("./AnimalTests")(test, eq)
 require("./ExperienceTests")(test, eq)
 require("./EnchantingTests")(test, eq)
 require("./EnchantEffectsTests")(test, eq)
+require("./ArmorEnchantTests")(test, eq)
 
 print(`\n{passed} passed, {failed} failed`)
 if failed > 0 then

@@ -37,6 +37,12 @@ local TNT = BlockRegistry.id("tnt")
 function ExplosionService.setTntHook(fn: (x: number, y: number, z: number) -> ())
 	primeTnt = fn
 end
+-- Blast Protection: how much of the explosion knockback a player still gets (Phase 10d).
+local knockbackScale: ((Player) -> number)? = nil
+function ExplosionService.setKnockbackScale(fn: (Player) -> number)
+	knockbackScale = fn
+end
+
 function ExplosionService.setHooks(playerDamage: (Player, number, string, Vector3?, boolean?) -> (), mobDamage: (Vector3, number) -> ())
 	damagePlayer = playerDamage
 	damageMobs = mobDamage
@@ -106,6 +112,9 @@ function ExplosionService.explode(center: Vector3, power: number, cause: string,
 				dir = if dir.Magnitude > 0.01 then dir.Unit else Vector3.yAxis
 				-- Java: velocity += direction * impact (blocks/tick), on top of the damage
 				local impact = 1 - d / (2 * power)
+				if knockbackScale then
+					impact *= (knockbackScale :: (Player) -> number)(p)
+				end
 				Remotes.get("Knockback"):FireClient(p, { add = dir * impact })
 			end
 		end

@@ -187,6 +187,7 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		local hand = { item = "wheat", count = 64 }
 		local consumed, toolHits = 0, 0
 		Loader.stubs["src/server/Player/InventoryService.luau"] = {
+			armor = function() return {} end,
 			selectedSlot = function() return 1 end,
 			getSlot = function() return if hand.count > 0 then hand else nil end,
 			selectedStack = function() return hand end,

@@ -322,7 +322,8 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 			end,
 		}
 		Loader.stubs["src/server/World/ItemEntityService.luau"] = { spawn = function() end }
-		Loader.stubs["src/server/Player/InventoryService.luau"] = {}
+		Loader.stubs["src/server/Player/InventoryService.luau"] = {
+			armor = function() return {} end,}
 		Loader.stubs["src/shared/Net/Remotes.luau"] = { get = function() return Fake.Instance.new("RemoteEvent") end }
 		Fake.mount(G.game:GetService("ReplicatedStorage"), "Shared", Loader.node("src/shared"))
 		local RandomTicks = Loader.require("src/server/World/RandomTicks")
@@ -471,7 +472,8 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		}
 		Loader.stubs["src/server/World/RandomTicks.luau"] = { register = function() end }
 		Loader.stubs["src/server/World/ItemEntityService.luau"] = { spawn = function(st) table.insert(drops, st) end }
-		Loader.stubs["src/server/Player/InventoryService.luau"] = { consumeSelected = function() return true end, damageSelectedTool = function() end }
+		Loader.stubs["src/server/Player/InventoryService.luau"] = {
+			armor = function() return {} end, consumeSelected = function() return true end, damageSelectedTool = function() end }
 		Loader.stubs["src/shared/Net/Remotes.luau"] = { get = function() return Fake.Instance.new("RemoteEvent") end }
 		Fake.mount(G.game:GetService("ReplicatedStorage"), "Shared", Loader.node("src/shared"))
 		local FS = Loader.require("src/server/Simulation/FarmingService")
@@ -614,7 +616,8 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		Loader.stubs["src/server/World/ChunkStreamer.luau"] = { playersWithChunk = function() return {} end }
 		Loader.stubs["src/server/World/RandomTicks.luau"] = { register = function() end }
 		Loader.stubs["src/server/World/ItemEntityService.luau"] = { spawn = function() end }
-		Loader.stubs["src/server/Player/InventoryService.luau"] = { consumeSelected = function() return true end, damageSelectedTool = function() end }
+		Loader.stubs["src/server/Player/InventoryService.luau"] = {
+			armor = function() return {} end, consumeSelected = function() return true end, damageSelectedTool = function() end }
 		Loader.stubs["src/shared/Net/Remotes.luau"] = { get = function() return Fake.Instance.new("RemoteEvent") end }
 		Fake.mount(G.game:GetService("ReplicatedStorage"), "Shared", Loader.node("src/shared"))
 		local BU = Loader.require("src/server/World/BlockUpdates")
@@ -690,6 +693,7 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		}
 		local used = { consumed = 0, damaged = 0 }
 		Loader.stubs["src/server/Player/InventoryService.luau"] = {
+			armor = function() return {} end,
 			consumeSelected = function()
 				used.consumed += 1
 				return true

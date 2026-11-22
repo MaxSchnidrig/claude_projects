@@ -394,7 +394,9 @@ local function modifiers(): Mining.Modifiers
 	local inWater = false
 	if eye then
 		local id = ClientWorld.getBlock(math.floor(eye.X / BS), math.floor(eye.Y / BS), math.floor(eye.Z / BS))
+		-- Aqua Affinity on the helmet: no underwater mining penalty (Java)
 		inWater = id ~= nil and isLiquid[id + 1]
+			and Enchantments.level(InventoryClient.slots and InventoryClient.slots[Config.ARMOR_SLOT.head], "aqua_affinity") == 0
 	end
 	return {
 		efficiency = Enchantments.level(InventoryClient.heldStack(), "efficiency"),

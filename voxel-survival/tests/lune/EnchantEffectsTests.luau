@@ -162,6 +162,7 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		Loader.stubs["src/server/World/BlockUpdates.luau"] = { set = function() end }
 		local hand = { item = "diamond_sword", count = 1, durability = 1561, ench = { sharpness = 5, sweeping_edge = 3, looting = 3, fire_aspect = 2 } }
 		Loader.stubs["src/server/Player/InventoryService.luau"] = {
+			armor = function() return {} end,
 			selectedSlot = function() return 1 end,
 			getSlot = function() return hand end,
 			selectedStack = function() return hand end,

@@ -27,6 +27,7 @@ local WorldSettingsService = require(script.Parent.Parent.World.WorldSettingsSer
 local Difficulty = require(Shared.Gameplay.Difficulty)
 local Farming = require(Shared.Gameplay.Farming)
 local Effects = require(Shared.Gameplay.Effects)
+local Enchantments = require(Shared.Items.Enchantments)
 local WeatherService = require(script.Parent.Parent.World.WeatherService)
 
 local BS = Config.BLOCK_SIZE
@@ -189,7 +190,10 @@ end
 -- difficulty first (Gameplay/Difficulty: Peaceful 0, Easy halved + 1, Hard x 1.5).
 -- `fire` = fire, lava, burning, campfires (fire resistance blocks it); `magic` = poison (no
 -- exhaustion, Java's magic damage type).
-export type DamageOpts = { armor: boolean?, source: Vector3?, scales: boolean?, fire: boolean?, magic: boolean?, starve: boolean? }
+-- `explosion`, `projectile`, `fall`: the kind of hit for the specific protection enchantments
+-- (Phase 10d); `attacker`: the mob behind it (Thorns hits back).
+export type DamageOpts = { armor: boolean?, source: Vector3?, scales: boolean?, fire: boolean?, magic: boolean?, starve: boolean?,
+	explosion: boolean?, projectile: boolean?, fall: boolean? }
 -- Set by CombatGearService (avoids a require cycle): shield and armour.
 local gear: { block: (Player, number, DamageOpts) -> boolean, armor: (Player, number) -> number }? = nil
 function SurvivalService.setGear(g: { block: (Player, number, DamageOpts) -> boolean, armor: (Player, number) -> number })
@@ -230,6 +234,12 @@ function SurvivalService.damage(p: Player, amount: number, cause: string, bypass
 	-- Java LivingEntity.actuallyHurt: armour, then resistance (not the void), then absorption
 	if not bypass and not (opts and opts.starve) then
 		dealt = Effects.resist(s.effects, dealt) -- (starvation ignores Resistance)
+		-- protection enchantments (Java getDamageAfterMagicAbsorb): not for starving or the void
+		local o = opts or {}
+		local epf = Enchantments.protection(InventoryService.armor(p), {
+			fire = o.fire, explosion = o.explosion, projectile = o.projectile, fall = o.fall,
+		})
+		dealt = Enchantments.afterProtection(dealt, epf)
 	end
 	local absorbed = math.min(s.absorption, dealt)
 	s.absorption -= absorbed
@@ -286,14 +296,14 @@ function SurvivalService.lightning(p: Player)
 	if s.dead or spectators[p] then
 		return
 	end
-	s.burning = if s.burning > 0 then s.burning + 0.05 else 8
+	s.burning = if s.burning > 0 then s.burning + 0.05 else 8 * Enchantments.burnFactor(InventoryService.armor(p))
 	SurvivalService.damage(p, 5, "was struck by lightning", nil, { armor = true })
 end
 
 -- Set on fire for at least `seconds` (a Flame arrow: 5 s).
 function SurvivalService.ignite(p: Player, seconds: number)
 	local s = state(p)
-	s.burning = math.max(s.burning, seconds)
+	s.burning = math.max(s.burning, seconds * Enchantments.burnFactor(InventoryService.armor(p)))
 end
 
 function SurvivalService.isSneaking(p: Player): boolean
@@ -404,9 +414,13 @@ local function stepPlayer(p: Player, s: State, dt: number)
 
 	-- Air / drowning
 	if isLiquid[eyeBlock + 1] then
-		s.air = math.max(0, s.air - dt)
+		-- Respiration (Java oxygen_bonus): each tick only 1 in (level + 1) costs air, so air
+		-- (and the drowning count after it) lasts level + 1 times longer
+		local helmet = InventoryService.armor(p)[1]
+		local slow = 1 + Enchantments.level(helmet, "respiration")
+		s.air = math.max(0, s.air - dt / slow)
 		if s.air <= 0 then
-			s.drownTimer += dt
+			s.drownTimer += dt / slow
 			while s.drownTimer >= 1 do
 				s.drownTimer -= 1
 				SurvivalService.damage(p, SurvivalRules.DROWN_DAMAGE, "drowned")
@@ -420,17 +434,19 @@ local function stepPlayer(p: Player, s: State, dt: number)
 	-- Lava: 4 damage (every tick, so every 0.5 s through invulnerability) and 15 s of fire;
 	-- fire burns 1 per second until it runs out or you step into water (Java).
 	if isLava(feetBlock) or isLava(bodyBlock) then
-		s.burning = 15
+		s.burning = 15 * Enchantments.burnFactor(InventoryService.armor(p)) -- (Fire Protection: shorter)
 		SurvivalService.damage(p, SurvivalRules.LAVA_DAMAGE, "tried to swim in lava", nil, { armor = true, fire = true })
 	elseif s.inLiquid or WeatherService.rainOn(pos.X / BS, feetY / BS, pos.Z / BS, 1.8) then
 		s.burning = 0 -- water and rain put you out (Java isInWaterRainOrBubble)
 	elseif feetBlock == FIRE or bodyBlock == FIRE then
 		-- Java: standing in fire hurts 1 per hit and sets you on fire for 8 s
-		s.burning = math.max(s.burning, 8)
+		s.burning = math.max(s.burning, 8 * Enchantments.burnFactor(InventoryService.armor(p)))
 		SurvivalService.damage(p, 1, "went up in flames", nil, { armor = true, fire = true })
 	end
-	-- Java: walking on a lit campfire hurts (1), unless sneaking
-	if grounded and not s.sneaking and block(bx, belowY, bz) == CAMPFIRE then
+	-- Java: walking on a lit campfire hurts (1), unless sneaking or wearing Frost Walker boots
+	if grounded and not s.sneaking and block(bx, belowY, bz) == CAMPFIRE
+		and Enchantments.level(InventoryService.armor(p)[4], "frost_walker") == 0
+	then
 		SurvivalService.damage(p, 1, "was burned on a campfire", nil, { armor = true, fire = true })
 	end
 	if s.burning > 0 then
@@ -540,7 +556,7 @@ local function onAction(p: Player, a: any)
 		end
 		local dmg = SurvivalRules.fallDamage(blocks, isLiquid[here + 1])
 		if dmg > 0 then
-			SurvivalService.damage(p, dmg, "fell from a high place")
+			SurvivalService.damage(p, dmg, "fell from a high place", nil, { fall = true })
 		end
 		table.clear(s.heights) -- a fall is only counted once
 	elseif t == "exhaust" then

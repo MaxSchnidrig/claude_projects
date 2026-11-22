@@ -134,6 +134,7 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		}
 		local slots = {}
 		Loader.stubs["src/server/Player/InventoryService.luau"] = {
+			armor = function() return {} end,
 			dropAll = function() end,
 			add = function() return 0 end,
 			selectedSlot = function() return 1 end,

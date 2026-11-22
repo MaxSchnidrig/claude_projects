@@ -416,11 +416,25 @@ function MobService.difficultyId(): number
 end
 
 -- `byPlayer`: an arrow a player shot (not changed by the difficulty, unlike a mob's damage).
-function MobService.hurtPlayer(t: Target, amount: number, cause: string, from: Vector3, byPlayer: boolean?)
-	local dealt, fresh = SurvivalService.damage(t.player, amount, cause, nil, { armor = true, source = from, scales = not byPlayer })
+-- `attacker`: the mob behind the hit (its bite, its arrow): worn Thorns hit it back (Phase 10d).
+-- `projectile`: an arrow (Projectile Protection).
+function MobService.hurtPlayer(t: Target, amount: number, cause: string, from: Vector3, byPlayer: boolean?, attacker: Mob?, projectile: boolean?)
+	local dealt, fresh = SurvivalService.damage(t.player, amount, cause, nil, { armor = true, source = from, scales = not byPlayer, projectile = projectile })
 	if dealt > 0 and fresh then
 		local d = Vector3.new(t.feet.X - from.X, 0, t.feet.Z - from.Z)
 		Remotes.get("Knockback"):FireClient(t.player, { dir = d, strength = Combat.KNOCKBACK })
+	end
+	if dealt > 0 and attacker and attacker.alive then
+		-- Thorns (Java): every worn piece rolls on its own, 2 extra durability when it triggers;
+		-- the invulnerability time keeps only the biggest hit
+		local armorSlots = { Config.ARMOR_SLOT.head, Config.ARMOR_SLOT.chest, Config.ARMOR_SLOT.legs, Config.ARMOR_SLOT.feet }
+		for k, s in InventoryService.armor(t.player) do
+			local dmg = Enchantments.thorns(Enchantments.level(s, "thorns"), math.random)
+			if dmg then
+				MobService.damage(attacker, dmg, { kind = "thorns", from = t.feet, living = true })
+				InventoryService.damageSlot(t.player, armorSlots[k], 2)
+			end
+		end
 	end
 end
 
@@ -647,7 +661,8 @@ local function stepProjectile(m: Mob, dt: number)
 				local f = t.feet
 				if t.player ~= m.ownerPlayer and not pierced[t.player] and math.abs(m.x - f.X) < 0.55 and math.abs(m.z - f.Z) < 0.55 and m.y >= f.Y - 0.25 and m.y <= f.Y + 2.05 then
 					pierced[t.player] = true
-					MobService.hurtPlayer(t, dmg, `was shot by {m.owner or "an arrow"}`, Vector3.new(m.x - vx * 4, m.y, m.z - vz * 4), m.ownerPlayer ~= nil)
+					MobService.hurtPlayer(t, dmg, `was shot by {m.owner or "an arrow"}`, Vector3.new(m.x - vx * 4, m.y, m.z - vz * 4), m.ownerPlayer ~= nil,
+						if m.ownerId then mobs[m.ownerId] else nil, true)
 					if m.flame then
 						SurvivalService.ignite(t.player, 5)
 					end
@@ -1138,8 +1153,13 @@ function MobService.init()
 	end)
 
 	ExplosionService.setHooks(function(p: Player, amount: number, cause: string, center: Vector3?, byMob: boolean?)
-		SurvivalService.damage(p, amount, cause, nil, { armor = true, source = center, scales = byMob })
+		SurvivalService.damage(p, amount, cause, nil, { armor = true, source = center, scales = byMob, explosion = true })
 	end, explosionDamage)
+	if ExplosionService.setKnockbackScale then
+		ExplosionService.setKnockbackScale(function(p: Player): number
+			return Enchantments.blastKnockbackFactor(InventoryService.armor(p))
+		end)
+	end
 
 	Remotes.get("AttackMob").OnServerEvent:Connect(onAttack)
 	Remotes.get("StareMob").OnServerEvent:Connect(onStare)

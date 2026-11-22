@@ -46,6 +46,7 @@ local InventoryClient = require(script.Parent.Parent.Player.InventoryClient)
 local SneakPose = require(Shared.Gameplay.SneakPose)
 local PlayerMotor = require(Shared.Gameplay.PlayerMotor)
 local Combat = require(Shared.Gameplay.Combat)
+local Enchantments = require(Shared.Items.Enchantments)
 local Remotes = require(Shared.Net.Remotes)
 local Settings = require(script.Parent.Settings)
 local Farming = require(Shared.Gameplay.Farming)
@@ -261,6 +262,7 @@ local function tick(b: Body, forward: number, strafe: number, jumpHeld: boolean,
 	local r = PlayerMotor.tick(st, {
 		forward = forward, strafe = strafe, lookX = fx, lookZ = fz, jump = jumpHeld,
 		speedMultiplier = 1 + 0.2 * (SurvivalClient.speedLevel or 0),
+		depthStrider = Enchantments.level(InventoryClient.slots and InventoryClient.slots[Config.ARMOR_SLOT.feet], "depth_strider"),
 		sneak = MovementController.sneaking, sprint = MovementController.sprinting,
 		usingItem = MovementController.usingItem,
 	}, world)

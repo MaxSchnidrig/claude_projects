@@ -570,6 +570,21 @@ recipes.bookshelf = function(seed)
 	return img
 end
 
+-- Frosted ice (Phase 10d, our own design): pale ice with white frost feathers growing in from
+-- the corners
+recipes.frosted_ice = function(seed)
+	local img = noisy(seed, { 176, 206, 246 }, 0.05, 0.12)
+	for i = 0, 5 do
+		local fx = math.floor(rnd(seed, i, 1) * N)
+		local fy = math.floor(rnd(seed, i, 2) * N)
+		for k = 0, 3 do
+			put(img, (fx + k) % N, (fy + k) % N, { 236, 246, 255 })
+			put(img, (fx + k) % N, (fy - k) % N, { 222, 238, 255 })
+		end
+	end
+	return img
+end
+
 recipes.crafting_table_top = function(seed)
 	local img = planks(seed, P.oakWood)
 	for i = 0, N - 1 do

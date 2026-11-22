@@ -261,23 +261,39 @@ end
 function InventoryService.dropAll(player: Player, pos: Vector3)
 	local i = inv(player)
 	local stacks: { Stack } = {}
+	-- Curse of Vanishing (Java): the item is gone instead of dropping
+	local function keep(s: Stack)
+		if Enchantments.level(s, "vanishing_curse") == 0 then
+			table.insert(stacks, s)
+		end
+	end
 	for idx = 1, ALL do
 		local s = i.slots[idx]
 		if s then
-			table.insert(stacks, s)
+			keep(s)
 		end
 		i.slots[idx] = nil
 	end
 	armorChanged(player)
 	for idx, s in i.craft do
 		if s then
-			table.insert(stacks, s)
+			keep(s)
 		end
 		i.craft[idx] = nil
 	end
 	if i.cursor then
-		table.insert(stacks, i.cursor :: Stack)
+		keep(i.cursor :: Stack)
 		i.cursor = nil
+	end
+	local en = i.enchant
+	if en then
+		for idx, s in en.slots do
+			if s then
+				keep(s)
+			end
+			en.slots[idx] = nil
+		end
+		i.enchant = nil
 	end
 	i.window = { kind = "inventory" }
 	i.dirty = true
@@ -629,7 +645,19 @@ local function takeResult(i: Inv, shift: boolean)
 	end
 end
 
+-- Curse of Binding (Java Slot.mayPickup): a worn piece with it can't be taken off.
+local function bound(i: Inv, container: string, index: number): boolean
+	if container ~= "inv" or not ARMOR_INDEX[index] then
+		return false
+	end
+	local s = i.slots[index]
+	return s ~= nil and Enchantments.level(s, "binding_curse") > 0
+end
+
 local function click(player: Player, i: Inv, container: string, index: number, button: string, shift: boolean)
+	if bound(i, container, index) then
+		return
+	end
 	local leftClick = button ~= "right"
 	if container == "inv" then
 		if index < 1 or index > ALL then
@@ -1006,7 +1034,7 @@ handleAction = function(player: Player, a: any)
 		-- right-click with a piece of armour: wear it (swapping out what was worn)
 		local s = i.slots[i.selected]
 		local def = s and ItemRegistry.get(s.item)
-		if def and def.armor then
+		if def and def.armor and not bound(i, "inv", Config.ARMOR_SLOT[def.armor.slot]) then
 			local target = Config.ARMOR_SLOT[def.armor.slot]
 			i.slots[i.selected], i.slots[target] = i.slots[target], s
 			i.dirty = true
@@ -1068,7 +1096,7 @@ handleAction = function(player: Player, a: any)
 		i.dirty = true
 	elseif t == "dropSlot" then
 		-- Q over a slot in an open window (Ctrl/Cmd+Q: whole stack)
-		if typeof(a.container) ~= "string" or not isInt(a.index) then
+		if typeof(a.container) ~= "string" or not isInt(a.index) or bound(i, a.container, a.index) then
 			return
 		end
 		local slots: { [number]: Stack? }? = nil

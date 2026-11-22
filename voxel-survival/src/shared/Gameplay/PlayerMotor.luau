@@ -54,6 +54,12 @@ do
 	if ice then
 		SLIPPERINESS[ice.id] = 0.98
 	end
+	-- frosted ice (Frost Walker, Phase 10d) is as slippery as ice
+	for _, def in BlockRegistry.byId do
+		if def.family == "frosted_ice" then
+			SLIPPERINESS[def.id] = 0.98
+		end
+	end
 end
 
 export type State = {
@@ -76,6 +82,7 @@ export type Input = {
 	jump: boolean,
 	sneak: boolean,
 	speedMultiplier: number?,
+	depthStrider: number?, -- the boots' Depth Strider level (Phase 10d)
 	sprint: boolean,
 	usingItem: boolean,
 }
@@ -356,13 +363,26 @@ function PlayerMotor.tick(st: State, input: Input, w: World): Result
 
 	if inWater then
 		local y0 = st.y
-		vx += wx * 0.02
-		vz += wz * 0.02
+		-- Java LivingEntity.travelInWater: drag 0.8 (0.9 sprinting), push 0.02; Depth Strider
+		-- (water_movement_efficiency = level / 3, halved off the ground) moves both toward
+		-- walking on land (0.546 drag, the walking speed)
+		local drag = if input.sprint then 0.9 else 0.8
+		local push = 0.02
+		local eff = math.min(input.depthStrider or 0, 3) / 3
+		if not st.onGround then
+			eff *= 0.5
+		end
+		if eff > 0 then
+			local speed = (if input.sprint then PlayerPhysics.SPRINT else PlayerPhysics.WALK) * (input.speedMultiplier or 1)
+			drag += (0.54600006 - drag) * eff
+			push += (speed - push) * eff
+		end
+		vx += wx * push
+		vz += wz * push
 		vx, vy, vz = move(vx, vy, vz)
 		if res.hitWall and onClimbable(w, st) then
 			vy = 0.2
 		end
-		local drag = if input.sprint then 0.9 else 0.8
 		vx, vy, vz = vx * drag, vy * 0.8, vz * drag
 		if not input.sprint then
 			vy -= 0.005 -- gravity / 16

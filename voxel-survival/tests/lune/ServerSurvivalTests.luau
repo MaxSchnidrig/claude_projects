@@ -46,6 +46,7 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		}
 		local dropped = 0
 		Loader.stubs["src/server/Player/InventoryService.luau"] = {
+			armor = function() return {} end,
 			dropAll = function()
 				dropped += 1
 			end,
