@@ -610,6 +610,18 @@ local function stepProjectile(m: Mob, dt: number)
 		for _ = 1, steps do
 			local nx, ny, nz = m.x + vx / steps, m.y + vy / steps, m.z + vz / steps
 			if solid(math.floor(nx), math.floor(ny), math.floor(nz)) then
+				if m.flame then
+					-- Java: a burning arrow lights the TNT or the unlit campfire it hits
+					local bx, by, bz = math.floor(nx), math.floor(ny), math.floor(nz)
+					local hitId = MobService.blockAt(bx, by, bz)
+					if hitId == BlockRegistry.id("tnt") then
+						require(script.Parent.Parent.Simulation.EntityService).igniteBlock(bx, by, bz)
+						MobService.remove(m)
+						return
+					elseif hitId == BlockRegistry.id("campfire_unlit") then
+						MobService.setBlock(bx, by, bz, BlockRegistry.id("campfire"))
+					end
+				end
 				m.stuck = 60 -- Java: arrows in the ground despawn after a minute
 				m.flags = FLAG.STUCK
 				m.vx, m.vy, m.vz = 0, 0, 0
@@ -655,11 +667,17 @@ local function stepProjectile(m: Mob, dt: number)
 							end
 						else
 							pierced[o] = true
+							-- Flame (Java AbstractArrow.onHitEntity): set on fire for 5 s BEFORE the
+							-- damage, so a kill already counts as burning (cooked drops)
+							local burnBefore = o.burning
+							if m.flame then
+								o.burning = math.max(o.burning, 5)
+							end
 							local dealt = MobService.damage(o, dmg, { kind = "projectile", from = Vector3.new(m.x - vx * 4, m.y, m.z - vz * 4), living = true, attacker = m.ownerPlayer })
+							if dealt <= 0 and m.flame and o.alive then
+								o.burning = burnBefore -- (Java: a hit that didn't land puts the fire out again)
+							end
 							if dealt > 0 and o.alive then
-								if m.flame then
-									o.burning = math.max(o.burning, 5) -- Flame: 5 s
-								end
 								local punch = m.punch or 0
 								if punch > 0 then
 									-- Punch (Java): pushed along the arrow's flight, 0.6 a level, 0.1 up
@@ -809,8 +827,21 @@ local function onAttack(p: Player, id: any, critClaim: any)
 		end
 	end
 	m.looting = looting
+	-- Fire Aspect (Java Player.attack): the target is set on fire before the hit, so a kill drops
+	-- cooked meat; if the hit doesn't land, the fire goes out again
+	local function preIgnite(t: Mob): number
+		local before = t.burning
+		if fireAspect > 0 then
+			t.burning = math.max(t.burning, 1)
+		end
+		return before
+	end
+	local burnBefore = preIgnite(m)
 	local dealt, fresh = MobService.damage(m, amount + bonusFor(m), { attacker = p, from = eye, kind = "attack" })
 	if dealt <= 0 then
+		if m.alive then
+			m.burning = burnBefore
+		end
 		return
 	end
 	postHit(m)
@@ -844,9 +875,12 @@ local function onAttack(p: Player, id: any, critClaim: any)
 					local vx, vy, vz = Combat.knockback(o.vx / 20, o.vy / 20, o.vz / 20, look.X, look.Z, 0.4, o.onGround)
 					o.vx, o.vy, o.vz = vx * 20, vy * 20, vz * 20
 					o.looting = looting
+					local ob = preIgnite(o)
 					local d = MobService.damage(o, sweepDamage + bonusFor(o), { attacker = p, from = eye, kind = "attack" })
 					if d > 0 then
 						postHit(o)
+					elseif o.alive then
+						o.burning = ob
 					end
 				end
 			end

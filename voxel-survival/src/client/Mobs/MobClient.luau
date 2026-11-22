@@ -407,8 +407,10 @@ local function pose(m: Mob, now: number)
 	local torso = m.built.torso
 	if burning and not m.fire and torso then
 		local f = Instance.new("Fire")
-		f.Size = 4
-		f.Heat = 6
+		-- a burning arrow (Flame) gets a small flame, mobs a big one
+		local arrow = m.def.key == "arrow"
+		f.Size = if arrow then 1 else 4
+		f.Heat = if arrow then 1 else 6
 		f.Parent = torso
 		m.fire = f
 	elseif not burning and m.fire then

@@ -15,6 +15,7 @@ local RunService = game:GetService("RunService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Experience = require(Shared.Gameplay.Experience)
+local Enchantments = require(Shared.Items.Enchantments)
 local Shapes = require(Shared.Blocks.Shapes)
 local Physics = require(Shared.Mobs.MobPhysics)
 local Fluids = require(Shared.World.Fluids)
@@ -436,16 +437,36 @@ function ExperienceService.command(p: Player, args: { string })
 	end
 end
 
-function ExperienceService.enchantCommand(p: Player, id: string?, level: string?)
+-- "/enchant <enchantment> [level]": the name as in the game, with spaces or underscores
+-- ("silk touch", "silk_touch", "Curse of Vanishing"); the level as a number or I..V.
+local ROMAN = { i = 1, ii = 2, iii = 3, iv = 4, v = 5 }
+function ExperienceService.enchantCommand(p: Player, words: { string })
 	if not allowed(p) then
 		reply(p, "Only the world's owner can use /enchant")
 		return
 	end
-	if not id or not enchanter then
-		reply(p, "Usage: /enchant <enchantment> [level], e.g. /enchant silk_touch or /enchant sharpness 5")
+	local parts = {}
+	for _, w in words do
+		if w ~= "" then
+			table.insert(parts, string.lower(w))
+		end
+	end
+	local level = 1
+	local last = parts[#parts]
+	if last and (tonumber(last) or ROMAN[last]) and #parts > 1 then
+		level = math.floor(tonumber(last) or ROMAN[last])
+		table.remove(parts)
+	end
+	local name = string.gsub(table.concat(parts, "_"), "^minecraft:", "")
+	local id = Enchantments.find(name)
+	if #parts == 0 or not enchanter then
+		reply(p, "Usage: /enchant <enchantment> [level], e.g. /enchant silk touch or /enchant sharpness 5")
+		return
+	elseif not id then
+		reply(p, `Unknown enchantment '{string.gsub(name, "_", " ")}'`)
 		return
 	end
-	reply(p, (enchanter :: (Player, string, number) -> string)(p, id, math.floor(tonumber(level or "1") or 1)))
+	reply(p, (enchanter :: (Player, string, number) -> string)(p, id :: string, level))
 end
 
 function ExperienceService.init()
@@ -456,7 +477,7 @@ function ExperienceService.init()
 		players[p] = nil
 	end)
 	Remotes.get("XpCommand").OnServerEvent:Connect(function(p: Player, args: any)
-		if typeof(args) ~= "table" or #args > 4 then
+		if typeof(args) ~= "table" or #args > 8 then
 			return
 		end
 		local clean = {}
@@ -467,7 +488,8 @@ function ExperienceService.init()
 			table.insert(clean, string.lower(a))
 		end
 		if clean[1] == "!enchant" then
-			ExperienceService.enchantCommand(p, clean[2], clean[3])
+			table.remove(clean, 1)
+			ExperienceService.enchantCommand(p, clean)
 		else
 			ExperienceService.command(p, clean)
 		end
@@ -479,7 +501,8 @@ function ExperienceService.init()
 				table.remove(words, 1)
 				ExperienceService.command(p, words)
 			elseif words[1] == "/enchant" then
-				ExperienceService.enchantCommand(p, words[2], words[3])
+				table.remove(words, 1)
+				ExperienceService.enchantCommand(p, words)
 			end
 		end)
 	end

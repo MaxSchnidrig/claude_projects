@@ -91,6 +91,19 @@ for _, d in Enchantments.LIST do
 end
 Enchantments.byId = byId
 
+-- An enchantment by its id or its name in any case, words joined by "_" or spaces
+-- ("silk_touch", "Silk Touch", "curse_of_vanishing").
+local byName: { [string]: string } = {}
+for _, d in Enchantments.LIST do
+	byName[d.id] = d.id
+	byName[(string.gsub(string.lower(d.name), "%s+", "_"))] = d.id
+	byName[(string.gsub(d.id, "_", ""))] = d.id -- "silktouch"
+end
+function Enchantments.find(name: string): string?
+	local key = string.gsub(string.gsub(string.lower(name), "%s+", "_"), "^_+", "")
+	return byName[key] or byName[(string.gsub(key, "_", ""))]
+end
+
 function Enchantments.minCost(d: Def, level: number): number
 	return d.minBase + d.minPer * (level - 1)
 end

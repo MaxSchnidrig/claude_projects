@@ -209,6 +209,20 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 			end
 		end
 		assert(flesh <= 5, `rotten flesh {flesh}`)
+		-- Fire Aspect sets the target on fire BEFORE the hit: a one-hit kill drops cooked meat
+		for _ = 1, 30 do
+			G.frame(0.05) -- (a full charge again)
+		end
+		local cow = MS.spawn("cow", 0.5, FLOOR, 1.6, 0)
+		table.clear(dropped)
+		remotes.AttackMob.OnServerEvent:Fire(player, cow.id, false)
+		eq(cow.alive, false, "10 damage kills a cow")
+		local steak, raw = 0, 0
+		for _, st in dropped do
+			if st.item == "steak" then steak += st.count end
+			if st.item == "raw_beef" then raw += st.count end
+		end
+		assert(steak > 0 and raw == 0, `cooked drops (steak {steak}, raw {raw})`)
 		for _, k in { "InventoryService", "SurvivalService", "DayNightService", "MobSpawner" } do
 			for _, dir in { "Player", "Survival", "Mobs" } do
 				Loader.stubs[`src/server/{dir}/{k}.luau`] = nil
@@ -263,9 +277,16 @@ return function(test: (string, () -> ()) -> (), eq: (any, any, string?) -> ())
 		eq(Inv.getSlot(player, 1).ench.efficiency, 5)
 		remotes.XpCommand.OnServerEvent:Fire(player, { "!enchant", "sharpness", "1" })
 		eq(Inv.getSlot(player, 1).ench.sharpness, nil, "not on a pickaxe")
-		remotes.XpCommand.OnServerEvent:Fire(player, { "!enchant", "silk_touch" })
-		remotes.XpCommand.OnServerEvent:Fire(player, { "!enchant", "fortune", "3" })
+		remotes.XpCommand.OnServerEvent:Fire(player, { "!enchant", "silk", "touch" }) -- (with a space)
+		remotes.XpCommand.OnServerEvent:Fire(player, { "!enchant", "fortune", "iii" })
 		eq(Inv.getSlot(player, 1).ench.silk_touch, 1)
 		eq(Inv.getSlot(player, 1).ench.fortune, nil, "fortune and silk touch clash")
+		-- names with spaces, any case
+		local Enchantments2 = Loader.require("src/shared/Items/Enchantments")
+		eq(Enchantments2.find("fire aspect"), "fire_aspect")
+		eq(Enchantments2.find("Quick Charge"), "quick_charge")
+		eq(Enchantments2.find("curse_of_vanishing"), "vanishing_curse")
+		eq(Enchantments2.find("silktouch"), "silk_touch")
+		eq(Enchantments2.find("banana"), nil)
 	end)
 end
