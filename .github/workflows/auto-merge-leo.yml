@@ -1,0 +1,195 @@
+# Automatic merge of Leo's branch into the main ROCRAFT branch.
+#
+# Runs on GitHub's own computers (GitHub Actions), not on Claude.
+#   1. every push to Leo_work starts it (or "Run workflow" by hand on the Actions tab)
+#   2. it checks out claude/blissful-albattani-2tbixg and merges Leo_work into it
+#   3. it installs the tools from voxel-survival/rokit.toml (rojo, lune), runs every test and the
+#      Rojo build
+#   4. all good -> it pushes the merge (never forced) and logs the incoming commits in
+#      voxel-survival/MERGES.md and in the commit message
+#      anything wrong (a conflict, a failing test, the build) -> it pushes nothing and opens a
+#      GitHub issue saying what failed and in which files, assigned to the repo owner (email)
+# It never deletes or changes Leo's branch.
+#
+# To pause it: GitHub -> Actions -> "Auto-merge Leo_work" -> "..." -> Disable workflow.
+# To remove it: delete this file from Leo_work (and from the other branches that have it).
+
+name: Auto-merge Leo_work
+
+on:
+  push:
+    branches: [Leo_work]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write # push the merge
+  issues: write # report problems
+
+# one run at a time; a newer push waits for the running one
+concurrency:
+  group: auto-merge-leo
+  cancel-in-progress: false
+
+env:
+  SOURCE: Leo_work
+  TARGET: claude/blissful-albattani-2tbixg
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out the target branch
+        uses: actions/checkout@v4
+        with:
+          ref: claude/blissful-albattani-2tbixg
+          fetch-depth: 0
+
+      - name: Git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Merge Leo_work
+        id: merge
+        run: |
+          git fetch origin "+refs/heads/$SOURCE:refs/remotes/origin/$SOURCE"
+          if git merge-base --is-ancestor "origin/$SOURCE" HEAD; then
+            echo "Nothing new on $SOURCE."
+            echo "nothing=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git log --no-merges --format='- %h %s (%an, %ad)' --date=short "HEAD..origin/$SOURCE" > "$RUNNER_TEMP/incoming.txt"
+          echo "Incoming commits:"; cat "$RUNNER_TEMP/incoming.txt"
+          if ! git merge --no-ff --no-commit "origin/$SOURCE" > "$RUNNER_TEMP/merge.log" 2>&1; then
+            cat "$RUNNER_TEMP/merge.log"
+            git diff --name-only --diff-filter=U > "$RUNNER_TEMP/conflicts.txt"
+            git merge --abort || true
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/merge.log"
+
+      - name: Install tools (rokit.toml)
+        if: steps.merge.outputs.nothing != 'true'
+        working-directory: voxel-survival
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          curl -sSf https://raw.githubusercontent.com/rojo-rbx/rokit/main/scripts/install.sh | bash
+          echo "$HOME/.rokit/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.rokit/bin:$PATH"
+          rokit install --no-trust-check
+          rojo --version
+          lune --version
+
+      - name: Tests
+        id: tests
+        if: steps.merge.outputs.nothing != 'true'
+        working-directory: voxel-survival
+        run: |
+          set -o pipefail
+          lune run tests/lune/run 2>&1 | tee "$RUNNER_TEMP/tests.log"
+
+      - name: Compile check
+        id: compile
+        if: steps.merge.outputs.nothing != 'true'
+        working-directory: voxel-survival
+        run: |
+          set -o pipefail
+          lune run tests/lune/compile_all 2>&1 | tee "$RUNNER_TEMP/compile.log"
+
+      - name: Rojo build
+        id: build
+        if: steps.merge.outputs.nothing != 'true'
+        working-directory: voxel-survival
+        run: |
+          set -o pipefail
+          rojo build -o "$RUNNER_TEMP/build.rbxl" 2>&1 | tee "$RUNNER_TEMP/build.log"
+
+      - name: Commit the merge and log it
+        if: steps.merge.outputs.nothing != 'true'
+        run: |
+          SHA=$(git rev-parse --short "origin/$SOURCE")
+          DATE=$(date -u +"%Y-%m-%d %H:%M UTC")
+          LOG=voxel-survival/MERGES.md
+          if [ ! -f "$LOG" ]; then
+            printf '# Automatic merges from Leo_work\n\nWritten by .github/workflows/auto-merge-leo.yml after every successful merge.\n' > "$LOG"
+          fi
+          {
+            printf '\n## %s - %s at %s\n\n' "$DATE" "$SOURCE" "$SHA"
+            cat "$RUNNER_TEMP/incoming.txt"
+          } >> "$LOG"
+          git add "$LOG"
+          {
+            printf 'Auto-merge %s (%s) into %s\n\nTests, compile check and Rojo build passed.\n\nIncoming commits:\n' "$SOURCE" "$SHA" "$TARGET"
+            cat "$RUNNER_TEMP/incoming.txt"
+          } > "$RUNNER_TEMP/message.txt"
+          git commit -F "$RUNNER_TEMP/message.txt"
+
+      - name: Push (never forced)
+        id: push
+        if: steps.merge.outputs.nothing != 'true'
+        run: git push origin "HEAD:$TARGET"
+
+      - name: Report the problem as an issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE: ${{ steps.merge.outcome }}
+          TESTS: ${{ steps.tests.outcome }}
+          COMPILE: ${{ steps.compile.outcome }}
+          BUILD: ${{ steps.build.outcome }}
+          PUSH: ${{ steps.push.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          B="$RUNNER_TEMP/issue.md"
+          SHA=$(git rev-parse --short "origin/$SOURCE" 2>/dev/null || echo "?")
+          {
+            echo "The automatic merge of \`$SOURCE\` ($SHA) into \`$TARGET\` stopped. **Nothing was pushed.**"
+            echo
+            if [ "$MERGE" = "failure" ]; then
+              echo "### Merge conflict in these files"
+              if [ -s "$RUNNER_TEMP/conflicts.txt" ]; then sed 's/^/- /' "$RUNNER_TEMP/conflicts.txt"; else echo "(git couldn't merge; see the run log)"; fi
+              echo
+              echo "Someone has to merge these by hand (or ask Claude to)."
+            fi
+            if [ "$TESTS" = "failure" ]; then
+              echo "### Tests failed"
+              echo '```'
+              grep -A3 "FAIL" "$RUNNER_TEMP/tests.log" | head -60 || true
+              tail -3 "$RUNNER_TEMP/tests.log" || true
+              echo '```'
+            fi
+            if [ "$COMPILE" = "failure" ]; then
+              echo "### Compile check failed"
+              echo '```'
+              grep "FAIL" "$RUNNER_TEMP/compile.log" | head -40 || true
+              echo '```'
+            fi
+            if [ "$BUILD" = "failure" ]; then
+              echo "### Rojo build failed"
+              echo '```'
+              tail -30 "$RUNNER_TEMP/build.log" || true
+              echo '```'
+            fi
+            if [ "$PUSH" = "failure" ]; then
+              echo "### Push was refused"
+              echo "\`$TARGET\` probably got new commits while this ran. Push to Leo_work again or use \"Run workflow\" on the Actions tab."
+            fi
+            if [ "$MERGE" != "failure" ] && [ "$TESTS" != "failure" ] && [ "$COMPILE" != "failure" ] && [ "$BUILD" != "failure" ] && [ "$PUSH" != "failure" ]; then
+              echo "### Setup failed"
+              echo "Installing the tools or checking out failed; see the run log."
+            fi
+            echo
+            if [ -s "$RUNNER_TEMP/incoming.txt" ]; then
+              echo "### Commits waiting to come in"
+              cat "$RUNNER_TEMP/incoming.txt"
+              echo
+            fi
+            echo "Full log: $RUN_URL"
+          } > "$B"
+          gh issue create \
+            --title "Auto-merge of $SOURCE ($SHA) failed" \
+            --body-file "$B" \
+            --assignee "${{ github.repository_owner }}" \
+          || gh issue create --title "Auto-merge of $SOURCE ($SHA) failed" --body-file "$B"
